@@ -12,30 +12,23 @@ uniform isampler3D volume_texture; // volume 3D integer texture sampler
 // color mapping related uniforms 
 uniform float uWindowingRange;  // windowing value range
 uniform float uWindowingMinVal; // windowing lower bound
-uniform float uWindowingMaxVal; // windowing upper bound
+//uniform float uWindowingMaxVal; // windowing upper bound
 
 // ray traversal related uniforms
 uniform float uRayParamStart;  // constrained sampling parameter intervall start
 uniform float uRayParamEnd;	// constrained sampling parameter intervall end
 uniform float uStepSize;		// ray sampling step size
 
-// LMIP parameter
-uniform float uThresholdLMIP;	// LMIP value threshold to be exceeded to trigger
-
-// depth effect parameters
-uniform float uColorEffectInfl;    // color    effect: influence parameter [0,1]
-uniform float uContrastEffectInfl; // contrast effect: influence parameter [0,1]
-uniform vec4  uMaxDistColor; // color effect: color at max distance
-uniform vec4  uMinDistColor; // color effect: color at min distance
-uniform int   uMixMode; 	 // color effect: color mixing mode (0 multiply, 1 add, 2 subtract [experimental]) 
-
 /********************    EXPERIMENTAL PARAMETERS      ***********************/ 
-uniform int  uMinStepsLMIP;    // parameter for LMIP 'smoothing'
 uniform int  uMinValThreshold; // minimal value threshold for sample to be considered; deceeding values will be ignored  
 uniform int  uMaxValThreshold; // maximal value threshold for sample to be considered; exceeding values will be ignored
-uniform float uMinDepthRange; // lower bound of constrained depth intervall; depth is mapped to this interval
-uniform float uMaxDepthRange; // upper bound of constrained depth intervall; depth is mapped to this interval 
 /****************************************************************************/
+
+//int rdm[36] = { 29, 35, 9, 3,18,23,25,10, 4, 5,19, 8,21, 6,26,16, 7,34,31,24, 1,27,12, 2,32,20,17,30,11,15,33,22,13,28, 0,14 };
+//int rdm[16] = { 2, 1, 7, 6, 4, 10, 3, 0, 5, 11, 9, 14, 12, 13, 8, 15 };
+//int rdm[9] = { 6,4,1,0,3,5,7,8,2 };
+//uniform int uActivePixelIdx;
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -51,29 +44,49 @@ struct VolumeSample
 };
 
 /**
+* @brief 'transfer-function' applied to value at a given distance to Camera.
+* shifts towards one color or the other
+* @param value to be mapped to a color
+* @param depth parameter to shift towards front or back color
+*
+* @return mapped color corresponding to value at provided depth
+*/
+vec4 transferFunction(int value)
+{
+	// linear mapping to grayscale color [0,1]
+	float rel = (float(value) - uWindowingMinVal) / uWindowingRange;
+	float clamped =	max(0.0, min(1.0, rel));
+	
+	float r = sin(rel);
+	float g = 1.0 - cos(-0.5 * rel);
+	float b = cos(rel) + 0.5 * sin(rel);
+	float a = clamped / 10.0;
+	vec4 color = vec4(
+		vec3(r,g,b) * a,
+		a
+		);
+
+	return color;
+}
+
+/**
  * @brief retrieve value for a maximum intensity projection	
  * 
  * @param startUVW start uvw coordinates
  * @param endUVW end uvw coordinates
  * @param stepSize of ray traversal
- * @param thresholdLMIP value to exceed for LMIP to break traversal
- * @param minStepsLMIP since last local maximum before LMIP breaks traversal (experimental parameter)
  * @param minValueThreshold to ignore values when deceeded (experimental parameter)
  * @param maxValueThreshold to ignore values when exceeded (experimental parameter)
  * 
  * @return sample point in volume, holding value and uvw coordinates
  */
-VolumeSample mip(vec3 startUVW, vec3 endUVW, float stepSize, int thresholdLMIP, int minStepsLMIP, int minValueThreshold, int maxValueThreshold)
+vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, int minValueThreshold, int maxValueThreshold)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
 
-	VolumeSample curMax;	 // result variable
-	curMax.value = -10000;   // initialized to arbitrary value out of CT/MRT range
-	curMax.uvw   = startUVW; // initialized to arbitrary uvw coordinates
+	vec4 curColor = vec4(0);
 
-	int stepsSinceLM = 0; 	 // used in conjunction with experimental minStepsLMIP parameter
-
-	// traversa ray, perform mip
+	// traverse ray front to back rendering
 	for (float t = 0.0; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
@@ -89,31 +102,13 @@ VolumeSample mip(vec3 startUVW, vec3 endUVW, float stepSize, int thresholdLMIP, 
 			continue;
 		}
 
-		// found new maximum
-		if ( curSample.value > curMax.value)
-		{
-			curMax = curSample;
-
-			stepsSinceLM = 0; // always reset while approaching local maximum, see usage below
-		}
-		else // leaving local maximum
-		{
-			// LMIP is satisfied
-			if ( curMax.value > thresholdLMIP ) 
-			{
-				stepsSinceLM++; // increment steps since departing last local maximum
-
-				/// experimental: minimal offset to local maximum with no new maximum
-				if (stepsSinceLM > minStepsLMIP) 
-				{
-					break; // current max sample is a local maximum AND greater than LMIP threshold
-				}
-			}
-		}		
+		vec4 sampleColor = transferFunction(curSample.value);
+		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
+		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 	}
 
-	// return maximum sample with maximum intensity
-	return curMax;
+	// return emission absorbtion result
+	return curColor;
 }
 
 
@@ -142,38 +137,18 @@ float contrastAttenuationSquared(float relVal, float dist)
 	return  mix(relVal, 0.5, squaredDist);
 }
 
-/**
- * @brief 'transfer-function' applied to value at a given distance to Camera. 
- * shifts towards one color or the other
- * @param value to be mapped to a color
- * @param depth parameter to shift towards front or back color
- * 
- * @return mapped color corresponding to value at provided depth
- */
-vec4 transferFunction( int value, float depth)
-{
-	// linear mapping to grayscale color [0,1]
-	vec4 color = vec4( (float( value ) - uWindowingMinVal) / uWindowingRange );
-
-	// linear mapping to [uMinDistColor, uMaxDistColor] (rgb colors)
-	switch (uMixMode)
-	{
-	case 0: // multiply 
-		color = color * ( mix( uMinDistColor, uMaxDistColor, depth ) );
-		break;
-	case 1: // add
-		color = color + ( mix( uMinDistColor, uMaxDistColor, depth ) );
-		break;
-	case 2: /// experimental: subtract
-		color = color - ( vec4(1.0) -  mix( uMinDistColor, uMaxDistColor, depth ) );
-		break;
-	}
-	
-	return color; 
-}
-
 void main()
 {
+	//// For fun: progressive sampling
+	//int activePixelIdx = rdm[ (uActivePixelIdx % 9) ];
+	//int thisPixelIdx = 0;
+	//thisPixelIdx =  int(gl_FragCoord.x) % 3;
+	//thisPixelIdx += (int(gl_FragCoord.y) % 3) * 3;
+	//if ( thisPixelIdx != activePixelIdx )
+	//{
+	//	discard;
+	//} 
+
 	// define ray start and end points in volume
 	vec4 uvwStart = texture( front_uvw_map, passImageCoord );
 	vec4 uvwEnd   = texture( back_uvw_map,  passImageCoord );
@@ -182,47 +157,14 @@ void main()
 	uvwStart.rgb = mix (uvwStart.rgb, uvwEnd.rgb, uRayParamStart);
 	uvwEnd.rgb   = mix( uvwStart.rgb, uvwEnd.rgb, uRayParamEnd);
 
-	// find sampleof maximum intensity
-	VolumeSample maxSample = mip( 
+	// EA-raycasting
+	vec4 color = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize,    			// sampling step size
-		int(uThresholdLMIP),	// LMIP threshold
-		uMinStepsLMIP,			// LMIP steps
 		uMinValThreshold,	 // min value threshold 
 		uMaxValThreshold);   // max value threshold
-
-	// distance to camera 
-	// for approximate (faster) distance: remove sqrt and pow( ,2) --> (linear interpolation)
-	float depth = pow( mix(
-		sqrt( uvwStart.a ), // front depth 
-		sqrt( uvwEnd.a ),   // back depth
-		min( 1.0, length(maxSample.uvw - uvwStart.rgb) ) // relative distance
-		), 2);
-
-	/// experimental: map depth to constrained depth interval
-	depth = pow(max(0.0, min(1.0, (sqrt(depth) - uMinDepthRange)/(uMaxDepthRange - uMinDepthRange) )), 2);
 	
-	// distance color effect: decreasing contrast 
-	float relativeIntensity = max(0.0, min(1.0, (float(maxSample.value) - uWindowingMinVal)/ uWindowingRange)); //
-	float mappedIntensity   = mix( 
-		relativeIntensity,
-		contrastAttenuationLinear(relativeIntensity, depth),
-		// contrastAttenuationSquared(relativeIntensity, depth), /// experimental: for a more dramatic effect
-		uContrastEffectInfl);
-
-	// value mapped according to windowing configuration
-	int mappedValue = int( mix(
-		uWindowingMinVal,
-		uWindowingMaxVal,
-		mappedIntensity));
-	
-	// distance color effect: red/blue color mapping
-	vec4 mappedColor = mix( 
-		vec4(mappedIntensity),
-		transferFunction(mappedValue, depth),
-		uColorEffectInfl);
-
 	// final color
-	fragColor = mappedColor;
+	fragColor = color;
 }
