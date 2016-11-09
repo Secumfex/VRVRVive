@@ -50,6 +50,14 @@ void DebugLog::log(std::string msg, unsigned int value)
 	log(msg + ss.str());
 }
 
+void DebugLog::log(std::string msg, const glm::vec2& vector)
+{
+	std::stringstream ss;
+	ss << vector.x << ", ";
+	ss << vector.y;
+	log(msg + ss.str());
+}
+
 void DebugLog::log(std::string msg, const glm::vec3& vector)
 {
 	std::stringstream ss;

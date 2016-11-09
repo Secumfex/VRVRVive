@@ -4,6 +4,7 @@
 in vec2 passImageCoord;
 
 // textures
+uniform sampler1D transferFunctionTex;
 uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform isampler3D volume_texture; // volume 3D integer texture sampler
@@ -57,14 +58,8 @@ vec4 transferFunction(int value)
 	float rel = (float(value) - uWindowingMinVal) / uWindowingRange;
 	float clamped =	max(0.0, min(1.0, rel));
 	
-	float r = sin(rel);
-	float g = 1.0 - cos(-0.5 * rel);
-	float b = cos(rel) + 0.5 * sin(rel);
-	float a = clamped / 10.0;
-	vec4 color = vec4(
-		vec3(r,g,b) * a,
-		a
-		);
+	vec4 color = texture(transferFunctionTex, clamped);
+	color.rgb *= color.a;
 
 	return color;
 }

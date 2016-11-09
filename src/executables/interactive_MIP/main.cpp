@@ -50,20 +50,9 @@ static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten
 static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
-static float 	 s_colorEffectInfluence = 1.0f;
-static float 	 s_contrastEffectInfluence = 0.5f;
-static glm::vec4 s_maxDistColor = glm::vec4(170.0f / 255.0f, 192.0f / 255.0f, 209.0f/255.0f, 1.0f); // far : blueish
-static glm::vec4 s_minDistColor = glm::vec4(255.0f / 255.0f, 156.0f / 255.0f, 156.0f/255.0f, 1.0f); // near: reddish
-static int 		 s_mixMode = 2;
-static const char* s_mixModeLabels[] = {"Multiply", "Add", "Subtract (experimental)"};
-
 static int 		 s_activeModel = 1;
 static int 	     s_lastTimeModel = 1;
 static const char* s_models[] = {"MRT Brain", "CT Head"};
-
-static float s_LMIP_threshold = FLT_MAX; // LMIP threshold 
-static bool  s_LMIP_isEnabled = false;
-static int   s_LMIP_minStepsToLocalMaximum = 3; // steps before Local Maximum is accepted
 
 static int   s_minValThreshold = INT_MIN;
 static int   s_maxValThreshold = INT_MAX;
@@ -72,14 +61,81 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
-static float s_minDepthRange = 0.0f;
-static float s_maxDepthRange = 1.0f;
+struct TFPoint{
+	int v; // value 
+	glm::vec4 col; // mapped color
+};
 
-
-
+static std::vector<float> s_transferFunctionValues;
+static std::vector<glm::vec4> s_transferFunctionColors;
+static std::vector<float> s_transferFunctionTexData = std::vector<float>(512*4);
+GLuint s_transferFunctionTex = -1;
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
+
+void updateTransferFunctionTex()
+{
+	int currentMin = s_minValue;
+	int currentMax = s_minValue+1;
+	glm::vec4 currentMinCol( 0.0f, 0.0f, 0.0f, 0.0f );
+	glm::vec4 currentMaxCol( 0.0f, 0.0f, 0.0f, 0.0f );
+
+	int currentPoint = -1;
+	for (unsigned int i = 0; i < s_transferFunctionTexData.size() / 4; i++)
+	{
+		glm::vec4 c( 0.0f, 0.0f, 0.0f, 0.0f );
+		float relVal = (float) i / (float) (s_transferFunctionTexData.size() / 4);
+		int v = relVal * (s_maxValue - s_minValue) + s_minValue;
+
+		if (currentMax < v)
+		{
+			currentPoint++;
+			if (currentPoint < s_transferFunctionValues.size())
+			{
+				currentMin = currentMax;
+				currentMinCol = currentMaxCol;
+
+				currentMax = (int) s_transferFunctionValues[currentPoint];
+				currentMaxCol = s_transferFunctionColors[currentPoint];
+			}
+			else {
+				currentMin = currentMax;
+				currentMinCol = currentMaxCol;
+
+				currentMax = s_maxValue;
+			}
+		}
+
+		float mixParam = (float) (v - currentMin) / (float) (currentMax - currentMin);
+		c = (1.0f - mixParam) * currentMinCol  + mixParam * currentMaxCol;
+
+		s_transferFunctionTexData[i * 4 +0] = c[0];
+		s_transferFunctionTexData[i * 4 +1] = c[1];
+		s_transferFunctionTexData[i * 4 +2] = c[2];
+		s_transferFunctionTexData[i * 4 +3] = c[3];
+	}
+
+	// Upload to texture
+	if (s_transferFunctionTex == -1)
+	{
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+		glGenTextures(1, &s_transferFunctionTex);
+		OPENGLCONTEXT->bindTexture(s_transferFunctionTex, GL_TEXTURE_1D);
+
+		glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGBA8, s_transferFunctionTexData.size() / 4);
+
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+
+		OPENGLCONTEXT->bindTexture(0, GL_TEXTURE_1D);
+	}
+
+	OPENGLCONTEXT->bindTexture(s_transferFunctionTex, GL_TEXTURE_1D);
+	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, s_transferFunctionTexData.size() / 4, GL_RGBA, GL_FLOAT, &s_transferFunctionTexData[0]);
+	OPENGLCONTEXT->bindTexture(0);
+}
 
 template <class T>
 void activateVolume(VolumeData<T>& volumeData ) // set static variables
@@ -97,14 +153,11 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	s_minValue = volumeData.min;
 	s_maxValue = volumeData.max;
 	s_rayStepSize = 1.0f / (2.0f * volumeData.size_x); // this seems a reasonable size
-	s_LMIP_threshold = (float) volumeData.max;
 	s_windowingMinValue = (float) volumeData.min;
 	s_windowingMaxValue = (float) volumeData.max;
 	s_windowingRange = s_windowingMaxValue - s_windowingMinValue;
 	s_minValThreshold = volumeData.min;
 	s_maxValThreshold = volumeData.max;
-
-
 }
 
 int main()
@@ -186,15 +239,32 @@ int main()
 	
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
+	// DEBUG
+	s_transferFunctionValues.clear();
+	s_transferFunctionColors.clear();
+	s_transferFunctionValues.push_back(0);
+	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.0, 0.0, 0.0));
+	s_transferFunctionValues.push_back(500);
+	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.1, 0.2, 0.01));
+	s_transferFunctionValues.push_back(1000);
+	s_transferFunctionColors.push_back(glm::vec4(1.0, 1.0, 1.0, 0.05));
+	s_transferFunctionValues.push_back(1500);
+	s_transferFunctionColors.push_back(glm::vec4(1.0, 0.9, 0.9, 0.05));
+	s_transferFunctionValues.push_back(2500);
+	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.3, 0.5, 0.01));
+	updateTransferFunctionTex();
+
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(s_transferFunctionTex, GL_TEXTURE3, GL_TEXTURE_1D);
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
 
 	shaderProgram.update("volume_texture", 0); // volume texture
 	shaderProgram.update("back_uvw_map",  1);
 	shaderProgram.update("front_uvw_map", 2);
+	shaderProgram.update("transferFunctionTex", 3);
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram);
@@ -284,18 +354,42 @@ int main()
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-
 	double elapsedTime = 0.0;
 	render(window, [&](double dt)
 	{
 		elapsedTime += dt;
-		std::string window_header = "Volume Renderer - " + std::to_string( 1.0 / dt ) + " FPS";
+		std::string window_header = "Volume Renderer";
 		glfwSetWindowTitle(window, window_header.c_str() );
 
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
 		ImGui_ImplGlfwGL3_NewFrame(); // tell ImGui a new frame is being rendered
-		
+
+		ImGui::Value("FPS", (float) (1.0 / dt));
+
+		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.5,0.5,0.6,1.0) );
+		ImGui::PlotLines("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
+		ImGui::PlotHistogram("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
+		ImGui::PopStyleColor();
+
+		ImGui::Columns(2, "mycolumns2", true);
+        ImGui::Separator();
+		bool changed = false;
+		for (unsigned int n = 0; n < s_transferFunctionValues.size(); n++)
+        {
+			changed |= ImGui::DragFloat(("V" + std::to_string(n)).c_str(), &s_transferFunctionValues[n], 1.0f, s_minValue, s_maxValue);
+			ImGui::NextColumn();
+			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunctionColors[n][0]);
+            ImGui::NextColumn();
+        }
+
+		if(changed)
+		{
+			updateTransferFunctionTex();
+		}
+        ImGui::Columns(1);
+        ImGui::Separator();
+
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
     	{
