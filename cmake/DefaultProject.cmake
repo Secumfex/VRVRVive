@@ -29,6 +29,7 @@ find_package(OpenGL3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(GLFW3 REQUIRED)
 find_package(GLM REQUIRED)
+find_package(OpenVR REQUIRED)
 
 if (MINGW)
 	find_package(MinGWThreads REQUIRED)

@@ -15,6 +15,7 @@ include_directories(
     ${GLFW3_INCLUDE_PATH}
     ${GLM_INCLUDE_PATH}
 #    ${IMGUI_INCLUDE_PATH}
+    ${OPENVR_INCLUDE_DIR}
     ${EXTERNAL_LIBRARY_PATHS}
     ${LIBRARIES_PATH}
 )
@@ -40,6 +41,7 @@ target_link_libraries(
     ${GLFW3_LIBRARIES}
     ${GLEW_LIBRARIES}
     ${OpenGL3_LIBRARIES}
+    ${OPENVR_LIBRARIES}
     winmm.lib
 )
 
