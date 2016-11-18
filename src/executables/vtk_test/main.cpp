@@ -23,10 +23,15 @@
 #include "vtkLight.h"
 #include "vtkNew.h"
 #include "vtkPolyDataMapper.h"
+#include "vtkOpenVRRenderWindow.h"
+#include "vtkOpenVRRenderer.h"
+#include "vtkOpenVRCamera.h"
 #include <vtkCubeSource.h>
 
 static RenderPass* rp = nullptr;
-static vtkRenderer* ren = nullptr;
+static vtkOpenVRRenderer* ren = nullptr;
+static vtkOpenVRCamera* cam = nullptr;
+static vtkOpenVRRenderWindow* renWin = nullptr;
 static const int TEXTURE_SIZE = 512;
 const glm::vec2 WINDOW_RESOLUTION = glm::vec2( TEXTURE_SIZE, TEXTURE_SIZE);
 
@@ -47,7 +52,7 @@ static void MakeCurrentCallback(vtkObject* vtkNotUsed(caller),
 
 void handleResize(int w, int h)
 {
-  externalVTKWidget->GetRenderWindow()->SetSize(w, h);
+  //externalVTKWidget->GetRenderWindow()->SetSize(w, h);
   if(rp){rp->setViewport(0,0,w,h);}
 }
 
@@ -55,8 +60,12 @@ void renderVTK()
 {
 	if (!initialized)
     {
-		vtkNew<vtkExternalOpenGLRenderWindow> renWin;
-		externalVTKWidget->SetRenderWindow(renWin.GetPointer());
+		
+		//vtkNew<vtkExternalOpenGLRenderWindow> renWin;
+		renWin = vtkOpenVRRenderWindow::New();
+		renWin->Initialize();
+
+		//externalVTKWidget->SetRenderWindow(renWin.GetPointer());
 
 		// create a callback object and call when makcurrent event is fired or something
 		vtkNew<vtkCallbackCommand> callback;
@@ -68,24 +77,32 @@ void renderVTK()
 		vtkNew<vtkPolyDataMapper> mapper;
 		vtkNew<vtkActor> actor;
 		actor->SetMapper(mapper.GetPointer());
-		ren = externalVTKWidget->AddRenderer();
+		
+		ren = vtkOpenVRRenderer::New(); 	
+		renWin->AddRenderer(ren);
+
 		ren->AddActor(actor.GetPointer());
 		vtkNew<vtkCubeSource> cs; // the cube
 		mapper->SetInputConnection(cs->GetOutputPort()); // where the mapper gets the data
 		actor->RotateX(45.0);
 		actor->RotateY(45.0);
+
+		cam = vtkOpenVRCamera::New();
+		ren->SetActiveCamera(cam);
 		ren->ResetCamera();
 
 		initialized = true;
     }
 	
-	ren->ResetCamera();
-	externalVTKWidget->GetRenderWindow()->Render();
+	renWin->Start();
 
 }
 
 int main()
 {
+	renderVTK();
+	return 0;
+
 	auto window = generateWindow(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 200, 200);
 	DEBUGLOG->setAutoPrint(true);
 
@@ -95,9 +112,6 @@ int main()
 	//////////////////////////////////////////////////////////////////////////////
 	////////////////////////////// VTK RENDERING /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	
-	// init some vtk thing
-	renderVTK();
 
 	// load a texture
 	TextureTools::TextureInfo texInfo;
@@ -134,9 +148,9 @@ int main()
 		renderVTK();
 
 		// invalidate cached values (VTK changes them)
-		OPENGLCONTEXT->cacheVAO = -1; 
-		OPENGLCONTEXT->cacheShader = -1;
-		OPENGLCONTEXT->cacheInt.erase(OPENGLCONTEXT->cacheInt.find(GL_DEPTH_TEST));
+		//OPENGLCONTEXT->cacheVAO = -1; 
+		//OPENGLCONTEXT->cacheShader = -1;
+		//OPENGLCONTEXT->cacheInt.erase(OPENGLCONTEXT->cacheInt.find(GL_DEPTH_TEST));
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
