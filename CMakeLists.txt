@@ -10,5 +10,6 @@ set(EXECUTABLES_PATH ${CMAKE_SOURCE_DIR}/src/executables CACHE PATH "Project spe
 set(LIBRARIES_PATH ${CMAKE_SOURCE_DIR}/src/libraries CACHE PATH "Project specific path. Set manually if it was not found.")
 set(SHADERS_PATH ${CMAKE_SOURCE_DIR}/src/shaders CACHE PATH "Project specific path. Set manually if it was not found.")
 set(DEPENDENCIES_ROOT ${CMAKE_SOURCE_DIR}/dependencies CACHE PATH "Project specific path. Set manually if it was not found.")
+set(VTK_DIR ${CMAKE_SOURCE_DIR}/../VTK_build CACHE PATH "Project specific path. Set manually if it was not found.")
 
 include(${CMAKE_MODULE_PATH}/DefaultProject.cmake)

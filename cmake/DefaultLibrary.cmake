@@ -16,9 +16,12 @@ include_directories(
     ${GLM_INCLUDE_PATH}
 #    ${IMGUI_INCLUDE_PATH}
     ${OPENVR_INCLUDE_DIR}
+    
     ${EXTERNAL_LIBRARY_PATHS}
     ${LIBRARIES_PATH}
 )
+
+include(${VTK_USE_FILE})
 
 if (MINGW)
     include_directories(${MINGW_THREADS_INCLUDE_PATH})
@@ -42,4 +45,5 @@ target_link_libraries(
     ${GLEW_LIBRARIES}
     ${OpenGL3_LIBRARIES}
     ${OPENVR_LIBRARIES}
+    ${VTK_LIBRARIES}
 )
