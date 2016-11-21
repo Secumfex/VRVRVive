@@ -59,7 +59,8 @@ vec4 transferFunction(int value)
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.rgb *= color.a;
+	color.a *= 10.0 * uStepSize;
+	color.rgb *= (color.a);
 
 	return color;
 }

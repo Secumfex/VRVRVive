@@ -510,25 +510,25 @@ void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& pos
 		positions.push_back(q.v1.y);
 		positions.push_back(q.v1.z);
 
-		positions.push_back(q.v2.x);
-		positions.push_back(q.v2.y);
-		positions.push_back(q.v2.z);
-
 		positions.push_back(q.v3.x);
 		positions.push_back(q.v3.y);
 		positions.push_back(q.v3.z);
+
+		positions.push_back(q.v2.x);
+		positions.push_back(q.v2.y);
+		positions.push_back(q.v2.z);
 		
 		uvwCoordinates.push_back(q.u1.x);
 		uvwCoordinates.push_back(q.u1.y);
 		uvwCoordinates.push_back(q.u1.z);
 
-		uvwCoordinates.push_back(q.u2.x);
-		uvwCoordinates.push_back(q.u2.y);
-		uvwCoordinates.push_back(q.u2.z);
-
 		uvwCoordinates.push_back(q.u3.x);
 		uvwCoordinates.push_back(q.u3.y);
 		uvwCoordinates.push_back(q.u3.z);
+
+		uvwCoordinates.push_back(q.u2.x);
+		uvwCoordinates.push_back(q.u2.y);
+		uvwCoordinates.push_back(q.u2.z);
 
 		normals.push_back(q.n.x);
 		normals.push_back(q.n.y);
@@ -547,25 +547,25 @@ void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& pos
 		positions.push_back(q.v1.y);
 		positions.push_back(q.v1.z);
 
-		positions.push_back(q.v3.x);
-		positions.push_back(q.v3.y);
-		positions.push_back(q.v3.z);
-
 		positions.push_back(q.v4.x);
 		positions.push_back(q.v4.y);
 		positions.push_back(q.v4.z);
+
+		positions.push_back(q.v3.x);
+		positions.push_back(q.v3.y);
+		positions.push_back(q.v3.z);
 		
 		uvwCoordinates.push_back(q.u1.x);
 		uvwCoordinates.push_back(q.u1.y);
 		uvwCoordinates.push_back(q.u1.z);
 
-		uvwCoordinates.push_back(q.u3.x);
-		uvwCoordinates.push_back(q.u3.y);
-		uvwCoordinates.push_back(q.u3.z);
-
 		uvwCoordinates.push_back(q.u4.x);
 		uvwCoordinates.push_back(q.u4.y);
 		uvwCoordinates.push_back(q.u4.z);
+
+		uvwCoordinates.push_back(q.u3.x);
+		uvwCoordinates.push_back(q.u3.y);
+		uvwCoordinates.push_back(q.u3.z);
 
 		normals.push_back(q.n.x);
 		normals.push_back(q.n.y);
