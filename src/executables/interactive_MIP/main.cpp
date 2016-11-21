@@ -70,6 +70,10 @@ static std::vector<float> s_transferFunctionValues;
 static std::vector<glm::vec4> s_transferFunctionColors;
 static std::vector<float> s_transferFunctionTexData = std::vector<float>(512*4);
 GLuint s_transferFunctionTex = -1;
+
+static std::vector<float> s_fpsCounter = std::vector<float>(120);
+static int s_curFPSidx = 0;
+
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -160,6 +164,12 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	s_maxValThreshold = volumeData.max;
 }
 
+void profileFPS(float fps)
+{
+	s_fpsCounter[s_curFPSidx] = fps;
+	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
+}
+
 int main()
 {
 	DEBUGLOG->setAutoPrint(true);
@@ -181,7 +191,7 @@ int main()
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 
 	// create window and opengl context
-	auto window = generateWindow(800,800);
+	auto window = generateWindow(1600,800);
 
 	// load into 3d texture
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
@@ -206,12 +216,12 @@ int main()
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
 	glm::mat4 view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0,1,0));
 
-	glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, -1.0f, 6.0f);
+	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, -1.0f, 6.0f);
 	/// perspective projection is experimental; yields weird warping effects due to vertex interpolation of uv-coordinates
-	// glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
 
 	// create Volume
-	Volume volume(1.0f, 1.0f, 1.26315f);
+	VolumeSubdiv volume(1.0f, 1.0f, 1.26315f, 3);
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
@@ -221,8 +231,11 @@ int main()
 	uvwShaderProgram.update("projection", perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
-	FrameBufferObject uvwFBO(getResolution(window).x, getResolution(window).y);
+	FrameBufferObject uvwFBO(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO.addColorAttachments(2); DEBUGLOG->outdent(); // front UVRs and back UVRs
+
+	FrameBufferObject uvwFBO_r(getResolution(window).x/2, getResolution(window).y);
+	uvwFBO_r.addColorAttachments(2); DEBUGLOG->outdent(); // front UVRs and back UVRs
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
 	uvwRenderPass.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -268,7 +281,7 @@ int main()
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram);
-	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+//	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	renderPass.addRenderable(&volume);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
@@ -350,16 +363,19 @@ int main()
 	setMouseButtonCallback(window, mouseButtonCB);
 	setKeyCallback(window, keyboardCB);
 
+
+	std::string window_header = "Volume Renderer";
+	glfwSetWindowTitle(window, window_header.c_str() );
+
 	//////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-
+	
 	double elapsedTime = 0.0;
 	render(window, [&](double dt)
 	{
 		elapsedTime += dt;
-		std::string window_header = "Volume Renderer";
-		glfwSetWindowTitle(window, window_header.c_str() );
+		profileFPS((float) (1.0 / dt));
 
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
@@ -367,9 +383,13 @@ int main()
 
 		ImGui::Value("FPS", (float) (1.0 / dt));
 
-		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.5,0.5,0.6,1.0) );
 		ImGui::PlotLines("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
+		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.5,0.5,0.6,1.0) );
 		ImGui::PlotHistogram("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
+		ImGui::PopStyleColor();
+
+		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
+		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 
 		ImGui::Columns(2, "mycolumns2", true);
@@ -426,13 +446,14 @@ int main()
 			model = glm::rotate(glm::mat4(1.0f), (float) dt, glm::vec3(0.0f, 1.0f, 0.0f) ) * model;
 		}
 
-		view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+		view = glm::lookAt(glm::vec3(eye) - glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
-		shaderProgram.update(   "view", view);
-		uvwShaderProgram.update("view", view);
+		//shaderProgram.update(   "view", view);
+		//uvwShaderProgram.update("view", view);
 		shaderProgram.update(   "model", turntable.getRotationMatrix() * model);
 		uvwShaderProgram.update("model", turntable.getRotationMatrix() * model);
 
@@ -461,9 +482,33 @@ int main()
 		////////////////////////////////  RENDERING //// /////////////////////////////
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
+		
+		// render left image
+		uvwRenderPass.setFrameBufferObject( &uvwFBO );
+		uvwShaderProgram.update("view", view);
 		uvwRenderPass.render();
-		//glBlendFunc(GL_ONE, GL_ZERO);
+		
+		OPENGLCONTEXT->bindFBO(0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
+		shaderProgram.update("view", view);
+		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
+
+		// render right image
+		uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
+		uvwShaderProgram.update("view", view_r);
+		uvwRenderPass.render();
+		
+		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
+		shaderProgram.update("view", view_r);
+		renderPass.setViewport(getResolution(window).x / 2, 0, getResolution(window).x / 2, getResolution(window).y);
+		renderPass.render();
+
+
+		//glBlendFunc(GL_ONE, GL_ZERO);
 		ImGui::Render();
 		//////////////////////////////////////////////////////////////////////////////
 	});

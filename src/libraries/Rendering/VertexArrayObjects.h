@@ -73,6 +73,19 @@ public:
 	void draw() override;
 };
 
+class VolumeSubdiv : public Renderable {
+private: 
+	void generateBuffers(float size_x, float size_y, float size_z, int subdivPower);
+public:
+	VolumeSubdiv(float size = 1.0f, int subdivPower = 1);
+	VolumeSubdiv(float size_x, float size_y, float size_z, int subdivPower = 1);
+
+	~VolumeSubdiv();
+
+	void draw() override;
+};
+
+
 class Quad : public Renderable {
 public:
 	Quad();
