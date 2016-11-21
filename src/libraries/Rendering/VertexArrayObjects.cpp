@@ -500,10 +500,10 @@ void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& pos
 	}
 	else //reached desired depth
 	{
-		DEBUGLOG->log("v1 ", q.v1);
-		DEBUGLOG->log("v2 ", q.v2);
-		DEBUGLOG->log("v3 ", q.v3);
-		DEBUGLOG->log("v4 ", q.v4);
+		//DEBUGLOG->log("v1 ", q.v1);
+		//DEBUGLOG->log("v2 ", q.v2);
+		//DEBUGLOG->log("v3 ", q.v3);
+		//DEBUGLOG->log("v4 ", q.v4);
 
 		//first
 		positions.push_back(q.v1.x);
