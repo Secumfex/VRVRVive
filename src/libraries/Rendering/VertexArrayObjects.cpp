@@ -2,6 +2,7 @@
 
 #include "Core/DebugLog.h"
 #include "Rendering/OpenGLContext.h"
+#include <functional>
 
 Renderable::Renderable()
 {
@@ -406,6 +407,339 @@ void Volume::draw()
 {
     OPENGLCONTEXT->bindVAO(m_vao);
     glDrawArrays(m_mode, 0, 36);
+}
+
+struct VolumeQuadData
+{
+	glm::vec3 v1,v2,v3,v4;
+	glm::vec3 u1,u2,u3,u4;
+	glm::vec3 n;
+};
+
+void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& positions, std::vector<GLfloat>& uvwCoordinates,std::vector<GLfloat>& normals)
+{
+	if (depth < pwr)
+	{
+		VolumeQuadData q1 =
+		{
+			//v1 .. v4
+			q.v1, 
+			q.v1 + 0.5f * (q.v2 - q.v1), 
+			q.v1 + 0.5f * (q.v3 - q.v1),
+			q.v1 + 0.5f * (q.v4 - q.v1),
+			
+			//u1 .. u4
+			q.u1, 
+			q.u1 + 0.5f * (q.u2 - q.u1), 
+			q.u1 + 0.5f * (q.u3 - q.u1),
+			q.u1 + 0.5f * (q.u4 - q.u1),
+
+			//n
+			q.n
+		};
+
+		VolumeQuadData q2 =
+		{	
+			//v1 .. v4
+			q.v1 + 0.5f * (q.v2 - q.v1), 
+			q.v2, 
+			q.v2 + 0.5f * (q.v3 - q.v2),
+			q.v1 + 0.5f * (q.v3 - q.v1),
+			
+			//u1 .. u4
+			q.u1 + 0.5f * (q.u2 - q.u1), 
+			q.u2, 
+			q.u2 + 0.5f * (q.u3 - q.u2),
+			q.u1 + 0.5f * (q.u3 - q.u1),
+
+			//n
+			q.n
+		};
+
+		VolumeQuadData q3 =
+		{
+			//v1 .. v4
+			q.v1 + 0.5f * (q.v3 - q.v1),
+			q.v2 + 0.5f * (q.v3 - q.v2),
+			q.v3, 
+			q.v4 + 0.5f * (q.v3 - q.v4), 
+			
+			//u1 .. u4
+			q.u1 + 0.5f * (q.u3 - q.u1),
+			q.u2 + 0.5f * (q.u3 - q.u2),
+			q.u3, 
+			q.u4 + 0.5f * (q.u3 - q.u4), 
+
+			//n
+			q.n
+		};
+
+		VolumeQuadData q4 =
+		{
+			//v1 .. v4
+			q.v1 + 0.5f * (q.v4 - q.v1),
+			q.v1 + 0.5f * (q.v3 - q.v1),
+			q.v4 + 0.5f * (q.v3 - q.v4), 
+			q.v4, 
+			
+			//u1 .. u4
+			q.u1 + 0.5f * (q.u4 - q.u1),
+			q.u1 + 0.5f * (q.u3 - q.u1),
+			q.u4 + 0.5f * (q.u3 - q.u4), 
+			q.u4, 
+
+			//n
+			q.n
+		};
+
+		// add 4 subquads instead
+		addQuadsRec(q1, depth+1, pwr, positions, uvwCoordinates, normals);
+		addQuadsRec(q2, depth+1, pwr, positions, uvwCoordinates, normals);
+		addQuadsRec(q3, depth+1, pwr, positions, uvwCoordinates, normals);
+		addQuadsRec(q4, depth+1, pwr, positions, uvwCoordinates, normals);
+	}
+	else //reached desired depth
+	{
+		//DEBUGLOG->log("v1 ", q.v1);
+		//DEBUGLOG->log("v2 ", q.v2);
+		//DEBUGLOG->log("v3 ", q.v3);
+		//DEBUGLOG->log("v4 ", q.v4);
+
+		//first
+		positions.push_back(q.v1.x);
+		positions.push_back(q.v1.y);
+		positions.push_back(q.v1.z);
+
+		positions.push_back(q.v3.x);
+		positions.push_back(q.v3.y);
+		positions.push_back(q.v3.z);
+
+		positions.push_back(q.v2.x);
+		positions.push_back(q.v2.y);
+		positions.push_back(q.v2.z);
+		
+		uvwCoordinates.push_back(q.u1.x);
+		uvwCoordinates.push_back(q.u1.y);
+		uvwCoordinates.push_back(q.u1.z);
+
+		uvwCoordinates.push_back(q.u3.x);
+		uvwCoordinates.push_back(q.u3.y);
+		uvwCoordinates.push_back(q.u3.z);
+
+		uvwCoordinates.push_back(q.u2.x);
+		uvwCoordinates.push_back(q.u2.y);
+		uvwCoordinates.push_back(q.u2.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+
+		//second
+		positions.push_back(q.v1.x);
+		positions.push_back(q.v1.y);
+		positions.push_back(q.v1.z);
+
+		positions.push_back(q.v4.x);
+		positions.push_back(q.v4.y);
+		positions.push_back(q.v4.z);
+
+		positions.push_back(q.v3.x);
+		positions.push_back(q.v3.y);
+		positions.push_back(q.v3.z);
+		
+		uvwCoordinates.push_back(q.u1.x);
+		uvwCoordinates.push_back(q.u1.y);
+		uvwCoordinates.push_back(q.u1.z);
+
+		uvwCoordinates.push_back(q.u4.x);
+		uvwCoordinates.push_back(q.u4.y);
+		uvwCoordinates.push_back(q.u4.z);
+
+		uvwCoordinates.push_back(q.u3.x);
+		uvwCoordinates.push_back(q.u3.y);
+		uvwCoordinates.push_back(q.u3.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+
+		normals.push_back(q.n.x);
+		normals.push_back(q.n.y);
+		normals.push_back(q.n.z);
+	}
+}
+
+
+void VolumeSubdiv::generateBuffers(float size_x, float size_y, float size_z, int subdivPower)
+{
+	m_mode = GL_TRIANGLES;
+
+    glGenVertexArrays(1, &m_vao);
+    OPENGLCONTEXT->bindVAO(m_vao);
+
+    GLuint vertexBufferHandles[3];
+    glGenBuffers(3, vertexBufferHandles);
+
+	m_positions.m_vboHandle = vertexBufferHandles[0];
+	m_uvs.m_vboHandle = vertexBufferHandles[1];
+	m_normals.m_vboHandle = vertexBufferHandles[2];
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferHandles[0]);
+    std::vector<GLfloat> positions;
+    std::vector<GLfloat> uvwCoordinates;
+	std::vector<GLfloat> normals;
+	
+	//front
+	VolumeQuadData front = {
+    glm::vec3(-size_x,-size_y,size_z),
+	glm::vec3(size_x, -size_y, size_z),
+    glm::vec3(size_x,size_y,size_z),
+    glm::vec3(-size_x,size_y,size_z),
+
+	glm::vec3(0.0f, 0.0f, 0.0f),
+	glm::vec3(1.0f, 0.0f, 0.0f),
+    glm::vec3(1.0f,0.0f,1.0f),
+    glm::vec3(0.0f,0.0f,1.0f),
+	
+	glm::vec3(0.0f,0.0f,1.0f)
+	};
+	addQuadsRec(front, 0, subdivPower, positions, uvwCoordinates, normals);
+
+	//top
+	VolumeQuadData top = {
+    glm::vec3(-size_x,size_y,size_z),
+	glm::vec3(size_x, size_y, size_z),
+    glm::vec3(size_x,size_y,-size_z),
+    glm::vec3(-size_x,size_y,-size_z),
+
+	glm::vec3(0.0f, 0.0f, 1.0f),
+	glm::vec3(1.0f, 0.0f, 1.0f),
+    glm::vec3(1.0f,1.0f,1.0f),
+    glm::vec3(0.0f,1.0f,1.0f),
+	
+	glm::vec3(0.0f,1.0f,0.0f)
+	};
+	addQuadsRec(top, 0, subdivPower, positions, uvwCoordinates, normals);
+
+	//bottom
+	VolumeQuadData bottom = {
+    glm::vec3(size_x,-size_y,-size_z),
+    glm::vec3(size_x,-size_y, size_z),
+    glm::vec3(-size_x,-size_y,size_z),
+	glm::vec3(-size_x, -size_y, -size_z),
+
+	glm::vec3(1.0f, 1.0f, 0.0f),
+    glm::vec3(1.0f,0.0f,0.0f),
+    glm::vec3(0.0f,0.0f,0.0f),
+	glm::vec3(0.0f, 1.0f, 0.0f),
+	
+	glm::vec3(0.0f,-1.0f,0.0f)
+	};
+	addQuadsRec(bottom, 0, subdivPower, positions, uvwCoordinates, normals);
+
+	//back
+	VolumeQuadData back = {
+    glm::vec3(size_x,-size_y, -size_z),
+	glm::vec3(-size_x, -size_y, -size_z),
+    glm::vec3(-size_x, size_y,  -size_z),
+    glm::vec3(size_x,size_y,  -size_z),
+
+	glm::vec3(1.0f, 1.0f, 0.0f),
+	glm::vec3(0.0f, 1.0f, 0.0f),
+    glm::vec3(0.0f,1.0f,1.0f),
+    glm::vec3(1.0f,1.0f,1.0f),
+	
+	glm::vec3(0.0f,0.0f,-1.0f)
+	};
+	addQuadsRec(back, 0, subdivPower, positions, uvwCoordinates, normals);
+
+	//left
+	VolumeQuadData left = {
+    glm::vec3(-size_x, -size_y, -size_z),
+	glm::vec3(-size_x, -size_y, size_z),
+    glm::vec3(-size_x, size_y,  size_z),
+    glm::vec3(-size_x, size_y,  -size_z),
+
+	glm::vec3(0.0f, 1.0f, 0.0f),
+	glm::vec3(0.0f, 0.0f, 0.0f),
+    glm::vec3(0.0f, 0.0f,1.0f),
+    glm::vec3(0.0f, 1.0f,1.0f),
+	
+	glm::vec3(-1.0f,0.0f,0.0f)
+	};
+	addQuadsRec(left, 0, subdivPower, positions, uvwCoordinates, normals);
+
+	//right
+	VolumeQuadData right = {
+    glm::vec3(size_x,-size_y, size_z),
+	glm::vec3(size_x, -size_y, -size_z),
+    glm::vec3(size_x, size_y,  -size_z),
+    glm::vec3(size_x, size_y,  size_z),
+
+	glm::vec3(1.0f, 0.0f, 0.0f),
+	glm::vec3(1.0f, 1.0f, 0.0f),
+    glm::vec3(1.0f,1.0f,1.0f),
+    glm::vec3(1.0f,0.0f,1.0f),
+	
+	glm::vec3(1.0f,0.0f,0.0f)
+	};
+	addQuadsRec(right, 0, subdivPower, positions, uvwCoordinates, normals);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * positions.size(), &positions[0], GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(0);
+	m_positions.m_size = positions.size() / 3;
+
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferHandles[1]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * uvwCoordinates.size(), &uvwCoordinates[0], GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(1);
+    m_uvs.m_size = uvwCoordinates.size() / 3;
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferHandles[2]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * normals.size(), &normals[0], GL_STATIC_DRAW);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(2);
+	m_normals.m_size = normals.size() / 3;
+}
+
+VolumeSubdiv::VolumeSubdiv(float size, int subdivPower)
+{
+	generateBuffers(size, size, size, subdivPower);
+}
+
+VolumeSubdiv::VolumeSubdiv(float size_x, float size_y, float size_z, int subdivPower)
+{
+	generateBuffers(size_x, size_y, size_z, subdivPower);
+}
+
+VolumeSubdiv::~VolumeSubdiv()
+{
+	std::vector<GLuint> buffers;
+	buffers.push_back(m_positions.m_vboHandle);
+	buffers.push_back(m_uvs.m_vboHandle);
+	buffers.push_back(m_normals.m_vboHandle);
+
+	glDeleteBuffersARB(3, &buffers[0]);
+}
+
+void VolumeSubdiv::draw()
+{
+    OPENGLCONTEXT->bindVAO(m_vao);
+	glDrawArrays(m_mode, 0, m_positions.m_size);
 }
 
 Quad::Quad()
