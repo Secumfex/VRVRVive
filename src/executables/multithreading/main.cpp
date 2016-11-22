@@ -82,7 +82,7 @@ void updateVectorTextureDataAsynchronously(double elapsedTime, std::atomic<bool>
 
 
 
-int main()
+int main(int argc, char *argv[])
 {
 	auto window = generateWindow(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 200, 200);
 	DEBUGLOG->setAutoPrint(true);
