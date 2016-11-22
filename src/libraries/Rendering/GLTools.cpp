@@ -1,12 +1,38 @@
 #include "GLTools.h"
 
-static bool g_initialized = false;
+static bool g_OPENGL_initialized = false;
+static bool g_GLFW_initialized = false;
+static bool g_SDL_initialized = false;
 static glm::vec2 g_mainWindowSize = glm::vec2(0,0);
 
-GLFWwindow* generateWindow(int width, int height, int posX, int posY) {
-	if (g_initialized == false)
+void initOpenGL() {
+	if (!g_OPENGL_initialized)
+	{
+		glewExperimental = GL_TRUE;
+		GLenum nGlewError = glewInit();
+		if (nGlewError != GLEW_OK)
+		{
+			printf( "%s - Error initializing GLEW! %s\n", __FUNCTION__, glewGetErrorString( nGlewError ) );
+		}
+		glGetError(); // to clear the error caused deep in GLEW
+
+		glEnable(GL_DEPTH_TEST);
+		g_OPENGL_initialized = true;
+	}
+}
+
+void initSDL() {
+	if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
+    {
+        printf("Error: %s\n", SDL_GetError());
+    }
+}
+
+void initGLFW() {
+	if (g_GLFW_initialized == false)
 	{
 		glfwInit();
+
 		#ifdef __APPLE__
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -16,6 +42,14 @@ GLFWwindow* generateWindow(int width, int height, int posX, int posY) {
 		glewExperimental = GL_TRUE;
 		#endif
 	}
+}
+
+
+GLFWwindow* generateWindow(int width, int height, int posX, int posY) {
+	if (g_GLFW_initialized == false)
+	{
+		initGLFW();
+	}
 	
 	GLFWwindow* window = glfwCreateWindow(width, height, "OpenGL Window", NULL, NULL);
 	glfwSetWindowPos(window, posX, posY);
@@ -24,15 +58,13 @@ GLFWwindow* generateWindow(int width, int height, int posX, int posY) {
 
 	OPENGLCONTEXT->setViewport(0,0,width,height);
 
-	if (g_initialized == false)
+	if (g_OPENGL_initialized == false)
 	{
-		glewInit();
-		glEnable(GL_TEXTURE_2D);
-		glEnable(GL_DEPTH_TEST);
-		
-		g_mainWindowSize = glm::vec2(width,height);
-
-		g_initialized = true;
+		initOpenGL();
+		if (g_mainWindowSize == glm::vec2(0,0))
+		{
+			g_mainWindowSize = glm::vec2(width,height);
+		}
 	}
 
 //	registerDefaultGLFWCallbacks(window);
@@ -42,11 +74,55 @@ GLFWwindow* generateWindow(int width, int height, int posX, int posY) {
 	return window;
 }
 
+static SDL_GLContext g_sdl_glcontext;
+
+SDL_Window* generateWindow_SDL(int width, int height, int posX, int posY, Uint32 unWindowFlags) {
+
+	if(!g_SDL_initialized)
+	{
+		initSDL();
+	}
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 4 );
+	SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 1 );
+
+    //SDL_DisplayMode current;
+    //SDL_GetCurrentDisplayMode(0, &current);
+    SDL_Window *window = SDL_CreateWindow("ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, unWindowFlags);
+
+
+	g_sdl_glcontext = SDL_GL_CreateContext(window);
+	if (!g_sdl_glcontext)
+	{
+		//printf("Error: %s\n", SDL_GetError());
+		cout<<SDL_GetError();
+	}
+	
+	OPENGLCONTEXT->setViewport(0,0,width,height);
+	if (g_OPENGL_initialized == false)
+	{
+		initOpenGL();
+		if (g_mainWindowSize == glm::vec2(0,0))
+		{
+			g_mainWindowSize = glm::vec2(width,height);
+		}
+	}
+	
+	OPENGLCONTEXT->updateCache();
+
+	return window;
+}
+
 glm::vec2 getMainWindowResolution()
 {
 	return g_mainWindowSize;
 }
-
 
 bool shouldClose(GLFWwindow* window)
 {
@@ -63,6 +139,22 @@ void destroyWindow(GLFWwindow* window)
 {
 	glfwDestroyWindow(window);
 	glfwTerminate();
+}
+
+static bool g_shouldClose_SDL = false;
+bool shouldClose(SDL_Window* window)
+{
+	return g_shouldClose_SDL;
+}
+
+void swapBuffers(SDL_Window* window)
+{
+	SDL_GL_SwapWindow( window );
+}
+
+void destroyWindow(SDL_Window* window)
+{
+	SDL_DestroyWindow(window);
 }
 
 void render(GLFWwindow* window, std::function<void (double)> loop) {
@@ -130,6 +222,38 @@ std::string decodeGLError(GLenum error)
 	return std::string(); // not a valid error state
 }
 
+void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventHandler)
+{
+
+	SDL_Event sdlEvent;
+	while (SDL_PollEvent(&sdlEvent) != 0)
+	{
+		bool uiHandlesEvent = ui_eventHandler(&sdlEvent);
+		//TODO do somethings clever with this information?
+
+		switch(sdlEvent.type)
+		{
+		case SDL_QUIT:
+			g_shouldClose_SDL = true;
+			break;
+		case SDL_KEYDOWN:
+		case SDL_KEYUP:
+				// TODO handle SDL keyevent
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+				// TODO handle SDL mouse button event
+			break;
+		case SDL_MOUSEMOTION:
+				// TODO handle SDL mouse motion event
+			break;
+		case SDL_MOUSEWHEEL:
+				// TODO handle SDL mouse wheel event
+			break;
+		}
+	}
+}
+
 
 void setKeyCallback(GLFWwindow* window, std::function<void (int, int, int, int)> func) {
 	static std::function<void (int, int, int, int)> func_bounce = func;
@@ -180,15 +304,27 @@ void setWindowResizeCallback(GLFWwindow* window, std::function<void (int,int)> f
 	});
 }
 
+
 glm::vec2 getResolution(GLFWwindow* window) {
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
     return glm::vec2(float(w), float(h));
 }
-
 float getRatio(GLFWwindow* window) {
     int w, h;
     glfwGetFramebufferSize(window, &w, &h);
+    return float(w)/float(h);
+}
+
+glm::vec2 getResolution(SDL_Window* window) {
+    int w, h;
+	SDL_GetWindowSize(window, &w, &h);
+    return glm::vec2(float(w), float(h));
+
+}
+float getRatio(SDL_Window* window) {
+    int w, h;
+	SDL_GetWindowSize(window, &w, &h);
     return float(w)/float(h);
 }
 
