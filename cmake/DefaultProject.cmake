@@ -31,6 +31,7 @@ find_package(GLFW3 REQUIRED)
 find_package(GLM REQUIRED)
 find_package(OpenVR REQUIRED)
 find_package(VTK REQUIRED NO_MODULE)
+find_package(SDL2 REQUIRED)
 
 if (MINGW)
 	find_package(MinGWThreads REQUIRED)
