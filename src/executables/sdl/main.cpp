@@ -28,6 +28,10 @@ public:
 		Uint32 unWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
 		m_pWindow = generateWindow_SDL(SCREEN_WIDTH, SCREEN_HEIGHT, 100, 100, unWindowFlags );
 		
+		printOpenGLInfo();
+
+		printSDLRenderDriverInfo();
+
 		// init imgui
 		ImGui_ImplSdlGL3_Init(m_pWindow);
 	}

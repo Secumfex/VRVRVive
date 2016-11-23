@@ -222,6 +222,30 @@ std::string decodeGLError(GLenum error)
 	return std::string(); // not a valid error state
 }
 
+void printOpenGLInfo()
+{
+	DEBUGLOG->log("OpenGL Info:");
+	DEBUGLOG->indent();
+		std::stringstream ss;
+	// print out some info about the graphics drivers
+		ss << "OpenGL version: " <<  glGetString(GL_VERSION);
+		DEBUGLOG->log( ss.str() );
+		ss.str(std::string());
+
+		ss << "GLSL version: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
+		DEBUGLOG->log( ss.str());
+		ss.str(std::string());
+
+		ss << "Vendor: " << glGetString(GL_VENDOR);
+		DEBUGLOG->log( ss.str());
+		ss.str(std::string());
+
+		ss << "Renderer: " << glGetString(GL_RENDERER);
+		DEBUGLOG->log( ss.str());
+		ss.str(std::string());
+	DEBUGLOG->outdent();
+	}
+
 void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventHandler)
 {
 
@@ -302,6 +326,27 @@ void setWindowResizeCallback(GLFWwindow* window, std::function<void (int,int)> f
 	glfwSetWindowSizeCallback(window, [] (GLFWwindow* w, int wid, int hei) {
 		func_bounce(wid, hei);
 	});
+}
+
+void printSDLRenderDriverInfo()
+{
+	DEBUGLOG->log("SDL Render Driver Infos"); DEBUGLOG->indent();
+	int numDevices = SDL_GetNumRenderDrivers();
+	for (int i = 0; i < numDevices; i++)
+	{
+		SDL_RendererInfo ri;
+		SDL_GetRenderDriverInfo(i, &ri);
+
+		std::string rt = "";
+		if (ri.flags & SDL_RENDERER_SOFTWARE > 0) rt += "SDL_RENDERER_SOFTWARE ";
+		if (ri.flags & SDL_RENDERER_ACCELERATED > 0) rt += "SDL_RENDERER_ACCELERATED ";
+		if (ri.flags & SDL_RENDERER_PRESENTVSYNC > 0) rt += "SDL_RENDERER_PRESENTVSYNC ";
+		if (ri.flags & SDL_RENDERER_TARGETTEXTURE > 0) rt += "SDL_RENDERER_TARGETTEXTURE";
+		DEBUGLOG->log(std::to_string(i) +": "+ ri.name);
+			
+		if (std::string("") != rt)
+		{ DEBUGLOG->indent(); DEBUGLOG->log(rt); DEBUGLOG->outdent(); }
+	} DEBUGLOG->outdent();
 }
 
 

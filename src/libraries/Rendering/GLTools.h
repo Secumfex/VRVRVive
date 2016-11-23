@@ -30,6 +30,7 @@ void destroyWindow(SDL_Window* window);
 void render(GLFWwindow* window, std::function<void (double)> loop); //!< keep executing the provided loop function until the window is closed, swapping buffers and computing frame time (passed as argument to loop function)
 GLenum checkGLError(bool printIfNoError = false); //!< check for OpenGL errors and also print it to the console (optionally even if no error occured)
 std::string decodeGLError(GLenum error); //!< return string corresponding to an OpenGL error code (use with checkGLError)
+void printOpenGLInfo();
 
 void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventHandler = [](){return false;}); //!< poll events and send to event handler, also send to ui_eventHandler
 
@@ -41,6 +42,7 @@ void setScrollCallback(GLFWwindow* window, std::function<void (double, double)> 
 void setCursorEnterCallback(GLFWwindow* window, std::function<void (int)> func); //!< set callback function called when cursor enters window
 void setWindowResizeCallback(GLFWwindow* window, std::function<void (int, int)> func); //!< set callback function called when cursor enters window
 
+void printSDLRenderDriverInfo();
 //TODO SDL Event handler
 
 glm::vec2 getMainWindowResolution(); //!< returns width and height of the main window (if it exists)
