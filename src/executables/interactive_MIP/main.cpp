@@ -1,29 +1,5 @@
 /*******************************************
  * **** DESCRIPTION ****
- * This program demonstrates the MIP algorithm in an interactive way.
- *
- * It implements screen space volume ray-casting using the OpenGL 4.3 GLSL.
- * The open-source GUI library ImGui is used to allow for easy and quick interaction.
- * The MIP is fully parametrized through dynamic shader variables.
- * 
- * Additionally, an experimental concept of depth-based color effects is applied
- * to enhance the visual perception of depth.
- * It consists of two effects which are applied based on the displayed voxel's 
- * distance to the camera.
- * 
- * 1) The displayed grayscale value range (contrast) decreases with the distance.
- * 2) The displayed color is shifted towards colors specified for min/max distance.
- * 
- * Two data sets are provided: 
- * 1) the Stanford CTHead Volume Dataset
- * 2) a private MRT data set of a family member 
- * 
- * CODE LINES OF INTEREST 
- * Line 90 ; change used data set location
- * Line 92 : switch to MRT data set
- * Line 133: flip y-axis if data set is upside down
- * 
- * Additionally, there are some changes that may be applied to the volume ray-casting fragment shader, located in volume.frag
  ****************************************/
 
 #include <iostream>
