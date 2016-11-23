@@ -101,6 +101,12 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, int minValueThreshold, 
 		vec4 sampleColor = transferFunction(curSample.value);
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
+
+		// early ray-termination
+		if (curColor.a > 0.99)
+		{
+			break;
+		}
 	}
 
 	// return emission absorbtion result
