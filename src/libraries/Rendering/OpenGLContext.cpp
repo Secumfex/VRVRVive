@@ -181,6 +181,11 @@ void OpenGLContext::bindTexture(GLuint texture, GLenum type)
 	bindTextureToUnit(texture, cacheActiveTexture, type);
 }
 
+void OpenGLContext::bindImageTextureToUnit(GLuint texture, GLuint unit, GLenum format, GLenum acess, GLint level, GLboolean layered, GLint layer) 
+{ 
+	glBindImageTexture(unit, texture, level, layered, layer, acess, format); 
+}
+
 void OpenGLContext::bindTextureToUnit(GLuint texture, GLenum unit, GLenum type)
 {
 	if ( cacheTextures.find(unit) == cacheTextures.end() || cacheTextures.at(unit) != texture)

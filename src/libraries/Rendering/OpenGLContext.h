@@ -44,6 +44,7 @@ public:
 	void useShader(GLuint shaderProgram);
 	void activeTexture(GLenum unit);
 	void bindTexture(GLuint texture, GLenum type = GL_TEXTURE_2D);
+	void bindImageTextureToUnit(GLuint texture, GLuint unit = 0, GLenum format = GL_RGBA8, GLenum acess = GL_READ_WRITE, GLint level = 0, GLboolean layered = GL_FALSE, GLint layer = 0);
 	void bindTextureToUnit(GLuint texture, GLenum unit, GLenum type = GL_TEXTURE_2D);
 	void setViewport(int x, int y, int width, int height);
 	void setViewport(const glm::vec4& viewport);
