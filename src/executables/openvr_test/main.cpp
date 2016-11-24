@@ -23,7 +23,7 @@ static const int TEXTURE_SIZE = 512;
 const glm::vec2 WINDOW_RESOLUTION = glm::vec2( TEXTURE_SIZE, TEXTURE_SIZE);
 
 
-int main()
+int main(int argc, char *argv[])
 {
 	auto window = generateWindow(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 200, 200);
 	DEBUGLOG->setAutoPrint(true);

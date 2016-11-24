@@ -1,7 +1,6 @@
 /*******************************************
  * **** DESCRIPTION ****
  ****************************************/
-
 #include <iostream>
 
 #include <Rendering/GLTools.h>
@@ -146,7 +145,7 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
 

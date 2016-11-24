@@ -16,6 +16,7 @@ include_directories(
     ${GLM_INCLUDE_PATH}
 #    ${IMGUI_INCLUDE_PATH}
     ${OPENVR_INCLUDE_DIR}
+    ${SDL2_INCLUDE_PATH} #is included from OpenVR
 
     ${EXTERNAL_LIBRARY_PATHS}
     ${LIBRARIES_PATH}
@@ -39,6 +40,7 @@ add_executable(${ProjectId} ${SOURCES} ${HEADER})
 
 target_link_libraries(
     ${ProjectId}
+    ${SDL2_LIBRARIES}
     ${ALL_LIBRARIES}
     ${ASSIMP_LIBRARIES}
     ${GLFW3_LIBRARIES}
@@ -46,7 +48,6 @@ target_link_libraries(
     ${OpenGL3_LIBRARIES}
     ${OPENVR_LIBRARIES}
     ${VTK_LIBRARIES}
-
     winmm.lib
 )
 
