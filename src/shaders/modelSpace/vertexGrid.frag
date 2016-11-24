@@ -1,0 +1,47 @@
+#version 430
+
+//!< in-variables
+in vec3 passVertexColor;
+
+//!< uniforms
+layout(binding = 0, rgba32f) readonly  uniform image2D input_image;
+layout(binding = 1) 		 writeonly uniform image2D output_image;
+
+uniform sampler2D depthTex;
+uniform sampler2D posTex;
+uniform mat4 inverseView;
+uniform mat4 rightView;
+uniform mat4 projection;
+
+// specify atomic counter to save
+layout(binding = 0, offset = 0) uniform atomic_uint counter;
+
+//!< out-variables
+layout(location = 0) out vec4 fragColor;
+
+void main()
+{
+	fragColor = vec4(passVertexColor, 1.0);
+
+//*-------  REGULAR RENDERING ENDS HERE, THIS IS WHERE IMAGE STORING COMES INTO PLAY ------*//
+
+	// which number is this fragment's invocation?
+	uint cnt = atomicCounterIncrement( counter );
+	float relative = float(cnt) / (512.0 * 512.0); // shows that invocation index relates to gl_VertexID
+	
+	vec4 depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy),0);
+	vec4 pos = texelFetch(posTex, ivec2(gl_FragCoord.xy),0);
+	pos = rightView * inverseView * pos;
+	pos = projection * pos;
+	pos/= pos.w;
+
+	vec4 reprojected_color = vec4( vec2(relative), depth.x*depth.x,1.0);
+
+	// reproject a point to image from 'different' view
+	vec4 result_color = reprojected_color;
+
+	ivec2 right_texelCoord = ivec2( vec2( imageSize( output_image ) ) * ( pos.xy / vec2(2.0) + vec2(0.5)) );
+
+	// write into texture
+	imageStore( output_image, right_texelCoord, result_color );
+}

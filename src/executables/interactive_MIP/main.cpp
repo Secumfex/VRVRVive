@@ -25,7 +25,6 @@
  * 
  * Additionally, there are some changes that may be applied to the volume ray-casting fragment shader, located in volume.frag
  ****************************************/
-
 #include <iostream>
 
 #include <Rendering/GLTools.h>
@@ -170,7 +169,7 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
 

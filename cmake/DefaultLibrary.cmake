@@ -16,6 +16,7 @@ include_directories(
     ${GLM_INCLUDE_PATH}
 #    ${IMGUI_INCLUDE_PATH}
     ${OPENVR_INCLUDE_DIR}
+    ${SDL2_INCLUDE_PATH} #is included from OpenVR
     
     ${EXTERNAL_LIBRARY_PATHS}
     ${LIBRARIES_PATH}
@@ -46,4 +47,5 @@ target_link_libraries(
     ${OpenGL3_LIBRARIES}
     ${OPENVR_LIBRARIES}
     ${VTK_LIBRARIES}
+    ${SDL2_LIBRARIES}
 )
