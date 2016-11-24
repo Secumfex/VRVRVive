@@ -120,16 +120,16 @@ int main(int argc, char *argv[])
 	bindImages(inputTexture, outputTexture);
 
 	// arbitrary matrices
-	glm::mat4 model = glm::rotate( glm::radians(45.0f), glm::vec3(0.0f,1.0f,0.0f) );
+	glm::mat4 model = glm::rotate( glm::radians(45.0f), glm::vec3(1.0f,1.0f,0.0f) );
 	glm::mat4 view		= glm::lookAt( glm::vec3(0.0f,0.0f, 5.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f) );
-	glm::mat4 rightView = glm::lookAt( glm::vec3(0.25f,0.0f, 5.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f) );
+	glm::mat4 rightView = glm::lookAt( glm::vec3(0.5f,0.0f, 5.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f) );
 	glm::mat4 projection = glm::perspective( glm::radians(45.0f), getRatio(window), 0.1f, 10.0f);
 
 	glm::mat4 inverseView = glm::inverse( view );
 
 	//arbitrary render pass for some geometry
 	Volume volume;
-	ShaderProgram cubeShader("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleColor.frag");
+	ShaderProgram cubeShader("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleLighting.frag");
 	FrameBufferObject cubeFbo( cubeShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y );
 	RenderPass cube( &cubeShader, &cubeFbo );
 	cube.addRenderable( &volume );
@@ -139,38 +139,69 @@ int main(int argc, char *argv[])
 	cubeShader.update( "projection", projection );
 	cubeShader.update( "color", glm::vec4(1.0f,1.0f,1.0f,1.0f) );
 
+	Quad quad;
+
 	// abritrary render pass for the vertex grid
+	ShaderProgram quadShader("/screenSpace/fullscreen.vert", "/modelSpace/vertexGrid.frag");
 	ShaderProgram vertexGridShader("/modelSpace/vertexGrid.vert", "/modelSpace/vertexGrid.frag");
 	FrameBufferObject fbo( vertexGridShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y );
 	RenderPass vertexGrid( &vertexGridShader, &fbo );
+	//vertexGrid.addRenderable( s_vertexGrid );
 	vertexGrid.addRenderable( s_vertexGrid );
 	vertexGrid.addClearBit( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	vertexGridShader.bindTextureOnUse( "depthTex", cubeFbo.getDepthTextureHandle());
-	vertexGridShader.bindTextureOnUse( "posTex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
+	vertexGridShader.bindTextureOnUse( "posTex",   cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
+	vertexGridShader.bindTextureOnUse( "colorTex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 	vertexGridShader.update("inverseView", inverseView);
 	vertexGridShader.update("rightView", rightView);
 	vertexGridShader.update("projection", projection);
+	quadShader.bindTextureOnUse( "depthTex", cubeFbo.getDepthTextureHandle());
+	quadShader.bindTextureOnUse( "posTex",   cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
+	quadShader.bindTextureOnUse( "colorTex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
+	quadShader.update("inverseView", inverseView);
+	quadShader.update("rightView", rightView);
+	quadShader.update("projection", projection);
 
 	// show texture
-	Quad quad;
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
 	showTex.addRenderable(&quad);
 	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	showTex.setViewport(0,0,WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y);
-	showTexShader.bindTextureOnUse( "tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1) );
+	showTexShader.bindTextureOnUse( "tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 
-	bool swap = true;
 	setKeyCallback(window, [&](int k, int s, int a, int m){
-		if (a == GLFW_RELEASE) {return;}	
-		if (swap){
-			showTexShader.bindTextureOnUse("tex", outputTexture);
-			swap = false;
-		} else {
-			showTexShader.bindTextureOnUse("tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
-			swap = true;
+		if (a == GLFW_RELEASE) {return;}
+		if (k == GLFW_KEY_SPACE)
+		{
+			static bool swap = true;
+			if (swap){
+				showTexShader.bindTextureOnUse("tex", outputTexture);
+				DEBUGLOG->log("display: Output");
+				swap = false;
+			} else {
+				showTexShader.bindTextureOnUse("tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
+				DEBUGLOG->log("display: Cube FBO");
+				swap = true;
+			}
+		} 
+		if (k == GLFW_KEY_R) 
+		{
+			static bool swap = true;
+			if (swap){
+				vertexGrid.clearRenderables();
+				vertexGrid.addRenderable(&quad);
+				vertexGrid.setShaderProgram(&quadShader);
+				DEBUGLOG->log("renderable: Quad");
+				swap = false;
+			} else {
+				vertexGrid.clearRenderables();
+				vertexGrid.addRenderable(s_vertexGrid);
+				vertexGrid.setShaderProgram(&vertexGridShader);
+				DEBUGLOG->log("renderable: Vertex Grid");
+				swap = true;
+			}
 		}
-		DEBUGLOG->log("swap: ", swap);
 	});
 
 	///////////////////////////////////////////////////////////////////////////////

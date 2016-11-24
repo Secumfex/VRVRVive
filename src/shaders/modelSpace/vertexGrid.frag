@@ -9,6 +9,7 @@ layout(binding = 1) 		 writeonly uniform image2D output_image;
 
 uniform sampler2D depthTex;
 uniform sampler2D posTex;
+uniform sampler2D colorTex;
 uniform mat4 inverseView;
 uniform mat4 rightView;
 uniform mat4 projection;
@@ -30,17 +31,24 @@ void main()
 	float relative = float(cnt) / (512.0 * 512.0); // shows that invocation index relates to gl_VertexID
 	
 	vec4 depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy),0);
-	vec4 pos = texelFetch(posTex, ivec2(gl_FragCoord.xy),0);
+	vec4 pos   = texelFetch(posTex,   ivec2(gl_FragCoord.xy),0);
+	vec4 color = texelFetch(colorTex, ivec2(gl_FragCoord.xy),0);
 	pos = rightView * inverseView * pos;
 	pos = projection * pos;
 	pos/= pos.w;
 
-	vec4 reprojected_color = vec4( vec2(relative), depth.x*depth.x,1.0);
-
+	//vec4 reprojected_color = vec4( vec3(relative),1.0);
+	vec4 reprojected_color = vec4( 0.25 * color.xy + (0.75 * relative), relative, 1.0 );
+	
 	// reproject a point to image from 'different' view
 	vec4 result_color = reprojected_color;
 
 	ivec2 right_texelCoord = ivec2( vec2( imageSize( output_image ) ) * ( pos.xy / vec2(2.0) + vec2(0.5)) );
+	
+	if (depth == 1.0)
+	{
+		right_texelCoord = ivec2(gl_FragCoord.xy);
+	}
 
 	// write into texture
 	imageStore( output_image, right_texelCoord, result_color );
