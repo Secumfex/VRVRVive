@@ -62,6 +62,19 @@ void copyFBOContent(FrameBufferObject* source, FrameBufferObject* target, GLbitf
 void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, glm::vec2 targetResolution, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< like above, but without FBO class
 
 
+GLuint createTexture(int width, int height, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);
+
+template <class T>
+void uploadTextureData(GLuint texture, const std::vector<T>& content, GLenum format = GL_RGB, GLenum type = GL_FLOAT, int width = -1, int height = -1, int x = 0, int y = 0, int level=0){
+	OPENGLCONTEXT->bindTexture(texture);
+	GLint _width = width;
+	GLint _height = height;
+	if ( width  == -1 ) { glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH,  &_width ); }
+	if ( height == -1 ) { glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_HEIGHT, &_height); }
+	glTexSubImage2D(GL_TEXTURE_2D, level, x,y, _width, _height, format, type, &content[0] );
+	OPENGLCONTEXT->bindTexture(0);
+}
+
 template <class T>
 GLuint bufferData(const std::vector<T>& content, GLenum drawType = GL_STATIC_DRAW)
 {

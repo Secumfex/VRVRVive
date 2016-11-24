@@ -468,3 +468,20 @@ void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, gl
 		bitField, filter);
 	OPENGLCONTEXT->bindFBO(0);
 }
+
+GLuint createTexture(int width, int height, GLenum internalFormat, GLsizei levels)
+{
+	GLuint texHandle;
+	glGenTextures(1, &texHandle);
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+	OPENGLCONTEXT->bindTexture(texHandle);
+	glTexStorage2D(GL_TEXTURE_2D, levels, internalFormat, width, height);	
+	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	OPENGLCONTEXT->bindTexture(0);
+
+	return texHandle;
+}
