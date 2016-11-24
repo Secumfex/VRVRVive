@@ -1,4 +1,4 @@
-#version 330
+#version 430
 
  //!< in-variables
 layout(location = 0) in vec4 positionAttribute;
