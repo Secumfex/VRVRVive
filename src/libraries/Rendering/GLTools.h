@@ -31,6 +31,8 @@ void render(GLFWwindow* window, std::function<void (double)> loop); //!< keep ex
 GLenum checkGLError(bool printIfNoError = false); //!< check for OpenGL errors and also print it to the console (optionally even if no error occured)
 std::string decodeGLError(GLenum error); //!< return string corresponding to an OpenGL error code (use with checkGLError)
 void printOpenGLInfo();
+/** print some information from the GPU about compute shader related stuff */
+void printComputeShaderInfo();
 
 void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventHandler = [](){return false;}); //!< poll events and send to event handler, also send to ui_eventHandler
 

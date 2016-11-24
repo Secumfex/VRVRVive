@@ -5,6 +5,12 @@ static bool g_GLFW_initialized = false;
 static bool g_SDL_initialized = false;
 static glm::vec2 g_mainWindowSize = glm::vec2(0,0);
 
+// compute shader related information
+static int MAX_COMPUTE_WORK_GROUP_COUNT[3];
+static int MAX_COMPUTE_WORK_GROUP_SIZE[3];
+static int MAX_COMPUTE_WORK_GROUP_INVOCATIONS;
+static int MAX_COMPUTE_SHARED_MEMORY_SIZE;
+
 void initOpenGL() {
 	if (!g_OPENGL_initialized)
 	{
@@ -243,6 +249,28 @@ void printOpenGLInfo()
 		ss << "Renderer: " << glGetString(GL_RENDERER);
 		DEBUGLOG->log( ss.str());
 		ss.str(std::string());
+	DEBUGLOG->outdent();
+	}
+void printComputeShaderInfo()
+{
+	DEBUGLOG->log("Compute Shader Info:");
+	DEBUGLOG->indent();		glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,0 ,  &( MAX_COMPUTE_WORK_GROUP_COUNT[0]) );
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,1 ,  &( MAX_COMPUTE_WORK_GROUP_COUNT[1]) );
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,2 ,  &( MAX_COMPUTE_WORK_GROUP_COUNT[2]) );
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &( MAX_COMPUTE_WORK_GROUP_SIZE[0] ));
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &( MAX_COMPUTE_WORK_GROUP_SIZE[1] ));
+		glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &( MAX_COMPUTE_WORK_GROUP_SIZE[2] ));
+		glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE, &MAX_COMPUTE_SHARED_MEMORY_SIZE);
+
+		DEBUGLOG->log("max compute work group invocations : ", MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
+		DEBUGLOG->log("max compute work group size x      : ", MAX_COMPUTE_WORK_GROUP_SIZE[0]);
+		DEBUGLOG->log("max compute work group size y      : ", MAX_COMPUTE_WORK_GROUP_SIZE[1]);
+		DEBUGLOG->log("max compute work group size z      : ", MAX_COMPUTE_WORK_GROUP_SIZE[2]);
+		DEBUGLOG->log("max compute work group count x     : ", MAX_COMPUTE_WORK_GROUP_COUNT[0]);
+		DEBUGLOG->log("max compute work group count y     : ", MAX_COMPUTE_WORK_GROUP_COUNT[1]);
+		DEBUGLOG->log("max compute work group count z     : ", MAX_COMPUTE_WORK_GROUP_COUNT[2]);
+		DEBUGLOG->log("max compute shared memory size     : ", MAX_COMPUTE_SHARED_MEMORY_SIZE);
 	DEBUGLOG->outdent();
 	}
 
