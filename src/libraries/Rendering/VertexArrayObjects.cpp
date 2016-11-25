@@ -1239,6 +1239,46 @@ void Grid::draw()
     // glDrawArrays(GL_POINTS,  0, m_positions.m_size);
 }
 
+VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder order)
+{
+	// create Data
+	std::vector<float> vertexGridData(width * height * 2);
+	std::vector<float> uvData(width * height * 2);
+
+	int vIdx = 0;
+	if (order != VertexOrder::TOP_RIGHT_COLUMNWISE)
+	{
+		DEBUGLOG->log("Sorry, only TOP_RIGHT_COLUMNWISE order supported.");
+	}
+
+	{
+		for (int j = width - 1; j >= 0; j--) // from right
+		{
+			for (int i = height - 1; i >= 0; i--) // from top 
+			{
+				float nX = ((float) j + 0.5f) / (float) width;  // 0..1
+			    float nY = ((float) i + 0.5f) / (float) height; // 0..1
+				vertexGridData[vIdx+0] = (doScaleCoords) ? ( nX ) : j; // x
+				vertexGridData[vIdx+1] = (doScaleCoords) ? ( nY ) : i; // y
+				uvData[vIdx+0] = nX;
+				uvData[vIdx+1] = nY; 
+				vIdx += 2;
+			}
+		}
+	}
+
+	glGenVertexArrays(1, &(m_vao));
+	OPENGLCONTEXT->bindVAO(m_vao);
+
+	m_positions.m_vboHandle = createVbo(vertexGridData, 2, 0);
+	m_uvs.m_vboHandle = createVbo(uvData, 2, 1);
+	m_positions.m_size = (width * height);
+	m_uvs.m_size = (width * height);
+	setDrawMode(GL_POINTS);
+}
+
+//VertexGrid::~VertexGrid() { }
+
 TruncatedCone::VertexData TruncatedCone::generateVertexData(float height, float radius_bottom, float radius_top, int resolution, float offset_y, GLenum drawMode)
 { 
     VertexData result;

@@ -139,6 +139,22 @@ public:
 protected:
 };
 
+/** 
+* @brief vertices that are aligned in a grid and will be rendered as GL_POINTS.
+* Can be used as alternative to Screen-Filling Quad.
+* Vertex-Order determines the order in which the vertices are rendered, which is columnwise beginning at top-right
+*/ 
+class VertexGrid : public Renderable {
+public:
+	enum VertexOrder {TOP_RIGHT_COLUMNWISE, TOP_RIGHT_ROWWISE}; //TODO add missing when needed
+
+	/**
+	* @param doScaleCoords boolean indicating whether coordinates should be scaled to [-1,1] or left at [0..width\height]
+	*/
+	VertexGrid(int width, int height, bool doScaleCoords = true, VertexOrder order = TOP_RIGHT_COLUMNWISE);
+	//~VertexGrid();
+};
+
 class TruncatedCone : public Renderable {
 public:
     /** @brief default Constructor*/
