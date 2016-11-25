@@ -77,6 +77,28 @@ void DebugLog::log(std::string msg, const glm::vec4& vector)
 	log(msg + ss.str());
 }
 
+#include <glm/gtc/matrix_access.hpp>
+void DebugLog::log(std::string msg, const glm::mat3& matrix)
+{
+	log(msg);
+	indent();
+		log(" ", row(matrix,0));
+		log(" ", row(matrix,1));
+		log(" ", row(matrix,2));
+	outdent();
+}
+
+void DebugLog::log(std::string msg, const glm::mat4& matrix)
+{
+	log(msg);
+	indent();
+		log(" ", row(matrix,0));
+		log(" ", row(matrix,1));
+		log(" ", row(matrix,2));
+		log(" ", row(matrix,3));
+	outdent();
+}
+
 void DebugLog::log(std::string msg, float value)
 {
 	std::stringstream ss;
