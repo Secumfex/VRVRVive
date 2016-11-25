@@ -3,6 +3,7 @@
  ****************************************/
 
 #include <iostream>
+#include <Rendering/OpenGLContext.h>
 #include <Rendering/GLTools.h>
 #include <Rendering/RenderPass.h>
 #include <Rendering/ShaderProgram.h>
@@ -60,24 +61,8 @@ void createVertexGrid()
 
 void bindImages(GLuint inputTexture, GLuint outputTexture)
 {
-		// upload input texture
-		glBindImageTexture(
-				0,
-				inputTexture,
-				0,
-				GL_FALSE,
-				0,
-				GL_READ_ONLY,
-				GL_RGBA32F);
-
-		// upload output texture
-		glBindImageTexture(1,
-				outputTexture,
-				0,
-				GL_FALSE,
-				0,
-				GL_WRITE_ONLY,
-				GL_RGBA32F);
+	OPENGLCONTEXT->bindImageTextureToUnit(inputTexture,  0, GL_RGBA32F, GL_READ_ONLY);
+	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture, 1, GL_RGBA32F, GL_WRITE_ONLY);
 }
 
 
@@ -106,10 +91,7 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	// atomic counters
-	GLuint atomicsBuffer;
-	glGenBuffers(1, &atomicsBuffer);
-	glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicsBuffer);
-	glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint) * 3, NULL, GL_DYNAMIC_DRAW); // values are still undefined!
+	GLuint atomicsBuffer = bufferData<GLuint>(std::vector<GLuint>(3,0), GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicsBuffer);
 	createVertexGrid(); // setup vbo
 	

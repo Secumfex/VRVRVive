@@ -78,14 +78,14 @@ void uploadTextureData(GLuint texture, const std::vector<T>& content, GLenum for
 }
 
 template <class T>
-GLuint bufferData(const std::vector<T>& content, GLenum drawType = GL_STATIC_DRAW)
+GLuint bufferData(const std::vector<T>& content, GLenum target = GL_ARRAY_BUFFER, GLenum drawType = GL_STATIC_DRAW)
 {
     GLuint vbo = 0;
 	if ( content.size() != 0 )// && content.size() % dimensions == 0 )
 	{
 		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, content.size() * sizeof(T), &content[0], drawType);
+		glBindBuffer(target, vbo);
+		glBufferData(target, content.size() * sizeof(T), &content[0], drawType);
 	}
     return vbo;
 }
