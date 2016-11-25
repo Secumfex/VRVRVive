@@ -38,7 +38,7 @@ void createVertexGrid()
 void bindImages(GLuint inputTexture, GLuint outputTexture)
 {
 	OPENGLCONTEXT->bindImageTextureToUnit(inputTexture,  0, GL_RGBA32F, GL_READ_ONLY);
-	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture, 1, GL_RGBA32F, GL_WRITE_ONLY);
+	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture, 1, GL_RGBA32F, GL_READ_WRITE);
 }
 
 
