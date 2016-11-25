@@ -186,9 +186,36 @@ int main(int argc, char *argv[])
 		}
 	});
 
+	double old_x, d_x;
+	double old_y, d_y;
+	glfwGetCursorPos(window, &old_x, &old_y);
+	setCursorPosCallback(window, [&](double x, double y)
+	{
+		d_x = x - old_x;
+		d_y = y - old_y;
+
+		old_x = x;
+		old_y = y;
+	});
+
+	setMouseButtonCallback(window, [&](int b, int a, int m)
+	{
+		if (b == GLFW_MOUSE_BUTTON_LEFT && a == GLFW_PRESS)
+		{
+			unsigned char pick_col[15];
+			glReadPixels(old_x-2, WINDOW_RESOLUTION.y-old_y, 5, 1, GL_RGB, GL_UNSIGNED_BYTE, pick_col);
+
+			for (int i = 0; i < 15; i += 3)
+			{
+				DEBUGLOG->log("color: ", glm::vec3(pick_col[i + 0], pick_col[i + 1], pick_col[i+2]));
+			}
+		}
+	});
 	///////////////////////////////////////////////////////////////////////////////
+
 	while (!shouldClose(window))
 	{	
+		cubeShader.update("model", glm::rotate( (float) glfwGetTime() / 2.0f, glm::vec3(1.0f, 1.0f, 0.0f)));
 		cube.render();
 
 		// reset atomic buffers
