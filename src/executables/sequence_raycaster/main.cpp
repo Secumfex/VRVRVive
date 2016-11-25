@@ -10,6 +10,8 @@
 #include <Rendering/FrameBufferObject.h>
 #include <Rendering/VertexArrayObjects.h>
 #include <Importing/TextureTools.h>
+#include <UI/imgui_impl_glfw_gl3.h>
+#include <UI/imgui/imgui.h>
 #include <glm/gtx/transform.hpp>
 
 ////////////////////// PARAMETERS /////////////////////////////
@@ -53,10 +55,18 @@ void uploadInputData(GLuint inputTexture)
 	uploadTextureData<float>(inputTexture, inputData, GL_RGBA, GL_FLOAT);
 }
 
+static std::vector<float> s_fpsCounter = std::vector<float>(120);
+static int s_curFPSidx = 0;
+void profileFPS(float fps)
+{
+	s_fpsCounter[s_curFPSidx] = fps;
+	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
+}
 
 int main(int argc, char *argv[])
 {
 	auto window = generateWindow(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 200, 200);
+    ImGui_ImplGlfwGL3_Init(window, true);
 	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	DEBUGLOG->setAutoPrint(true);
 
@@ -70,8 +80,11 @@ int main(int argc, char *argv[])
 	createVertexGrid(); // setup vbo
 	
 	GLuint inputTexture = createTexture((int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA32F);
-	uploadInputData( inputTexture );
 	GLuint outputTexture = createTexture((int) WINDOW_RESOLUTION.x,(int) WINDOW_RESOLUTION.y, GL_RGBA32F);
+	uploadInputData( inputTexture );
+	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE3);
+	std::vector<float> texData((int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, 0.0f);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, &texData[0]);
 
 	bindImages(inputTexture, outputTexture);
 
@@ -189,8 +202,18 @@ int main(int argc, char *argv[])
 	});
 	///////////////////////////////////////////////////////////////////////////////
 
-	while (!shouldClose(window))
+	render(window, [&](double dt)
 	{	
+		////////////////////////////////     GUI      ////////////////////////////////
+		profileFPS((float) (1.0 / dt));
+		ImGuiIO& io = ImGui::GetIO();
+		ImGui_ImplGlfwGL3_NewFrame(); // tell ImGui a new frame is being rendered
+		ImGui::Value("FPS", ImGui::GetIO().Framerate);
+		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
+		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		ImGui::PopStyleColor();
+		///////////////////////////////////////////////////////////////////////////////
+
 		cubeShader.update("model", glm::rotate( (float) glfwGetTime() / 2.0f, glm::vec3(1.0f, 1.0f, 0.0f)));
 		cube.render();
 
@@ -198,13 +221,16 @@ int main(int argc, char *argv[])
 		GLuint a[3] = {0,0,0};
 		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0 , sizeof(GLuint) * 3, a);
 
+		// reset output texture		// clear output image (very slow!)
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE3);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, &texData[0]);
+
 		vertexGrid.render();
 
 		showTex.render();
 
-		glfwSwapBuffers(window);
-		glfwPollEvents();
-	}
+		ImGui::Render();
+	});
 
 	destroyWindow(window);
 
