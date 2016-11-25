@@ -25,38 +25,12 @@ static const int VERTEX_GRID_SIZE = 512;
 
 static Renderable* s_vertexGrid = nullptr;
 
-static std::vector<float> s_vertexGridData;
-
 const glm::vec2 WINDOW_RESOLUTION = glm::vec2( VERTEX_GRID_SIZE, VERTEX_GRID_SIZE);
 
 void createVertexGrid()
 {
-	// create Data
-	s_vertexGridData.resize(VERTEX_GRID_SIZE * VERTEX_GRID_SIZE * 3);
-	int vIdx = 0;
-	for (int j = (int)(WINDOW_RESOLUTION.x) - 1; j >= 0; j--) // from right
-	{
-		for (int i = (int) (WINDOW_RESOLUTION.y) - 1; i >= 0; i--) // from top 
-		{
-			s_vertexGridData[vIdx+0] = j; // x
-			s_vertexGridData[vIdx+1] = i; // y
-			s_vertexGridData[vIdx+2] = 0; // z
-
-			//DEBUGLOG->log("x: ", s_vertexGridData[vIdx+0]);
-			//DEBUGLOG->log("y: ", s_vertexGridData[vIdx+1]);
-			//DEBUGLOG->log("z: ", s_vertexGridData[vIdx+2]);
-
-			vIdx += 3;
-		}
-	}
-
 	// create VBO
-	s_vertexGrid = new Renderable();
-	glGenVertexArrays(1, &(s_vertexGrid->m_vao));
-	OPENGLCONTEXT->bindVAO(s_vertexGrid->m_vao);
-	s_vertexGrid->createVbo(s_vertexGridData, 3, 0);
-	s_vertexGrid->setDrawMode(GL_POINTS);
-	s_vertexGrid->m_positions.m_size = (VERTEX_GRID_SIZE * VERTEX_GRID_SIZE);
+	s_vertexGrid = new VertexGrid(VERTEX_GRID_SIZE, VERTEX_GRID_SIZE, true);
 }
 
 void bindImages(GLuint inputTexture, GLuint outputTexture)
@@ -92,7 +66,7 @@ int main(int argc, char *argv[])
 
 	// atomic counters
 	GLuint atomicsBuffer = bufferData<GLuint>(std::vector<GLuint>(3,0), GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicsBuffer);
+	glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicsBuffer); // important
 	createVertexGrid(); // setup vbo
 	
 	GLuint inputTexture = createTexture((int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA32F);
@@ -108,6 +82,8 @@ int main(int argc, char *argv[])
 	glm::mat4 projection = glm::perspective( glm::radians(45.0f), getRatio(window), 0.1f, 10.0f);
 
 	glm::mat4 inverseView = glm::inverse( view );
+	glm::mat4 homography = projection * rightView * inverseView;
+	DEBUGLOG->log("homopraphy: ", homography);
 
 	//arbitrary render pass for some geometry
 	Volume volume;
@@ -125,7 +101,7 @@ int main(int argc, char *argv[])
 
 	// abritrary render pass for the vertex grid
 	ShaderProgram quadShader("/screenSpace/fullscreen.vert", "/modelSpace/vertexGrid.frag");
-	ShaderProgram vertexGridShader("/modelSpace/vertexGrid.vert", "/modelSpace/vertexGrid.frag");
+	ShaderProgram vertexGridShader("/screenSpace/fullscreen.vert", "/modelSpace/vertexGrid.frag");
 	FrameBufferObject fbo( vertexGridShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y );
 	RenderPass vertexGrid( &vertexGridShader, &fbo );
 	//vertexGrid.addRenderable( s_vertexGrid );
