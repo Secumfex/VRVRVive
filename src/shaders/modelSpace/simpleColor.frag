@@ -27,8 +27,8 @@ void main()
 	if (blendColor != 0.0)
 	{
 		vec4 tex = texture(tex, passUVCoord);
-//		fragColor = mix(color, tex, blendColor);
-		fragColor = vec4(tex.r, tex.g, tex.b,tex.a);
+		fragColor = mix(color, tex, blendColor);
+		//fragColor = vec4(tex.r, tex.g, tex.b,tex.a);
 		// fragColor = vec4(tex.r * tex.a, tex.g * tex.a, tex.b * tex.a,tex.a);
 	}
 	else
