@@ -33,6 +33,7 @@ file(GLOB_RECURSE HEADER *.h)
 
 add_definitions(-DSHADERS_PATH="${SHADERS_PATH}")
 add_definitions(-DRESOURCES_PATH="${RESOURCES_PATH}")
+add_definitions(-DADDITIONAL_RESOURCES_PATH="${ADDITIONAL_RESOURCES_PATH}")
 add_definitions(-DGLFW_INCLUDE_GLCOREARB)
 add_definitions(-DGLEW_STATIC)
 
