@@ -42,6 +42,22 @@ void bindImages(GLuint inputTexture, GLuint outputTexture)
 }
 
 
+static std::vector<float> s_texData((int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, 0.0f);
+static GLuint s_pboHandle = -1; // PBO 
+
+void clearOutputTexture(GLuint texture)
+{
+	if(s_pboHandle == -1)
+	{
+		glGenBuffers(1,&s_pboHandle);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y, &s_texData[0], GL_STATIC_DRAW);
+	}
+	
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE3);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+}
+
 void uploadInputData(GLuint inputTexture)
 {
 	std::vector<float> inputData( ((int) WINDOW_RESOLUTION.x) * ((int) WINDOW_RESOLUTION.y) * 4, 0.75);
@@ -81,10 +97,9 @@ int main(int argc, char *argv[])
 	
 	GLuint inputTexture = createTexture((int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA32F);
 	GLuint outputTexture = createTexture((int) WINDOW_RESOLUTION.x,(int) WINDOW_RESOLUTION.y, GL_RGBA32F);
-	uploadInputData( inputTexture );
 	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE3);
-	std::vector<float> texData((int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, 0.0f);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, &texData[0]);
+	uploadInputData( inputTexture );
+	clearOutputTexture( outputTexture );
 
 	bindImages(inputTexture, outputTexture);
 
@@ -221,9 +236,8 @@ int main(int argc, char *argv[])
 		GLuint a[3] = {0,0,0};
 		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0 , sizeof(GLuint) * 3, a);
 
-		// reset output texture		// clear output image (very slow!)
-		OPENGLCONTEXT->activeTexture(GL_TEXTURE3);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, &texData[0]);
+		// reset output texture	
+		clearOutputTexture(outputTexture);
 
 		vertexGrid.render();
 
