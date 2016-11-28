@@ -167,12 +167,6 @@ void SlowThread::adjustRenderload()
 	float tDraw = avgRenderTime / (float) numDrawsPerCall; //aprox render time per draw call
 
 	int numCalls = (int) (avgTDelta / tDraw) * adjustmentFactor; // how many draws fit into tDelta?
-	
-	if (abs(numCalls) > 100){
-		DEBUGLOG->log("numCalls: ", numCalls);
-		DEBUGLOG->log("rendrTme: ", renderTime);
-	}
-
 
 	// add or remove calls
 	if (numCalls != 0)
@@ -230,9 +224,12 @@ private: // SDL bookkeeping
 	ShaderProgram*		m_pSlowShader;
 	ShaderProgram*		m_pFastShader;
 	FrameBufferObject*	m_pFbo;
-	FrameBufferObject*	m_pFboDisplay;
+	FrameBufferObject*	m_pFboDisplay[2];
+	int					m_activeDisplayFBO;
 public:
-	CMainApplication( int argc, char *argv[] ){
+	CMainApplication( int argc, char *argv[] ):
+		m_activeDisplayFBO(0)
+	{
 		DEBUGLOG->setAutoPrint(true);
 
 		Uint32 unWindowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
@@ -297,14 +294,15 @@ public:
 		m_pSlowShader = new ShaderProgram("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleLighting.frag");
 		m_pFastShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/modelSpace/simpleColor.frag");
 		m_pFbo		  = new FrameBufferObject(m_pSlowShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
-		m_pFboDisplay = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
+		m_pFboDisplay[0] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
+		m_pFboDisplay[1] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
 
 		m_pSlowShader->update("view", view);
 		m_pSlowShader->update("projection", perspective);
 		m_pSlowShader->update("color", glm::vec4(1.0));
 
-		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		m_pFastShader->update("blendColor", 0.75f);
+		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[0]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_pFastShader->update("blendColor", 0.5f);
 		DEBUGLOG->outdent();
 	}
 
@@ -321,11 +319,16 @@ public:
 	void updateFastRenderThread()
 	{
 		// copy
-		copyFBOContent(m_pFbo->getFramebufferHandle(), m_pFboDisplay->getFramebufferHandle(), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), GL_COLOR_BUFFER_BIT);
+		copyFBOContent(m_pFbo->getFramebufferHandle(), m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getFramebufferHandle(), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), GL_COLOR_BUFFER_BIT);
 
 		// then clear
 		m_pFbo->bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		//switch active display fbo
+		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_activeDisplayFBO = (m_activeDisplayFBO+1)%2;
+
 	}
 
 
@@ -337,10 +340,10 @@ public:
 		{
 			ImGui_ImplSdlGL3_NewFrame(m_pWindow);
 			pollSDLEvents(m_pWindow, ImGui_ImplSdlGL3_ProcessEvent);
-
+			
+			static bool autoCorrect = false;
 			{
 				static float f = 10.0f;
-				static bool autoCorrect = false;
 				ImGui::Checkbox("auto adjust render time", &autoCorrect);
 				ImGui::ColorEdit3("clear color", (float*)&clear_color);
 				glClearColor(clear_color.x,clear_color.y,clear_color.z,0.0);
@@ -351,14 +354,9 @@ public:
 				ImGui::PopStyleColor();
 				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-				if (autoCorrect)
-				{
-					m_pSlowThread->adjustRenderload( );
-				}
-
-				float r = sin( ImGui::GetTime() ) * 0.25 + 0.75f;
-				float g = cos( ImGui::GetTime() ) * 0.25 + 0.75f;
-				float b = cos( ImGui::GetTime() + 1.42f ) * 0.25 + 0.75f;
+				float r = sin( ImGui::GetTime() * 4.0f ) * 0.25 + 0.75f;
+				float g = cos( ImGui::GetTime() * 4.0f ) * 0.25 + 0.75f;
+				float b = cos( ImGui::GetTime() * 4.0f + 1.42f ) * 0.25 + 0.75f;
 				m_pFastShader->update( "color", glm::vec4(r,g,b,1.0) );
 			}
 
@@ -375,9 +373,15 @@ public:
 			if (m_pSlowThread->isFinished)
 			{
 				updateFastRenderThread();
-				m_pFbo->bind();
-				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			}
+			else
+			{
+				if (autoCorrect)
+				{
+					m_pSlowThread->adjustRenderload( );
+				}
+			}
+
 		}
 
 		ImGui_ImplSdlGL3_Shutdown();
