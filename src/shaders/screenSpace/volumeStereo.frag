@@ -67,16 +67,8 @@ vec4 transferFunction(int value)
  * @param curPosition to reproject into right view
  * @param sampleColor to accumulate into right view
  */
-void reproject(vec4 sampleColor, vec3 curPos)
+void reproject(vec4 sampleColor, ivec2 texelCoord_r)
 {
-	// reproject position
-	vec4 pos_r = viewprojection_r * vec4(curPos, 1.0);
-	pos_r /= pos_r.w;
-	
-	// compute texel coord in right image
-	ivec2 texelCoord_r = ivec2( vec2( imageSize( output_image ) ) * ( pos_r.xy / vec2(2.0) + vec2(0.5) ) );
-	// ivec2 texelCoord_r = ivec2( vec2( imageSize( output_image ) ) * ( passUV ) ); //DEBUG
-
 	//read old value
 	vec4 curColor = imageLoad( output_image, texelCoord_r );
 
@@ -91,6 +83,16 @@ void reproject(vec4 sampleColor, vec3 curPos)
 
 	// write into texture
 	imageStore( output_image, texelCoord_r, result_color );
+}
+
+vec2 reprojectCoords(vec3 curPos)
+{
+	// reproject position
+	vec4 pos_r = viewprojection_r * vec4(curPos, 1.0);
+	pos_r /= pos_r.w;
+	pos_r.xy = ( pos_r.xy / vec2(2.0) + vec2(0.5) );
+
+	return vec2( imageSize( output_image ) ) * pos_r.xy;
 }
 
 /**
@@ -109,9 +111,11 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
 
 	vec4 curColor = vec4(0);
+	vec4 segmentColor_r = vec4(0);
+	ivec2 texelCoord_r = ivec2( reprojectCoords( startPos ) );
 
 	// traverse ray front to back rendering
-	for (float t = 0.0; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
+	for (float t = 0.01; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		vec3 curPos = mix( startPos, endPos, t);
@@ -125,17 +129,32 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 
-		if (sampleColor.a > 0.005) // don't bother if nearly invisible
-		// if (true) // DEBUG
+		// reproject Coords, check whether image coords changed
+		ivec2 curTexelCoord_r = ivec2( reprojectCoords( curPos ) );
+		if ( curTexelCoord_r != texelCoord_r ) //changed
 		{
-			reproject(sampleColor, curPos);
+			// reproject color, then reset segment color
+			if (segmentColor_r.a > 0.005) // don't bother if nearly invisible
+			{
+				reproject( segmentColor_r, texelCoord_r );
+			}
+			texelCoord_r = curTexelCoord_r;
+			segmentColor_r = vec4(0); // reset for next segment
 		}
+
+		// accumulate segment colors
+		segmentColor_r.rgb = (1.0 - segmentColor_r.a) * (sampleColor.rgb) + segmentColor_r.rgb;
+		segmentColor_r.a = (1.0 - segmentColor_r.a) * sampleColor.a + segmentColor_r.a;
+
 		// early ray-termination
 		if (curColor.a > 0.99)
 		{
 			break;
 		}
 	}
+
+	// make sure to reproject the last state of segmentColor
+	reproject( segmentColor_r, ivec2( texelCoord_r ) );
 
 	// return emission absorbtion result
 	return curColor;

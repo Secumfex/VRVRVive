@@ -40,8 +40,8 @@ int main(int argc, char *argv[])
 	{
 		m_pHMD = NULL;
 		char buf[1024];
-		sprintf_s( buf, sizeof( buf ), "Unable to init VR runtime: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
-		DEBUGLOG->log("VR_Init Failed!");
+		//sprintf_s( buf, sizeof( buf ), "Unable to init VR runtime: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
+		DEBUGLOG->log("VR_Init Failed!: " + std::string(vr::VR_GetVRInitErrorAsEnglishDescription( eError )));
 	}
 
 	// show texture

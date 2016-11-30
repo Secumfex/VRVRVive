@@ -183,10 +183,10 @@ int main(int argc, char *argv[])
 	/////////////////////     Scene / View Settings     //////////////////////////
 	glm::mat4 model = glm::mat4(1.0f);
 	model[1] = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f); // flip y, based on data set
-	glm::vec4 eye(2.5f, 0.5f, 2.5f, 1.0f);
+	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center), glm::vec3(0,1,0));
-	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) +  glm::vec3(0.0f,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0,1,0));
+	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
 
