@@ -542,9 +542,9 @@ void ShaderProgram::disable()
 	OPENGLCONTEXT->useShader(0);
 }
 
-void ShaderProgram::mapShaderProperties(GLenum interface, std::unordered_map<std::string, Info>* map) {
+void ShaderProgram::mapShaderProperties(GLenum _interface, std::unordered_map<std::string, Info>* map) {
 	GLint numAttrib = 0;
-	glGetProgramInterfaceiv(m_shaderProgramHandle, interface, GL_ACTIVE_RESOURCES, &numAttrib);
+	glGetProgramInterfaceiv(m_shaderProgramHandle, _interface, GL_ACTIVE_RESOURCES, &numAttrib);
 
 	std::vector<GLenum> properties;
 	properties.push_back(GL_NAME_LENGTH);
@@ -556,7 +556,7 @@ void ShaderProgram::mapShaderProperties(GLenum interface, std::unordered_map<std
 
 	for(int attrib = 0; attrib < numAttrib; ++attrib)
 	{
-		glGetProgramResourceiv(m_shaderProgramHandle, interface, attrib, properties.size(),
+		glGetProgramResourceiv(m_shaderProgramHandle, _interface, attrib, properties.size(),
 		&properties[0], values.size(), NULL, &values[0]);
 
 		//if (values[4] != -1)
@@ -568,7 +568,7 @@ void ShaderProgram::mapShaderProperties(GLenum interface, std::unordered_map<std
 
 		std::vector<GLchar> nameData(256);
 		nameData.resize(values[0]); //The length of the name.
-		glGetProgramResourceName(m_shaderProgramHandle, interface, attrib, nameData.size(), NULL, &nameData[0]);
+		glGetProgramResourceName(m_shaderProgramHandle, _interface, attrib, nameData.size(), NULL, &nameData[0]);
 		std::string name = std::string((char*)&nameData[0], nameData.size() - 1);
 		name = std::string(name.c_str());
 

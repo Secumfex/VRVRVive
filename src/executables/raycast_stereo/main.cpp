@@ -1,31 +1,6 @@
 /*******************************************
  * **** DESCRIPTION ****
- * This program demonstrates the MIP algorithm in an interactive way.
- *
- * It implements screen space volume ray-casting using the OpenGL 4.3 GLSL.
- * The open-source GUI library ImGui is used to allow for easy and quick interaction.
- * The MIP is fully parametrized through dynamic shader variables.
- * 
- * Additionally, an experimental concept of depth-based color effects is applied
- * to enhance the visual perception of depth.
- * It consists of two effects which are applied based on the displayed voxel's 
- * distance to the camera.
- * 
- * 1) The displayed grayscale value range (contrast) decreases with the distance.
- * 2) The displayed color is shifted towards colors specified for min/max distance.
- * 
- * Two data sets are provided: 
- * 1) the Stanford CTHead Volume Dataset
- * 2) a private MRT data set of a family member 
- * 
- * CODE LINES OF INTEREST 
- * Line 90 ; change used data set location
- * Line 92 : switch to MRT data set
- * Line 133: flip y-axis if data set is upside down
- * 
- * Additionally, there are some changes that may be applied to the volume ray-casting fragment shader, located in volume.frag
  ****************************************/
-
 #include <iostream>
 
 #include <Rendering/GLTools.h>
@@ -39,6 +14,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/transform.hpp>
 
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = INT_MIN; // minimal value in data set; to be overwitten after import
@@ -50,12 +26,9 @@ static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten
 static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
-static int 		 s_activeModel = 1;
-static int 	     s_lastTimeModel = 1;
-static const char* s_models[] = {"MRT Brain", "CT Head"};
+static float s_eyeDistance = 0.15f;
 
-static int   s_minValThreshold = INT_MIN;
-static int   s_maxValThreshold = INT_MAX;
+static const char* s_models[] = {"CT Head"};
 
 static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
@@ -77,6 +50,22 @@ static int s_curFPSidx = 0;
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
+
+void generateTransferFunction()
+{
+	s_transferFunctionValues.clear();
+	s_transferFunctionColors.clear();
+	s_transferFunctionValues.push_back(164);
+	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.0, 0.0, 0.0));
+	s_transferFunctionValues.push_back(312);
+	s_transferFunctionColors.push_back(glm::vec4(1.0, 0.07, 0.07, 0.6));
+	s_transferFunctionValues.push_back(872);
+	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.5, 1.0, 0.3));
+	s_transferFunctionValues.push_back(1142);
+	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.3, 0.8, 0.0));
+	s_transferFunctionValues.push_back(2500);
+	s_transferFunctionColors.push_back(glm::vec4(0.95, 0.83, 1.0, 1.0));
+}
 
 void updateTransferFunctionTex()
 {
@@ -160,8 +149,6 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	s_windowingMinValue = (float) volumeData.min;
 	s_windowingMaxValue = (float) volumeData.max;
 	s_windowingRange = s_windowingMaxValue - s_windowingMinValue;
-	s_minValThreshold = volumeData.min;
-	s_maxValThreshold = volumeData.max;
 }
 
 void profileFPS(float fps)
@@ -170,7 +157,7 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
 
@@ -178,32 +165,16 @@ int main()
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-	std::string file = RESOURCES_PATH;
-	file += std::string( "/volumes/CTHead/CThead");
-
-	// load data set: CT of a Head
-	VolumeData<short> volumeDataCTHead = Importer::load3DData<short>(file, 256, 256, 113, 2);
-	// alternative data set: MRT of a brain; comment this line in and the above out to use 
-	VolumeData<short> volumeDataMRTBrain = Importer::loadBruder();
-
-	activateVolume<short>(volumeDataCTHead);
-
-	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
-
 	// create window and opengl context
 	auto window = generateWindow(1600,800);
 
-	// load into 3d texture
+	// load data set: CT of a Head	// load into 3d texture
+	std::string file = RESOURCES_PATH + std::string( "/volumes/CTHead/CThead");
+	VolumeData<short> volumeDataCTHead = Importer::load3DData<short>(file, 256, 256, 113, 2);
+	activateVolume<short>(volumeDataCTHead);
+	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
-	
 	GLuint volumeTextureCT = loadTo3DTexture<short>(volumeDataCTHead);
-	GLuint volumeTextureMRT =  loadTo3DTexture<short>(volumeDataMRTBrain);
-
-	GLuint volumeTexture = volumeTextureCT; // startup volume data
-
-	DEBUGLOG->log("OpenGL error state after 3D-Texture creation: ");
-	DEBUGLOG->indent(); checkGLError(true); DEBUGLOG->outdent();
-
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
@@ -212,16 +183,17 @@ int main()
 	/////////////////////     Scene / View Settings     //////////////////////////
 	glm::mat4 model = glm::mat4(1.0f);
 	model[1] = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f); // flip y, based on data set
-	glm::vec4 eye(2.5f, 0.5f, 2.5f, 1.0f);
+	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-	glm::mat4 view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0,1,0));
-
-	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, -1.0f, 6.0f);
-	/// perspective projection is experimental; yields weird warping effects due to vertex interpolation of uv-coordinates
+	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0,1,0));
+	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+	glm::mat4 viewprojection_r = perspective * view_r;
 
-	// create Volume
-	VolumeSubdiv volume(1.0f, 1.0f, 1.26315f, 3);
+	// create Volume and VertexGrid
+	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
+	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y);
+	Quad quad;
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
@@ -232,10 +204,16 @@ int main()
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
 	FrameBufferObject uvwFBO(getResolution(window).x/2, getResolution(window).y);
-	uvwFBO.addColorAttachments(2); DEBUGLOG->outdent(); // front UVRs and back UVRs
+	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
+
+	FrameBufferObject::s_internalFormat = GL_RGBA16F; // allow arbitrary values
+	uvwFBO.addColorAttachments(2); // front positions and back positions
+	FrameBufferObject::s_internalFormat = GL_RGBA; // default
+	DEBUGLOG->outdent(); 
 
 	FrameBufferObject uvwFBO_r(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO_r.addColorAttachments(2); DEBUGLOG->outdent(); // front UVRs and back UVRs
+	uvwFBO_r.addColorAttachments(2); // front positions and back positions
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
 	uvwRenderPass.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -245,46 +223,52 @@ int main()
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volume.frag"); DEBUGLOG->outdent();
-	shaderProgram.update("model", model);
-	shaderProgram.update("view", view);
+	ShaderProgram shaderProgram("/screenSpace/volumeStereo.vert", "/screenSpace/volumeStereo.frag"); DEBUGLOG->outdent();
 	shaderProgram.update("projection", perspective);
-	
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
 	// DEBUG
-	s_transferFunctionValues.clear();
-	s_transferFunctionColors.clear();
-	s_transferFunctionValues.push_back(0);
-	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.0, 0.0, 0.0));
-	s_transferFunctionValues.push_back(500);
-	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.1, 0.2, 0.01));
-	s_transferFunctionValues.push_back(1000);
-	s_transferFunctionColors.push_back(glm::vec4(1.0, 1.0, 1.0, 0.05));
-	s_transferFunctionValues.push_back(1500);
-	s_transferFunctionColors.push_back(glm::vec4(1.0, 0.9, 0.9, 0.05));
-	s_transferFunctionValues.push_back(2500);
-	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.3, 0.5, 0.01));
+	generateTransferFunction();
 	updateTransferFunctionTex();
 
 	// bind volume texture, back uvw textures, front uvws
-	OPENGLCONTEXT->bindTextureToUnit(volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
+	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(s_transferFunctionTex, GL_TEXTURE3, GL_TEXTURE_1D);
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE4, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE5, GL_TEXTURE_2D);
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+
+	// generate and bind right view image texture
+	GLuint outputTexture = createTexture((int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA16F);
+	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture,  0, GL_RGBA16F, GL_READ_WRITE);
+	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE6, GL_TEXTURE_2D); // for display
+
+	// DEBUG
+	std::vector<float> texData(((int) getResolution(window).x/2) * (int)getResolution(window).y*4, 0.0f);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA, GL_FLOAT, &texData[0]);
 
 	shaderProgram.update("volume_texture", 0); // volume texture
 	shaderProgram.update("back_uvw_map",  1);
 	shaderProgram.update("front_uvw_map", 2);
 	shaderProgram.update("transferFunctionTex", 3);
+	shaderProgram.update("back_pos_map",  4);
+	shaderProgram.update("front_pos_map", 5);
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram);
-//	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	renderPass.addRenderable(&volume);
+	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	renderPass.addRenderable(&vertexGrid);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
+
+	///////////////////////   Show Texture Renderpass    //////////////////////////
+	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
+	RenderPass showTex(&showTexShader,0);
+	showTex.addRenderable(&quad);
+	showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+	showTexShader.update( "tex", 6); // output texture
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -354,7 +338,20 @@ int main()
 				break;
 			default:
 				break;
-
+			case GLFW_KEY_R:
+			static bool swap = true;
+			if (swap){
+				renderPass.clearRenderables();
+				renderPass.addRenderable(&quad);
+				DEBUGLOG->log("renderable: Quad");
+				swap = false;
+			} else {
+				renderPass.clearRenderables();
+				renderPass.addRenderable(&vertexGrid);
+				DEBUGLOG->log("renderable: Vertex Grid");
+				swap = true;
+			}
+			break;
 		}
 		ImGui_ImplGlfwGL3_KeyCallback(window,k,s,a,m);
 	};
@@ -363,18 +360,54 @@ int main()
 	setMouseButtonCallback(window, mouseButtonCB);
 	setKeyCallback(window, keyboardCB);
 
-
 	std::string window_header = "Volume Renderer";
 	glfwSetWindowTitle(window, window_header.c_str() );
 
 	//////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
+
+	//++++++++++++++ DEBUG
+	glm::mat4 m = 
+		(perspective * // -1 .. -1
+			view_r * glm::inverse(view) * // from one view to the other
+		glm::inverse(perspective) ) * // world with non-one w
+		
+		glm::translate(glm::vec3(-1.f, -1.f, -1.f)) * //-1..1 
+		glm::scale(glm::vec3(2.0f,2.0f,2.0f)) // 0..2
+		;
+	
+	DEBUGLOG->log("m", m);
+
+	glm::vec4 p1(0.0f,0.0f,0.0f,1.0f); // bottom left on near plane
+	glm::vec4 p2(0.5f,0.5f,1.0f,1.0f); // center on far plane
+	glm::vec4 p3(0.5f,0.5f,0.0f,1.0f); // center on near plane
+
+	DEBUGLOG->log("bottom left: ", m * p1);
+	DEBUGLOG->log("center far : ", m * p2);
+	DEBUGLOG->log("center near: ", m * p3);
+
+	glm::vec4 p1n =  (m * p1) / (m * p1).w; // bottom left on near plane
+	glm::vec4 p2n =  (m * p2) / (m * p2).w; // center on far plane
+	glm::vec4 p3n =  (m * p3) / (m * p3).w; // center on near plane
+
+	DEBUGLOG->log("bottom left {normalized}: ", p1n);
+	DEBUGLOG->log("center far  {normalized}: ", p2n);
+	DEBUGLOG->log("center near {normalized}: ", p3n);
+
+	glm::mat4 bias = glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f));
+	
+	DEBUGLOG->log("bottom left : ", bias * p1n);
+	DEBUGLOG->log("center far  : ", bias * p2n);
+	DEBUGLOG->log("center near : ", bias * p3n);
+
+	//++++++++++++++ DEBUG
+
+
 	
 	double elapsedTime = 0.0;
 	render(window, [&](double dt)
 	{
-		elapsedTime += dt;
 		profileFPS((float) (1.0 / dt));
 
 		////////////////////////////////     GUI      ////////////////////////////////
@@ -383,15 +416,12 @@ int main()
 
 		ImGui::Value("FPS", (float) (1.0 / dt));
 
-		ImGui::PlotLines("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
-		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.5,0.5,0.6,1.0) );
-		ImGui::PlotHistogram("Values", &s_transferFunctionValues[0], s_transferFunctionValues.size() );
-		ImGui::PopStyleColor();
-
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 
+		ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.01f, 2.0f); // grayscale ramp boundaries
+	
 		ImGui::Columns(2, "mycolumns2", true);
         ImGui::Separator();
 		bool changed = false;
@@ -415,28 +445,10 @@ int main()
     	{
             ImGui::Text("Parameters related to volume rendering");
             ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
-	        ImGui::DragFloatRange2("ray range",   &s_rayParamStart, &s_rayParamEnd,  0.001f, 0.0f, 1.0f);
-        	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);        	
-            ImGui::DragIntRange2(  "value range", &s_minValThreshold, &s_maxValThreshold, 5, s_minValue, s_maxValue);
+        	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
         }
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
-    	ImGui::ListBox("active model", &s_activeModel, s_models, IM_ARRAYSIZE(s_models), 2);
-    	if (s_lastTimeModel != s_activeModel)
-    	{
-    		if ( s_activeModel == 0) //MRT
-    		{
-				activateVolume(volumeDataMRTBrain);
-				OPENGLCONTEXT->bindTextureToUnit(volumeTextureMRT, GL_TEXTURE0, GL_TEXTURE_3D);
-				s_lastTimeModel = 0;
-    		}
-    		else
-    		{
-    			activateVolume(volumeDataCTHead);
-				OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-				s_lastTimeModel = 1;
-    		}
-    	}
 		ImGui::PopItemWidth();
         //////////////////////////////////////////////////////////////////////////////
 
@@ -446,69 +458,49 @@ int main()
 			model = glm::rotate(glm::mat4(1.0f), (float) dt, glm::vec3(0.0f, 1.0f, 0.0f) ) * model;
 		}
 
-		view = glm::lookAt(glm::vec3(eye) - glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-		glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+		view = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(center) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(0.0f, 1.0f, 0.0f));
+		view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		viewprojection_r = perspective * view_r;
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
-		//shaderProgram.update(   "view", view);
-		//uvwShaderProgram.update("view", view);
-		shaderProgram.update(   "model", turntable.getRotationMatrix() * model);
 		uvwShaderProgram.update("model", turntable.getRotationMatrix() * model);
+		uvwShaderProgram.update("view", view);
+
+		shaderProgram.update( "viewprojection_r", viewprojection_r );
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
-		shaderProgram.update("uRayParamStart", s_rayParamStart);  // ray start parameter
-		shaderProgram.update("uRayParamEnd",   s_rayParamEnd);    // ray end   parameter
 		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
+
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
-		//shaderProgram.update("uWindowingMaxVal", s_windowingMaxValue); 	  // upper grayscale ramp boundary
 		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		
-		// test test
-		//static int s_activePixelIdx = 0;
-		//s_activePixelIdx++;
-		//shaderProgram.update("uActivePixelIdx", s_activePixelIdx); // contrast attenuation effect influence
-
 
 		/************* update experimental  parameters ******************/
-		/// experimental: value thresholds; out-of-range values are ignored
-		shaderProgram.update("uMinValThreshold", s_minValThreshold);
-		shaderProgram.update("uMaxValThreshold", s_maxValThreshold);
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// /////////////////////////////
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
+		// clear output image (very slow!)
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE6);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA, GL_FLOAT, &texData[0]);
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+
 		// render left image
-		uvwRenderPass.setFrameBufferObject( &uvwFBO );
-		uvwShaderProgram.update("view", view);
 		uvwRenderPass.render();
 		
-		OPENGLCONTEXT->bindFBO(0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-		shaderProgram.update("view", view);
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
 
-		// render right image
-		uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
-		uvwShaderProgram.update("view", view_r);
-		uvwRenderPass.render();
-		
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-		shaderProgram.update("view", view_r);
-		renderPass.setViewport(getResolution(window).x / 2, 0, getResolution(window).x / 2, getResolution(window).y);
-		renderPass.render();
+		// display right image
+		showTex.render();
 
-
-		//glBlendFunc(GL_ONE, GL_ZERO);
 		ImGui::Render();
 		//////////////////////////////////////////////////////////////////////////////
 	});

@@ -507,7 +507,7 @@ AssimpTools::MaterialInfo AssimpTools::getMaterialInfo(const aiScene* scene, int
     if(AI_SUCCESS == aiGetMaterialColor(m, AI_MATKEY_COLOR_REFLECTIVE, &temp))
         result.color[REFLECTIVE]= glm::vec4(temp.r, temp.g, temp.b, temp.a);
     if(AI_SUCCESS == aiGetMaterialColor(m, AI_MATKEY_COLOR_TRANSPARENT, &temp))
-        result.color[TRANSPARENT]= glm::vec4(temp.r, temp.g, temp.b, temp.a);
+        result.color[TRANSPARENT_]= glm::vec4(temp.r, temp.g, temp.b, temp.a);
 
     float scalar;
     if(AI_SUCCESS == aiGetMaterialFloat(m, AI_MATKEY_SHININESS, &scalar))
@@ -564,7 +564,7 @@ std::string AssimpTools::decodeColorType(ColorType type)
 	case DIFFUSE: return std::string("DIFFUSE");
 	case EMISSIVE: return std::string("EMISSIVE");
 	case REFLECTIVE: return std::string("REFLECTIVE");
-	case TRANSPARENT: return std::string("TRANSPARENT");
+	case TRANSPARENT_: return std::string("TRANSPARENT");
 	case SPECULAR: return std::string("SPECULAR");
 	default: std::string("UNKNOWN");
 	}

@@ -16,6 +16,7 @@ include_directories(
     ${GLM_INCLUDE_PATH}
 #    ${IMGUI_INCLUDE_PATH}
     ${OPENVR_INCLUDE_DIR}
+    ${SDL2_INCLUDE_PATH} #is included from OpenVR
     
     ${EXTERNAL_LIBRARY_PATHS}
     ${LIBRARIES_PATH}
@@ -32,6 +33,7 @@ file(GLOB_RECURSE HEADER *.h)
 
 add_definitions(-DSHADERS_PATH="${SHADERS_PATH}")
 add_definitions(-DRESOURCES_PATH="${RESOURCES_PATH}")
+add_definitions(-DADDITIONAL_RESOURCES_PATH="${ADDITIONAL_RESOURCES_PATH}")
 add_definitions(-DGLFW_INCLUDE_GLCOREARB)
 add_definitions(-DGLEW_STATIC)
 
@@ -46,4 +48,5 @@ target_link_libraries(
     ${OpenGL3_LIBRARIES}
     ${OPENVR_LIBRARIES}
     ${VTK_LIBRARIES}
+    ${SDL2_LIBRARIES}
 )

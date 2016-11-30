@@ -30,6 +30,8 @@ public:
 	void log(std::string msg, const glm::vec2& vector);
 	void log(std::string msg, const glm::vec3& vector);
 	void log(std::string msg, const glm::vec4& vector);
+	void log(std::string msg, const glm::mat3& matrix);
+	void log(std::string msg, const glm::mat4& matrix);
 	void indent();
 	void outdent();
 	void print() const;

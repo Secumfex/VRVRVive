@@ -98,7 +98,7 @@ void renderVTK()
 
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	renderVTK();
 	return 0;

@@ -6,20 +6,35 @@
 #include <Importing/Importer.h>
 
 #include <GL/glew.h>
+#include <SDL.h>
 #include <GLFW/glfw3.h>
 
 #include <functional>
 #include <glm/glm.hpp>
 
 class FrameBufferObject;
+//struct SDL_Window;
+
+void initSDL();
+void initGLFW();
+void initOpenGL();
 
 GLFWwindow* generateWindow(int width = 1280, int height = 720, int posX = 100, int posY = 100); //!< initialize OpenGL (if not yet initialized) and create a GLFW window
+SDL_Window* generateWindow_SDL(int width = 1280, int height = 720, int posX = 100, int posY = 100, Uint32 unWindowFlags = (SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN)); //!< initialize OpenGL (if not yet initialized) and create a SDL window
 bool shouldClose(GLFWwindow* window);
+bool shouldClose(SDL_Window* window);
 void swapBuffers(GLFWwindow* window);
+void swapBuffers(SDL_Window* window);
 void destroyWindow(GLFWwindow* window);
+void destroyWindow(SDL_Window* window);
 void render(GLFWwindow* window, std::function<void (double)> loop); //!< keep executing the provided loop function until the window is closed, swapping buffers and computing frame time (passed as argument to loop function)
 GLenum checkGLError(bool printIfNoError = false); //!< check for OpenGL errors and also print it to the console (optionally even if no error occured)
 std::string decodeGLError(GLenum error); //!< return string corresponding to an OpenGL error code (use with checkGLError)
+void printOpenGLInfo();
+/** print some information from the GPU about compute shader related stuff */
+void printComputeShaderInfo();
+
+void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventHandler = [](){return false;}); //!< poll events and send to event handler, also send to ui_eventHandler
 
 void setKeyCallback(GLFWwindow* window, std::function<void (int, int, int, int)> func); //!< set callback function called when a key is pressed
 void setMouseButtonCallback(GLFWwindow* window, std::function<void (int, int, int)> func); //!< set callback function called when a mouse button is pressed
@@ -29,9 +44,14 @@ void setScrollCallback(GLFWwindow* window, std::function<void (double, double)> 
 void setCursorEnterCallback(GLFWwindow* window, std::function<void (int)> func); //!< set callback function called when cursor enters window
 void setWindowResizeCallback(GLFWwindow* window, std::function<void (int, int)> func); //!< set callback function called when cursor enters window
 
+void printSDLRenderDriverInfo();
+//TODO SDL Event handler
+
 glm::vec2 getMainWindowResolution(); //!< returns width and height of the main window (if it exists)
 glm::vec2 getResolution(GLFWwindow* window);
+glm::vec2 getResolution(SDL_Window* window);
 float getRatio(GLFWwindow* window); //!< returns (width / height) of the window
+float getRatio(SDL_Window* window); //!< returns (width / height) of the window
 
 /**
 * @brief copies the content of one frame buffer to another, either a color attachment or the depth buffer etc
@@ -44,15 +64,28 @@ void copyFBOContent(FrameBufferObject* source, FrameBufferObject* target, GLbitf
 void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, glm::vec2 targetResolution, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< like above, but without FBO class
 
 
+GLuint createTexture(int width, int height, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);
+
 template <class T>
-GLuint bufferData(const std::vector<T>& content, GLenum drawType = GL_STATIC_DRAW)
+void uploadTextureData(GLuint texture, const std::vector<T>& content, GLenum format = GL_RGB, GLenum type = GL_FLOAT, int width = -1, int height = -1, int x = 0, int y = 0, int level=0){
+	OPENGLCONTEXT->bindTexture(texture);
+	GLint _width = width;
+	GLint _height = height;
+	if ( width  == -1 ) { glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH,  &_width ); }
+	if ( height == -1 ) { glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_HEIGHT, &_height); }
+	glTexSubImage2D(GL_TEXTURE_2D, level, x,y, _width, _height, format, type, &content[0] );
+	OPENGLCONTEXT->bindTexture(0);
+}
+
+template <class T>
+GLuint bufferData(const std::vector<T>& content, GLenum target = GL_ARRAY_BUFFER, GLenum drawType = GL_STATIC_DRAW)
 {
     GLuint vbo = 0;
 	if ( content.size() != 0 )// && content.size() % dimensions == 0 )
 	{
 		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, content.size() * sizeof(T), &content[0], drawType);
+		glBindBuffer(target, vbo);
+		glBufferData(target, content.size() * sizeof(T), &content[0], drawType);
 	}
     return vbo;
 }
