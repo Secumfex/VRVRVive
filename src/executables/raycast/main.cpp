@@ -230,16 +230,16 @@ int main(int argc, char *argv[])
 	// DEBUG
 	s_transferFunctionValues.clear();
 	s_transferFunctionColors.clear();
-	s_transferFunctionValues.push_back(0);
+	s_transferFunctionValues.push_back(164);
 	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.0, 0.0, 0.0));
-	s_transferFunctionValues.push_back(500);
-	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.1, 0.2, 0.01));
-	s_transferFunctionValues.push_back(1000);
-	s_transferFunctionColors.push_back(glm::vec4(1.0, 1.0, 1.0, 0.05));
-	s_transferFunctionValues.push_back(1500);
-	s_transferFunctionColors.push_back(glm::vec4(1.0, 0.9, 0.9, 0.05));
+	s_transferFunctionValues.push_back(312);
+	s_transferFunctionColors.push_back(glm::vec4(1.0, 0.07, 0.07, 0.6));
+	s_transferFunctionValues.push_back(872);
+	s_transferFunctionColors.push_back(glm::vec4(0.0, 0.5, 1.0, 0.3));
+	s_transferFunctionValues.push_back(1142);
+	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.3, 0.8, 0.0));
 	s_transferFunctionValues.push_back(2500);
-	s_transferFunctionColors.push_back(glm::vec4(0.4, 0.3, 0.5, 0.01));
+	s_transferFunctionColors.push_back(glm::vec4(0.95, 0.83, 1.0, 1.0));
 	updateTransferFunctionTex();
 
 	// bind volume texture, back uvw textures, front uvws
