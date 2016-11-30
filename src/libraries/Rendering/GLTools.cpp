@@ -100,7 +100,7 @@ SDL_Window* generateWindow_SDL(int width, int height, int posX, int posY, Uint32
 
     //SDL_DisplayMode current;
     //SDL_GetCurrentDisplayMode(0, &current);
-    SDL_Window *window = SDL_CreateWindow("ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, unWindowFlags);
+    SDL_Window *window = SDL_CreateWindow("ImGui SDL2+OpenGL3 example", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, unWindowFlags);
 
 
 	g_sdl_glcontext = SDL_GL_CreateContext(window);
