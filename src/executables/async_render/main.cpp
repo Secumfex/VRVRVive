@@ -33,7 +33,7 @@ const double NANOSECONDS_TO_MILLISECONDS = 1.0 / 1000000.0;
 const int NUM_INSTANCES = 1000;
 
 static const int TEXTURE_SIZE = 512;
-const int SCREEN_WIDTH = 800;
+const int SCREEN_WIDTH = 1200;
 const int SCREEN_HEIGHT = 600;
 
 
@@ -66,7 +66,7 @@ public:
 	int curFidx; // current frame index
 	std::vector<float> renderTimes;
 	float renderTime;
-	float targetRenderTime;
+	float targetRenderTime; // maximum time allowed to spend in rendering in this procedure
 	void profileRendertime();
 	GLuint m_queryObjects[1]; // for render time
 
@@ -177,7 +177,7 @@ void SlowThread::adjustRenderload()
 	{
 		if (avgTDelta < 0.0f) // should remove calls
 		{
-			numDrawsPerCall--;
+			numDrawsPerCall-=3;
 		}
 		else
 		{
@@ -196,7 +196,7 @@ SlowThread::SlowThread(Renderable* renderable, ShaderProgram* shaderProgram, Fra
 	fbo(fbo),
 	isFinished(false),
 	colorOffset(0),
-	targetRenderTime(16.0f),
+	targetRenderTime(13.0f),
 	renderTime(10.0f),
 	adjustmentFactor(0.5f)
 {
@@ -216,7 +216,7 @@ private: // SDL bookkeeping
 	SDL_GLContext m_pContext;
 	GLFWwindow	 *m_pGLFWwindow;
 
-	RenderPass*	m_pRenderThread;
+	RenderPass*		m_pRenderThread;
 	SlowThread*		m_pSlowThread;
 	
 	Renderable*			m_pRenderable;
@@ -226,6 +226,15 @@ private: // SDL bookkeeping
 	FrameBufferObject*	m_pFbo;
 	FrameBufferObject*	m_pFboDisplay[2];
 	int					m_activeDisplayFBO;
+
+	glm::vec4 m_eye;
+	glm::vec4 m_center;
+	glm::mat4 m_view; // the current view matrix
+	glm::mat4 m_viewRenderingIssued; // the view matrix the current rendering was issued with
+	glm::mat4 m_viewRenderingPresent; // the view matrix the last finished rendering was issued with
+	glm::mat4 m_perspective;
+
+
 public:
 	CMainApplication( int argc, char *argv[] ):
 		m_activeDisplayFBO(0)
@@ -285,27 +294,34 @@ public:
 
 	void loadShaders()
 	{
-		glm::vec4 eye(0.0f, 0.0f, 5.0f, 1.0f);
-		glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-		glm::mat4 view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0,1,0));
-		glm::mat4 perspective = glm::perspective(glm::radians(65.f), ((float)(SCREEN_WIDTH/2)/(float)SCREEN_HEIGHT), 0.1f, 10.f);
-
 		DEBUGLOG->log("Render Configuration: Slow Rendering"); DEBUGLOG->indent();
 		m_pSlowShader = new ShaderProgram("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleLighting.frag");
-		m_pFastShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/modelSpace/simpleColor.frag");
+		m_pFastShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
 		m_pFbo		  = new FrameBufferObject(m_pSlowShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
 		m_pFboDisplay[0] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
 		m_pFboDisplay[1] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
 
-		m_pSlowShader->update("view", view);
-		m_pSlowShader->update("projection", perspective);
+		m_pSlowShader->update("view", m_view); //initial, will be overwritten when on every "iteration"
+		m_pSlowShader->update("projection", m_perspective);
 		m_pSlowShader->update("color", glm::vec4(1.0));
 
 		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[0]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		m_pFastShader->update("blendColor", 0.5f);
-		DEBUGLOG->outdent();
+		m_pFastShader->update( "blendColor", 0.5f );
+		m_pFastShader->update( "newView", m_view );
+		m_pFastShader->update( "oldView", m_viewRenderingPresent ); 
+		m_pFastShader->update( "projection", m_perspective ); 
+	DEBUGLOG->outdent();
 	}
 
+	void initSceneVariables()
+	{
+		m_eye = glm::vec4(0.0f, 0.0f, 5.0f, 1.0f);
+		m_center = glm::vec4(1.0f,0.0f,0.0f,1.0f);
+		m_view = glm::lookAt(glm::vec3(m_eye), glm::vec3(m_center), glm::vec3(0,1,0));
+		m_viewRenderingPresent = m_view;
+		m_viewRenderingIssued= m_view;
+		m_perspective = glm::perspective(glm::radians(65.f), ((float)(SCREEN_WIDTH/2)/(float)SCREEN_HEIGHT), 0.1f, 20.f);
+	}
 
 	void initThreads()
 	{
@@ -327,8 +343,15 @@ public:
 
 		//switch active display fbo
 		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_viewRenderingPresent = m_viewRenderingIssued;
 		m_activeDisplayFBO = (m_activeDisplayFBO+1)%2;
+		m_pFastShader->update( "oldView", m_viewRenderingPresent ); // update with old view
+	}
 
+	void updateSlowRenderThread()
+	{
+		m_viewRenderingIssued = m_view;
+		m_pSlowThread->shaderProgram->update("view", m_viewRenderingIssued); // update with current view
 	}
 
 
@@ -342,9 +365,11 @@ public:
 			pollSDLEvents(m_pWindow, ImGui_ImplSdlGL3_ProcessEvent);
 			
 			static bool autoCorrect = false;
+			static bool translateCam = false;
 			{
 				static float f = 10.0f;
 				ImGui::Checkbox("auto adjust render time", &autoCorrect);
+				ImGui::Checkbox("animate cam-translation", &translateCam);
 				ImGui::ColorEdit3("clear color", (float*)&clear_color);
 				glClearColor(clear_color.x,clear_color.y,clear_color.z,0.0);
 				ImGui::SliderInt("Num Draws per Call",&m_pSlowThread->numDrawsPerCall, 1,NUM_INSTANCES);
@@ -358,9 +383,18 @@ public:
 				float g = cos( ImGui::GetTime() * 4.0f ) * 0.25 + 0.75f;
 				float b = cos( ImGui::GetTime() * 4.0f + 1.42f ) * 0.25 + 0.75f;
 				m_pFastShader->update( "color", glm::vec4(r,g,b,1.0) );
+
+				// update view
+				if (translateCam)
+				{
+					m_eye = glm::vec4(0.5f * sin(ImGui::GetTime()+1.4f), 0.5f * cos(ImGui::GetTime()+1.4f), 5.f, 1.0f);
+				}
+
+				m_center = glm::vec4(sin(ImGui::GetTime()), cos(ImGui::GetTime()), 0.0f, 1.0f);
+				m_view = glm::lookAt(glm::vec3(m_eye), glm::vec3(m_center), glm::vec3(0,1,0));
+				m_pFastShader->update( "newView", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
 			}
 
-			
 			m_pSlowThread->render();
 
 			copyFBOContent(m_pFbo->getFramebufferHandle(), 0, glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), GL_COLOR_BUFFER_BIT);
@@ -373,6 +407,7 @@ public:
 			if (m_pSlowThread->isFinished)
 			{
 				updateFastRenderThread();
+				updateSlowRenderThread();
 			}
 			else
 			{
@@ -399,6 +434,8 @@ int main(int argc, char *argv[])
 {
 	srand(time(NULL));
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
+
+	pMainApplication->initSceneVariables();
 
 	pMainApplication->loadObject();
 
