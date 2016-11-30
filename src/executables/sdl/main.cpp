@@ -47,13 +47,48 @@ public:
 			pollSDLEvents(m_pWindow, ImGui_ImplSdlGL3_ProcessEvent);
 
 			{
-				static float f = 0.0f;
-				ImGui::Text("Hello, world!");
-				ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
+				static float f = 30.0f;
+				static float pos_x = 30.0f;
+				static float pos_x2 = 30.0f;
+				ImGui::SliderFloat("spacing", &f, 0.0f, 100.0f);
+				ImGui::SliderFloat("pos_x", &pos_x, 0.0f, 100.0f);
+				ImGui::SliderFloat("pos_x2", &pos_x2, 0.0f, 100.0f);
 				ImGui::ColorEdit3("clear color", (float*)&clear_color);
 				glClearColor(clear_color.x,clear_color.y,clear_color.z,0.0);
 				if (ImGui::Button("Test Window")) show_test_window ^= 1;
 				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+				
+				ImGui::Columns(4, "mycolumns"); // 4-ways, with border
+				ImGui::SetColumnOffset(0,0);
+				ImGui::SetColumnOffset(1,100);
+				ImGui::SetColumnOffset(2,200);
+				ImGui::SetColumnOffset(3,300);
+			   
+				// column 0
+					ImGui::BeginGroup();
+						ImGui::ProgressBar(0.1f, ImVec2(30.0f,0.0));
+						ImGui::ProgressBar(0.2f, ImVec2(20.0f,0.0));
+					ImGui::EndGroup();
+				ImGui::NextColumn();
+				
+				//column 1
+				ImGui::BeginGroup();
+						ImGui::ProgressBar(0.1f, ImVec2(30.0f,0.0));
+						ImGui::ProgressBar(0.2f, ImVec2(20.0f,0.0));
+					ImGui::EndGroup();
+				ImGui::SameLine(0.0f,10.0f);
+				ImGui::ProgressBar(1.0f, ImVec2(10.0f,0.0));
+				ImGui::NextColumn();
+				
+				//column 2
+				ImGui::Text("Colum 2");
+				ImGui::NextColumn();
+				
+				//column 3
+				ImGui::Text("Colum 3");
+				ImGui::NextColumn();
+
 			}
 
 			ImGui::Render();
