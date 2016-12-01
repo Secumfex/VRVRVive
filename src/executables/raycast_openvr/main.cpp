@@ -62,6 +62,10 @@ glm::mat4 m_mat4HMDPose;
 glm::mat4 m_mat4eyePosLeft;
 glm::mat4 m_mat4eyePosRight;
 
+glm::mat4 s_translation;
+glm::mat4 s_rotation;
+glm::mat4 s_scale;
+
 //////////////////////////////////////////////////////////////////////////////
 ////////////////////////////// MISC //////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -392,9 +396,11 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 	
 	/////////////////////     Scene / View Settings     //////////////////////////
-	glm::mat4 model = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
+	s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
+	s_scale = glm::scale(glm::vec3(1.0f,-1.0f,1.0f));
+	s_rotation = glm::mat4(1.0f);
+
 	//glm::mat4 model(1.0f)
-	model[1] = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f); // flip y, based on data set
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
 
@@ -435,7 +441,7 @@ int main(int argc, char *argv[])
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
 	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
-	uvwShaderProgram.update("model", model);
+	uvwShaderProgram.update("model", s_translation * s_rotation * s_scale);
 	uvwShaderProgram.update("view", s_view);
 	uvwShaderProgram.update("projection", s_perspective);
 
@@ -502,69 +508,73 @@ int main(int argc, char *argv[])
 	Turntable turntable;
 	double old_x;
     double old_y;
-	//glfwGetCursorPos(window, &old_x, &old_y); //TODO SDL handler
-	
-	auto cursorPosCB = [&](double x, double y)
+
+
+	//handles all the sdl events
+	auto sdlEventHandler = [&](SDL_Event *event)
 	{
-		ImGuiIO& io = ImGui::GetIO();
-		if ( io.WantCaptureMouse )
-		{ return; } // ImGUI is handling this
-
-		double d_x = x - old_x;
-		double d_y = y - old_y;
-
-		if ( turntable.getDragActive() )
+		bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
+		switch(event->type)
 		{
-			turntable.dragBy(d_x, d_y, s_view);
-		}
+			case SDL_KEYDOWN:
+			{
+				int k = event->key.keysym.sym;
+				switch (k)
+				{
+					case SDLK_w:
+						s_translation = glm::translate( glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f))) * s_translation;
+						break;
+					case SDLK_a:
+						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f))) * s_translation;
+						break;
+					case SDLK_s:
+						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f))) * s_translation;
+						break;
+					case SDLK_d:
+						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
+						break;
+					default:
+						break;
+				}
+				break;
+			}
+			case SDL_MOUSEMOTION:
+			{
+				ImGuiIO& io = ImGui::GetIO();
+				if ( io.WantCaptureMouse )
+				{ break; } // ImGUI is handling this
 
-		old_x = x;
-		old_y = y;
+				double d_x = event->motion.x - old_x;
+				double d_y = event->motion.y - old_y;
+
+				if ( turntable.getDragActive() )
+				{
+					turntable.dragBy(d_x, d_y, s_view);
+				}
+
+				old_x = event->motion.x;
+				old_y = event->motion.y;
+				break;
+			}
+			case SDL_MOUSEBUTTONDOWN:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
+				{
+					turntable.setDragActive(true);
+				}
+				break;
+			}
+			case SDL_MOUSEBUTTONUP:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
+				{
+					turntable.setDragActive(false);
+				}
+				break;
+			}
+		}
+		return true;
 	};
-
-	auto mouseButtonCB = [&](int b, int a, int m)
-	{
-		if (b == GLFW_MOUSE_BUTTON_LEFT && a == GLFW_PRESS)
-		{
-			turntable.setDragActive(true);
-		}
-		if (b == GLFW_MOUSE_BUTTON_LEFT && a == GLFW_RELEASE)
-		{
-			turntable.setDragActive(false);
-		}
-
-		(window, b, a, m);
-	};
-
-	auto keyboardCB = [&](int k, int s, int a, int m)
-	{
-		if (a == GLFW_RELEASE) {return;} 
-		switch (k)
-		{
-			case GLFW_KEY_W:
-				eye += glm::inverse(s_view)    * glm::vec4(0.0f,0.0f,-0.1f,0.0f);
-				center += glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f);
-				break;
-			case GLFW_KEY_A:
-				eye += glm::inverse(s_view)	 * glm::vec4(-0.1f,0.0f,0.0f,0.0f);
-				center += glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f);
-				break;
-			case GLFW_KEY_S:
-				eye += glm::inverse(s_view)    * glm::vec4(0.0f,0.0f,0.1f,0.0f);
-				center += glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f);
-				break;
-			case GLFW_KEY_D:
-				eye += glm::inverse(s_view)    * glm::vec4(0.1f,0.0f,0.0f,0.0f);
-				center += glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f);
-				break;
-			default:
-				break;
-		}
-	};
-
-	//setCursorPosCallback(window, cursorPosCB);
-	//setMouseButtonCallback(window, mouseButtonCB);
-	//setKeyCallback(window, keyboardCB);
 
 	std::string window_header = "Volume Renderer - OpenVR";
 	SDL_SetWindowTitle(window, window_header.c_str() );
@@ -584,7 +594,7 @@ int main(int argc, char *argv[])
         ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 		ImGui_ImplSdlGL3_NewFrame(window);
-		pollSDLEvents(window, ImGui_ImplSdlGL3_ProcessEvent);
+		pollSDLEvents(window, sdlEventHandler);
 	
 		ImGui::Value("FPS", io.Framerate);
 
@@ -625,7 +635,7 @@ int main(int argc, char *argv[])
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		if (s_isRotating) // update s_view matrix
 		{
-			model = glm::rotate(glm::mat4(1.0f), (float) io.DeltaTime, glm::vec3(0.0f, 1.0f, 0.0f) ) * model;
+			s_rotation = glm::rotate(glm::mat4(1.0f), (float) io.DeltaTime, glm::vec3(0.0f, 1.0f, 0.0f) ) * s_rotation;
 		}
 
 		// use waitgetPoses to update matrices, or just use regular stuff
@@ -644,7 +654,7 @@ int main(int argc, char *argv[])
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
-		uvwShaderProgram.update("model", turntable.getRotationMatrix() * model);
+		uvwShaderProgram.update("model", s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
 		uvwShaderProgram.update("view", s_view);
 
 		/************* update color mapping parameters ******************/
@@ -705,6 +715,7 @@ int main(int argc, char *argv[])
 	}
 	
 	ImGui_ImplSdlGL3_Shutdown();
+	vr::VR_Shutdown();
 	destroyWindow(window);
 	SDL_Quit();
 
