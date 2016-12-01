@@ -9,11 +9,13 @@
 #include <UI/imgui/imgui.h>
 #include <UI/imgui_impl_glfw_gl3.h>
 #include <UI/imgui_impl_sdl_gl3.h>
-
+#include <UI/Profiler.h>
 
 static const int TEXTURE_SIZE = 512;
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
+
+
 
 class CMainApplication
 {
@@ -21,6 +23,8 @@ private: // SDL bookkeeping
 	SDL_Window *m_pWindow;
 	SDL_GLContext m_pContext;
 	GLFWwindow *m_pGLFWwindow;
+
+	Profiler m_profiler;
 public:
 	CMainApplication( int argc, char *argv[] ){
 		DEBUGLOG->setAutoPrint(true);
@@ -39,6 +43,20 @@ public:
 	void loop(){
 	    bool show_test_window = true;
 		ImVec4 clear_color = ImColor(114, 144, 154);
+
+		//++++++ DEBUG ++++
+		// add some dummy data
+		m_profiler.addMarkerTime(0.1f, "one");
+		m_profiler.addMarkerTime(0.4f, "two");
+		m_profiler.addMarkerTime(0.6f, "three");
+		
+		m_profiler.addRangeTime(0.1f, 0.2f, "one");
+		m_profiler.addRangeTime(0.55f, 0.8f, "two");
+		m_profiler.addRangeTime(0.75f, 0.9f, "three");
+		
+		m_profiler.addColumn(0.25f);
+		m_profiler.addColumn(0.45f);
+		//++++++ DEBUG ++++
 
 		while ( !shouldClose(m_pWindow) )
 		{
@@ -64,7 +82,7 @@ public:
 				ImGui::SetColumnOffset(1,100);
 				ImGui::SetColumnOffset(2,200);
 				ImGui::SetColumnOffset(3,300);
-			   
+
 				// column 0
 					ImGui::BeginGroup();
 						ImGui::ProgressBar(0.1f, ImVec2(30.0f,0.0));
@@ -88,8 +106,9 @@ public:
 				//column 3
 				ImGui::Text("Colum 3");
 				ImGui::NextColumn();
-
 			}
+
+			m_profiler.imguiInterface(0.0f, 1.0f);
 
 			ImGui::Render();
 			SDL_GL_SwapWindow( m_pWindow );
