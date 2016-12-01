@@ -78,14 +78,40 @@ void OpenGLContext::updateTextureCache(int MAX_NUM_CACHED_TEXTURES)
 			}
 		}
 
-		bool hasTexture = (cacheTextures.find(i) != cacheTextures.end());
-		if ( (!hasTexture && textureHandle != 0) || (hasTexture && textureHandle != cacheTextures.at(i)))
+		bool hasTexture = (cacheTextures.find(GL_TEXTURE0 + i) != cacheTextures.end());
+		if ( (!hasTexture && textureHandle != 0) || (hasTexture && textureHandle != cacheTextures.at(GL_TEXTURE0 + i)))
 		{
-			cacheTextures[i] = textureHandle;
+			cacheTextures[GL_TEXTURE0 + i] = textureHandle;
 		}
 	}
 
 	glActiveTexture(cacheActiveTexture);
+}
+
+void OpenGLContext::updateActiveTextureCache()
+{
+	glGetIntegerv(GL_ACTIVE_TEXTURE, (GLint*) &cacheActiveTexture);
+	GLint textureHandle;
+
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &textureHandle);
+	if ( textureHandle == 0 )
+	{
+		glGetIntegerv(GL_TEXTURE_BINDING_3D, &textureHandle);
+		if ( textureHandle == 0 )
+		{
+			glGetIntegerv(GL_TEXTURE_BINDING_1D, &textureHandle);
+			if ( textureHandle == 0 )
+			{
+				glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP, &textureHandle);
+			}
+		}
+	}
+
+	bool hasTexture = (cacheTextures.find(cacheActiveTexture) != cacheTextures.end());
+	if ( (!hasTexture && textureHandle != 0) || (hasTexture && textureHandle != cacheTextures.at(cacheActiveTexture)))
+	{
+		cacheTextures[cacheActiveTexture] = textureHandle;
+	}
 }
 
 void OpenGLContext::updateCurrentTextureCache()

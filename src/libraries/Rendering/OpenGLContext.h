@@ -36,6 +36,7 @@ public:
 	void updateBindingCache(); //retrieve currently bound FBO, VAO, ShaderProgram
 	void updateWindowCache(); //retrieve current Viewport, WindowSize, Window
 	void updateTextureCache(int MAX_NUM_CACHED_TEXTURES = 12); //retrieve currently bound textures
+	void updateActiveTextureCache(); //retrieve currently bound texture
 	void updateCurrentTextureCache(); //retrieve currently bound textures looking only at the units already in cache
 
 	// methods only issuing OpenGL commands if cached value difffers
