@@ -17,8 +17,8 @@
 #include <glm/gtx/transform.hpp>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static float s_minValue = INT_MIN; // minimal value in data set; to be overwitten after import
-static float s_maxValue = INT_MAX;  // maximal value in data set; to be overwitten after import
+static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
+static float s_maxValue = (float) INT_MAX;  // maximal value in data set; to be overwitten after import
 
 static bool  s_isRotating = false; 	// initial state for rotating animation
 static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten after volume data import
@@ -192,8 +192,15 @@ int main(int argc, char *argv[])
 
 	// create Volume and VertexGrid
 	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
-	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y);
+	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
 	Quad quad;
+
+	//int w = getResolution(window).x/2;
+	//int h = getResolution(window).y;
+	//float s = 16.0f; 
+	//float sw = w / s;
+	//float sh = h / s; 
+	//Grid grid(w / s, h / s, 2.0f / sw, 2.0f / sh, true); 
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();

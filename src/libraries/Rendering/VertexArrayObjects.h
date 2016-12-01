@@ -134,7 +134,7 @@ public:
     */
     ~Grid();
 
-    void draw() override; //!< draws the sphere
+    void draw() override; //!< draws the grid
 
 protected:
 };
@@ -151,7 +151,7 @@ public:
 	/**
 	* @param doScaleCoords boolean indicating whether coordinates should be scaled to [-1,1] or left at [0..width\height]
 	*/
-	VertexGrid(int width, int height, bool doScaleCoords = true, VertexOrder order = TOP_RIGHT_COLUMNWISE);
+	VertexGrid(int width, int height, bool doScaleCoords = true, VertexOrder order = TOP_RIGHT_COLUMNWISE, glm::ivec2 groupSize = glm::ivec2(-1));
 	//~VertexGrid();
 };
 

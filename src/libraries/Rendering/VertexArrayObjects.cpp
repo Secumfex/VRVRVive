@@ -1239,10 +1239,9 @@ void Grid::draw()
     // glDrawArrays(GL_POINTS,  0, m_positions.m_size);
 }
 
-VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder order)
+VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder order, glm::ivec2 groupSize)
 {
 	// create Data
-	
 	std::vector<float> vertexGridData(width * height * 2);
 	std::vector<float> uvData(width * height * 2);
 
@@ -1252,22 +1251,51 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 		DEBUGLOG->log("Sorry, only TOP_RIGHT_COLUMNWISE order supported.");
 	}
 
-	
-
-	for (int j = width - 1; j >= 0; j--) // from right
+	auto setVertex = [&](int vIdx, float x, float y)
 	{
-		for (int i = height - 1; i >= 0; i--) // from top 
+		float nX = ((float) x + 0.5f) / (float) width;  // 0..1
+		float nY = ((float) y + 0.5f) / (float) height; // 0..1
+		vertexGridData[vIdx+0] = (doScaleCoords) ? ( nX ) : x; // x
+		vertexGridData[vIdx+1] = (doScaleCoords) ? ( nY ) : y; // y
+		uvData[vIdx+0] = nX;
+		uvData[vIdx+1] = nY; 
+	};
+
+	if (groupSize != glm::ivec2(-1)) // has been provided
+	{
+		// always process groups from top right to bottom left
+		for (int curX = width-1; curX > 0; curX -= (groupSize.x+1))
 		{
-			float nX = ((float) j + 0.5f) / (float) width;  // 0..1
-			float nY = ((float) i + 0.5f) / (float) height; // 0..1
-			vertexGridData[vIdx+0] = (doScaleCoords) ? ( nX ) : j; // x
-			vertexGridData[vIdx+1] = (doScaleCoords) ? ( nY ) : i; // y
-			uvData[vIdx+0] = nX;
-			uvData[vIdx+1] = nY; 
-			vIdx += 2;
+		for( int curY = height -1; curY > 0; curY -= (groupSize.y+1) )
+		{
+				// process inner group from top right to bottom left
+				for (int j = curX; j >= curX - groupSize.x; j--) // from right
+				{
+				for (int i = curY; i >= curY - groupSize.y; i--) // from top 
+				{
+					if ( i < 0 || j < 0 || vIdx >= vertexGridData.size() )
+					{
+						break;
+					}
+
+					setVertex(vIdx, i, j);
+					vIdx += 2;
+				}
+				}
+		}
 		}
 	}
-	
+	else
+	{
+		for (int j = width - 1; j >= 0; j--) // from right
+		{
+			for (int i = height - 1; i >= 0; i--) // from top 
+			{
+				setVertex(vIdx, i, j);
+				vIdx += 2;
+			}
+		}
+	}
 	glGenVertexArrays(1, &(m_vao));
 	OPENGLCONTEXT->bindVAO(m_vao);
 
