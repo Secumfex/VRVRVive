@@ -348,9 +348,9 @@ void updateTrackedDevicePoses()
 
 void submitImage(GLuint source, vr::EVREye eye)
 {
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE11); // some unused tex slot
 	vr::Texture_t leftEyeTexture = {(void*) source, vr::API_OpenGL, vr::ColorSpace_Gamma };
 	vr::VRCompositor()->Submit(eye, &leftEyeTexture );
+	OPENGLCONTEXT->updateActiveTextureCache(); // Due to dirty state
 }
 
 
@@ -404,7 +404,7 @@ int main(int argc, char *argv[])
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
 
-	//TODO use waitgetPoses to update matrices
+	// use waitgetPoses to update matrices
 	s_view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 	s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 	if (!m_pHMD)
@@ -419,18 +419,18 @@ int main(int argc, char *argv[])
 		s_perspective = m_mat4ProjectionLeft; 
 		s_perspective_r = m_mat4ProjectionRight; 
 
-		DEBUGLOG->log("LEFT EYE"); DEBUGLOG->indent();
-			DEBUGLOG->log("eyepos", m_mat4eyePosLeft);
-			DEBUGLOG->log("projection", m_mat4ProjectionLeft);
-			DEBUGLOG->log("view", s_view);
-			DEBUGLOG->log("perspective", s_perspective); 
-		DEBUGLOG->outdent();
-		DEBUGLOG->log("RIGHT EYE"); DEBUGLOG->indent();
-			DEBUGLOG->log("eyepos", m_mat4eyePosRight);
-			DEBUGLOG->log("projection", m_mat4ProjectionRight);
-			DEBUGLOG->log("view_r", s_view_r);
-			DEBUGLOG->log("perspective_r", s_perspective_r);
-		DEBUGLOG->outdent();
+		//DEBUGLOG->log("LEFT EYE"); DEBUGLOG->indent();
+		//	DEBUGLOG->log("eyepos", m_mat4eyePosLeft);
+		//	DEBUGLOG->log("projection", m_mat4ProjectionLeft);
+		//	DEBUGLOG->log("view", s_view);
+		//	DEBUGLOG->log("perspective", s_perspective); 
+		//DEBUGLOG->outdent();
+		//DEBUGLOG->log("RIGHT EYE"); DEBUGLOG->indent();
+		//	DEBUGLOG->log("eyepos", m_mat4eyePosRight);
+		//	DEBUGLOG->log("projection", m_mat4ProjectionRight);
+		//	DEBUGLOG->log("view_r", s_view_r);
+		//	DEBUGLOG->log("perspective_r", s_perspective_r);
+		//DEBUGLOG->outdent();
 	}
 
 
@@ -696,8 +696,8 @@ int main(int argc, char *argv[])
 		renderPass.render();
 
 		// display left and right image
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);
 
 		showTexShader.update("tex", 10);
 		showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
