@@ -36,6 +36,8 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
+static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.1f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
+
 struct TFPoint{
 	int v; // value 
 	glm::vec4 col; // mapped color
@@ -228,11 +230,11 @@ glm::mat4 ConvertSteamVRMatrixToGLMMat4( const vr::HmdMatrix34_t &matPose )
 //-----------------------------------------------------------------------------
 bool setupOpenVR()
 {
-	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
-	{
-		printf("%s - SDL could not initialize! SDL Error: %s\n", __FUNCTION__, SDL_GetError());
-		return false;
-	}
+	//if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
+	//{
+	//	printf("%s - SDL could not initialize! SDL Error: %s\n", __FUNCTION__, SDL_GetError());
+	//	return false;
+	//}
 
 	// Loading the SteamVR Runtime
 	vr::EVRInitError eError = vr::VRInitError_None;
@@ -348,8 +350,9 @@ void updateTrackedDevicePoses()
 
 void submitImage(GLuint source, vr::EVREye eye)
 {
-	vr::Texture_t leftEyeTexture = {(void*) source, vr::API_OpenGL, vr::ColorSpace_Gamma };
-	vr::VRCompositor()->Submit(eye, &leftEyeTexture );
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE11); // Some unused unit
+	vr::Texture_t eyeTexture = {(void*) source, vr::API_OpenGL, vr::ColorSpace_Gamma };
+	vr::VRCompositor()->Submit(eye, &eyeTexture );
 	OPENGLCONTEXT->updateActiveTextureCache(); // Due to dirty state
 }
 
@@ -365,6 +368,23 @@ int main(int argc, char *argv[])
 
 	// create window and opengl context
 	auto window = generateWindow_SDL(1600,800);
+	SDL_DisplayMode currentDisplayMode;
+	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
+
+	DEBUGLOG->log("SDL Display Mode");
+	{ DEBUGLOG->indent();
+	DEBUGLOG->log("w: ", currentDisplayMode.w);
+	DEBUGLOG->log("h: ", currentDisplayMode.h);
+	DEBUGLOG->log("refresh rate: ", currentDisplayMode.refresh_rate);
+	} DEBUGLOG ->outdent();
+
+	// set refresh rate higher
+	currentDisplayMode.refresh_rate = 90;
+	SDL_SetWindowDisplayMode(window, &currentDisplayMode);
+
+	// check
+	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
+	DEBUGLOG->log("updated refresh rate: ", currentDisplayMode.refresh_rate);
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// INITIALIZE OPENVR   //////////////////////////////////
@@ -486,6 +506,7 @@ int main(int argc, char *argv[])
 
 	RenderPass renderPass(&shaderProgram, &FBO);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	renderPass.setClearColor(0.1f,0.12f,0.15f,0.0f);
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
@@ -508,7 +529,6 @@ int main(int argc, char *argv[])
 	Turntable turntable;
 	double old_x;
     double old_y;
-
 
 	//handles all the sdl events
 	auto sdlEventHandler = [&](SDL_Event *event)
@@ -584,10 +604,9 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	//++++++++++++++ DEBUG
-
 	//++++++++++++++ DEBUG
-
 	double elapsedTime = 0.0;
+	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
 	{
 		////////////////////////////////     GUI      ////////////////////////////////
@@ -597,6 +616,7 @@ int main(int argc, char *argv[])
 		pollSDLEvents(window, sdlEventHandler);
 	
 		ImGui::Value("FPS", io.Framerate);
+		mirrorScreenTimer += io.DeltaTime;
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
@@ -699,22 +719,31 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);
 
-		showTexShader.update("tex", 10);
-		showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
-		showTex.render();
-		showTexShader.update("tex", 9);
-		showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
-		showTex.render();
-
 		if ( m_pHMD )
 		{
 			submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
 			submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
 		}
 
-		ImGui::Render();
-		//////////////////////////////////////////////////////////////////////////////
-		SDL_GL_SwapWindow( window ); // swap buffers
+		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL)
+		{
+			showTexShader.update("tex", 10);
+			showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+			showTex.render();
+			showTexShader.update("tex", 9);
+			showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+			showTex.render();
+
+			//////////////////////////////////////////////////////////////////////////////
+			ImGui::Render();
+			SDL_GL_SwapWindow( window ); // swap buffers
+
+			mirrorScreenTimer = 0.0f;
+		}
+		else
+		{
+			glFlush(); // just Flush
+		}
 	}
 	
 	ImGui_ImplSdlGL3_Shutdown();
