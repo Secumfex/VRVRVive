@@ -285,6 +285,12 @@ void pollSDLEvents(SDL_Window* window, std::function<bool(SDL_Event*)> ui_eventH
 
 		switch(sdlEvent.type)
 		{
+		case SDL_WINDOWEVENT:
+			if (sdlEvent.window.event == SDL_WINDOWEVENT_CLOSE)
+			{
+				g_shouldClose_SDL = true;
+			}
+			break;
 		case SDL_QUIT:
 			g_shouldClose_SDL = true;
 			break;
