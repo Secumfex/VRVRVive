@@ -6,8 +6,6 @@
 
 //!< in-variable
 in vec3 passPosition;
-in vec2 passUVCoord;
-in vec3 passNormal;
 
 //!< uniforms
 uniform vec4 color;
