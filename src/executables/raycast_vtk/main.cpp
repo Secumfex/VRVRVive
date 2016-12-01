@@ -64,6 +64,7 @@ static int s_curFPSidx = 0;
 GLuint loadVTKVolume(std::string filename) //todo replace
 {
 	// VTK is shit and deserves to die
+	return 0;
 }
 
 
