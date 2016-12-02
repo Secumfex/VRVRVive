@@ -46,13 +46,13 @@ public:
 
 		//++++++ DEBUG ++++
 		// add some dummy data
-		m_profiler.addMarkerTime(0.1f, "one");
+		m_profiler.addMarkerTime(0.1f, "one", "Something happened!");
 		m_profiler.addMarkerTime(0.4f, "two");
 		m_profiler.addMarkerTime(0.6f, "three");
 		
 		m_profiler.addRangeTime(0.1f, 0.2f, "one");
 		m_profiler.addRangeTime(0.55f, 0.8f, "two");
-		m_profiler.addRangeTime(0.75f, 0.9f, "three");
+		m_profiler.addRangeTime(0.75f, 0.9f, "three", "Something time");
 		
 		m_profiler.addColumn(0.25f);
 		m_profiler.addColumn(0.45f);
@@ -95,7 +95,7 @@ public:
 						ImGui::ProgressBar(0.1f, ImVec2(30.0f,0.0));
 						ImGui::ProgressBar(0.2f, ImVec2(20.0f,0.0));
 					ImGui::EndGroup();
-				ImGui::SameLine(0.0f,10.0f);
+				//ImGui::SameLine(0.0f,10.0f);
 				ImGui::ProgressBar(1.0f, ImVec2(10.0f,0.0));
 				ImGui::NextColumn();
 				
@@ -106,9 +106,13 @@ public:
 				//column 3
 				ImGui::Text("Colum 3");
 				ImGui::NextColumn();
+				ImGui::Columns(1);
 			}
 
-			m_profiler.imguiInterface(0.0f, 1.0f);
+			static bool profiler_visible = false;
+			ImGui::Checkbox("Profiler", &profiler_visible);
+
+			if (profiler_visible) { m_profiler.imguiInterface(0.0f, 1.0f, &profiler_visible); };
 
 			ImGui::Render();
 			SDL_GL_SwapWindow( m_pWindow );
