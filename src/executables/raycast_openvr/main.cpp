@@ -416,8 +416,8 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 	
 	/////////////////////     Scene / View Settings     //////////////////////////
-	s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
-	s_scale = glm::scale(glm::vec3(1.0f,-1.0f,1.0f));
+	s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
+	s_scale = glm::scale(glm::vec3(0.3f,-0.3f,0.3f));
 	s_rotation = glm::mat4(1.0f);
 
 	//glm::mat4 model(1.0f)
