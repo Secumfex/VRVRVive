@@ -403,22 +403,31 @@ int main(int argc, char *argv[])
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH;
 	file += std::string( "/volumes/CTHead/CThead");
-	VolumeData<short> volumeData = Importer::load3DData<short>(file, 256, 256, 113, 2);
-	GLuint volumeTextureCT = loadTo3DTexture<short>(volumeData);
+	VolumeData<float> volumeData = Importer::load3DData<float>(file, 256, 256, 113, 2);
+	GLuint volumeTextureCT = loadTo3DTexture<float>(volumeData, 8, GL_R16F, GL_RED, GL_FLOAT);
 
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
 
-	activateVolume<short>(volumeData);
+	activateVolume<float>(volumeData);
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 	
 	/////////////////////     Scene / View Settings     //////////////////////////
-	s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
-	s_scale = glm::scale(glm::vec3(0.3f,-0.3f,0.3f));
+	if (m_pHMD)
+	{
+		s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
+		s_scale = glm::scale(glm::vec3(0.3f,-0.3f,0.3f));
+	}
+	else
+	{	
+		s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
+		s_scale = glm::scale(glm::vec3(1.0f,-1.0f,1.0f));
+	}
 	s_rotation = glm::mat4(1.0f);
+
 
 	//glm::mat4 model(1.0f)
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
@@ -480,7 +489,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/simpleRaycast.frag"); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/simpleRaycastLodDepth.frag"); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
 	// DEBUG
@@ -650,6 +659,11 @@ int main(int argc, char *argv[])
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 		ImGui::PopItemWidth();
+
+		static float lodScale = 3.5f;
+		static float lodBias  = 0.25f;
+		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
+		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -680,6 +694,8 @@ int main(int argc, char *argv[])
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
 		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
+		shaderProgram.update("uLodBias", lodBias);
+		shaderProgram.update("uLodDepthScale", lodScale); 
 
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
@@ -725,7 +741,7 @@ int main(int argc, char *argv[])
 			submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
 		}
 
-		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL)
+		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !m_pHMD)
 		{
 			showTexShader.update("tex", 10);
 			showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);

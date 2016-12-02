@@ -9,7 +9,10 @@ uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_pos_map;   // uvw coordinates map of front faces
 uniform sampler2D  back_pos_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
-uniform isampler3D volume_texture; // volume 3D integer texture sampler
+uniform sampler3D volume_texture; // volume 3D integer texture sampler
+//uniform isampler3D volume_texture; // volume 3D integer texture sampler
+
+uniform float uLod;
 
 // images
 layout(binding = 0, rgba16f) restrict uniform image2D output_image;
@@ -122,7 +125,7 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 
 		// retrieve current sample
 		VolumeSample curSample;
-		curSample.value = texture(volume_texture, curUVW).r;
+		curSample.value = int( texture(volume_texture, curUVW).r );
 		curSample.uvw   = curUVW;
 
 		vec4 sampleColor = transferFunction(curSample.value);

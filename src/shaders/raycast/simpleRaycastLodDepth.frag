@@ -17,6 +17,8 @@ uniform float uWindowingMinVal; // windowing lower bound
 
 // ray traversal related uniforms
 uniform float uStepSize;		// ray sampling step size
+uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD and step size 
+uniform float uLodBias;        // depth at which lod begins to degrade
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -39,14 +41,14 @@ struct VolumeSample
 *
 * @return mapped color corresponding to value at provided depth
 */
-vec4 transferFunction(int value)
+vec4 transferFunction(int value, float stepSize)
 {
 	// linear mapping to grayscale color [0,1]
 	float rel = (float(value) - uWindowingMinVal) / uWindowingRange;
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= 10.0 * uStepSize;
+	color.a *= 10.0 * stepSize;
 	color.rgb *= (color.a);
 
 	return color;
@@ -63,23 +65,28 @@ vec4 transferFunction(int value)
  * 
  * @return sample point in volume, holding value and uvw coordinates
  */
-vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize)
+vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth)
 {
-	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
-
+	float parameterStepSize = stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+	
 	vec4 curColor = vec4(0);
 
 	// traverse ray front to back rendering
-	for (float t = 0.01; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
+	float t = 0.01;
+	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
+		float curDepth = mix( startDepth, endDepth, t);
+		float curLod = max(0.0, uLodDepthScale * (curDepth - uLodBias)); // bad approximation, but idc for now
+		float curStepSize = stepSize * pow(2.0, curLod);
+		parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 
 		// retrieve current sample
 		VolumeSample curSample;
-		curSample.value = int( texture(volume_texture, curUVW).r );
+		curSample.value = int( textureLod(volume_texture, curUVW, curLod).r );
 		curSample.uvw   = curUVW;
 
-		vec4 sampleColor = transferFunction(curSample.value);
+		vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 
@@ -88,6 +95,8 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize)
 		{
 			break;
 		}
+		
+		t += parameterStepSize;
 	}
 
 	// return emission absorbtion result
@@ -107,6 +116,8 @@ void main()
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize    			// sampling step size
+		, uvwStart.a
+		, uvwEnd.a
 		);
 
 	// final color

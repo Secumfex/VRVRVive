@@ -170,12 +170,12 @@ int main(int argc, char *argv[])
 
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH + std::string( "/volumes/CTHead/CThead");
-	VolumeData<short> volumeDataCTHead = Importer::load3DData<short>(file, 256, 256, 113, 2);
-	activateVolume<short>(volumeDataCTHead);
+	VolumeData<float> volumeDataCTHead = Importer::load3DData<float>(file, 256, 256, 113, 2);
+	activateVolume<float>(volumeDataCTHead);
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
-	GLuint volumeTextureCT = loadTo3DTexture<short>(volumeDataCTHead);
-
+	GLuint volumeTextureCT = loadTo3DTexture<float>(volumeDataCTHead, 99, GL_R32F, GL_RED, GL_FLOAT);
+	checkGLError(true);
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////

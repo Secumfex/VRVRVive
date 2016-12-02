@@ -90,9 +90,15 @@ GLuint bufferData(const std::vector<T>& content, GLenum target = GL_ARRAY_BUFFER
     return vbo;
 }
 
+namespace {
+double log_2( double n )  
+{  
+    return log( n ) / log( 2 );      // log(n)/log(2) is log_2. 
+}}
+
 /** upload the provided volume data to a 3D OpenGL texture object, i.e. CT-Data*/
 template <typename T>
-GLuint loadTo3DTexture(VolumeData<T>& volumeData, GLenum internalFormat = GL_R16I, GLenum format = GL_RED_INTEGER, GLenum type = GL_SHORT)
+GLuint loadTo3DTexture(VolumeData<T>& volumeData, int levels = 1, GLenum internalFormat = GL_R16I, GLenum format = GL_RED_INTEGER, GLenum type = GL_SHORT)
 {
 	GLuint volumeTexture;
 
@@ -101,15 +107,17 @@ GLuint loadTo3DTexture(VolumeData<T>& volumeData, GLenum internalFormat = GL_R16
 	glGenTextures(1, &volumeTexture);
 	OPENGLCONTEXT->bindTexture(volumeTexture, GL_TEXTURE_3D);
 
-	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP);
 
+	int numMipmaps = (int) log_2( (float) std::max(std::max(volumeData.size_x,volumeData.size_y),volumeData.size_z)); //max number of additional mipmap levels
+
 	// allocate GPU memory
 	glTexStorage3D(GL_TEXTURE_3D
-		, 1
+		, std::min(levels, numMipmaps+1)
 		, internalFormat
 		, volumeData.size_x
 		, volumeData.size_y
@@ -129,6 +137,11 @@ GLuint loadTo3DTexture(VolumeData<T>& volumeData, GLenum internalFormat = GL_R16
 		, type
 		, &(volumeData.data[0])
 	);
+
+	if (levels > 1)
+	{
+		glGenerateMipmap(GL_TEXTURE_3D);
+	}
 
 	return volumeTexture;
 }
