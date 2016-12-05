@@ -6,6 +6,7 @@
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
 #include <Rendering/RenderPass.h>
+#include <Volume/ChunkedRenderPass.h>
 
 #include <UI/imgui/imgui.h>
 #include <UI/imgui_impl_sdl_gl3.h>
@@ -489,8 +490,10 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/simpleRaycastLodDepth.frag"); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepth.frag"); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
+	shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
+	shaderProgram.update("uResolution", glm::vec4(getResolution(window).x/2, getResolution(window).y,0,0));
 		
 	// DEBUG
 	generateTransferFunction();
@@ -519,6 +522,14 @@ int main(int argc, char *argv[])
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
+	
+	///////////////////////   Chunked RenderPass    //////////////////////////
+	ChunkedAdaptiveRenderPass chunkedRenderPass(
+		&renderPass,
+		glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
+		glm::ivec2(96,96),
+		12
+		);
 
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
@@ -664,6 +675,8 @@ int main(int argc, char *argv[])
 		static float lodBias  = 0.25f;
 		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
 		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
+
+		chunkedRenderPass.imguiInterface();
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -718,8 +731,17 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
 		renderPass.setFrameBufferObject( &FBO );
-		renderPass.render();
-
+		//renderPass.render();
+		chunkedRenderPass.render(); // use chunked rendering instead
+		
+		//+++++++++ DEBUG : restore values for regular rendering ++++++ 
+		shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
+		renderPass.setViewport(0,0,getResolution(window).x/2, getResolution(window).y);	
+		FBO_r.bind(); 
+		glClearColor(renderPass.getClearColor().r,renderPass.getClearColor().g,renderPass.getClearColor().b,renderPass.getClearColor().a); 
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+		
 		// render right image
 		uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
 		uvwShaderProgram.update("view", s_view_r);

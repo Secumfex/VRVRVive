@@ -78,6 +78,9 @@ public:
 	void removeEnable(GLenum state);
 	void removeDisable(GLenum state);
 	void removeClearBit(GLbitfield clearBit);
+
+	inline std::vector<GLenum> getClearBits() {return m_clearBits;}
+	inline glm::vec4 getClearColor() {return m_clearColor;}
 };
 
 #endif
