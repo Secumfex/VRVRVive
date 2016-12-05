@@ -65,10 +65,15 @@ public:
 	////// PROFILING PARAMETERS
 	int curFidx; // current frame index
 	std::vector<float> renderTimes;
+	float avgRenderTime; // averaged from last 3 times
 	float renderTime;
 	float targetRenderTime; // maximum time allowed to spend in rendering in this procedure
 	void profileRendertime();
-	GLuint m_queryObjects[1]; // for render time
+
+	GLuint m_queryObjects[2][1]; // for render time
+	int m_queryFrontBuffer; // read result from this idx
+	int m_queryBackBuffer; // issue query for current frame on this idx
+	void swapQueryBuffers();
 
 	////// RENDER LOAD ADJUSTMENTS
 	float adjustmentFactor;
@@ -77,16 +82,37 @@ public:
 	bool isFinished;
 };
 
+void SlowThread::swapQueryBuffers(){
+	if ( m_queryBackBuffer ) {
+		m_queryBackBuffer = 0;
+		m_queryFrontBuffer = 1;
+	}
+	else
+	{
+		m_queryBackBuffer = 1;
+		m_queryFrontBuffer = 0;
+	}
+
+
+}
 void SlowThread::profileRendertime(){
 		GLint available = 0;
 		GLuint timeElapsed = 0;
-
-		// Wait for all results to become available
-		while (!available) {
-			glGetQueryObjectiv(m_queryObjects[0], GL_QUERY_RESULT_AVAILABLE, &available);
+		
+		static int numFailed = 0;
+		glGetQueryObjectiv(m_queryObjects[m_queryFrontBuffer][0], 
+            GL_QUERY_RESULT_AVAILABLE, 
+            &available);
+		if (!available) {
+			DEBUGLOG->log("Query result not available, #", numFailed++);
 		}
-		glGetQueryObjectuiv(m_queryObjects[0], GL_QUERY_RESULT, &timeElapsed);
-
+		checkGLError();
+		
+		// Read query from front buffer (the one which finished last frame)
+		glGetQueryObjectuiv(m_queryObjects[m_queryFrontBuffer][0], GL_QUERY_RESULT, &timeElapsed);
+		swapQueryBuffers();
+		checkGLError();
+		
 		// convert to ms
 		renderTime = (float) (NANOSECONDS_TO_MILLISECONDS * (double) timeElapsed);
 
@@ -102,9 +128,9 @@ void SlowThread::generateModels(float xSize, float zSize, float ySize)
 
 	for (int i = 0; i < modelMatrices.size(); i++)
 	{
-		float r = randFloat(0.1,1.0);
-		float g = randFloat(0.1,1.0);
-		float b = randFloat(0.1,1.0);
+		float r = randFloat(0.5,1.0);
+		float g = randFloat(0.5,1.0);
+		float b = randFloat(0.5,1.0);
 		colors[i] = glm::vec4(r,g,b,1.0);
 
 		// generate random position on x/z plane
@@ -118,7 +144,6 @@ void SlowThread::generateModels(float xSize, float zSize, float ySize)
 
 void SlowThread::render()
 {
-	glGenQueries(1, m_queryObjects);
 
 	fbo->bind();
 	shaderProgram->use();
@@ -131,7 +156,8 @@ void SlowThread::render()
 		maxIdx = NUM_INSTANCES;
 	}
 	
-	glBeginQuery(GL_TIME_ELAPSED, m_queryObjects[0]);
+	glBeginQuery(GL_TIME_ELAPSED, m_queryObjects[m_queryBackBuffer][0]);
+	checkGLError();
 	renderable->bind();
 	for(int i = curDrawIdx; i < maxIdx; i++)
 	{
@@ -141,6 +167,7 @@ void SlowThread::render()
 		renderable->draw();
 	}	
 	glEndQuery(GL_TIME_ELAPSED);
+	checkGLError();
 
 	if(finishes)
 	{
@@ -157,7 +184,7 @@ void SlowThread::render()
 
 void SlowThread::adjustRenderload()
 {
-	float avgRenderTime = (renderTimes[(curFidx-1)%renderTimes.size()] + renderTimes[(curFidx-2)%renderTimes.size()] + renderTimes[(curFidx-3)%renderTimes.size()]) / 3.0f;
+	avgRenderTime = (renderTimes[(curFidx-1)%renderTimes.size()] + renderTimes[(curFidx-2)%renderTimes.size()] + renderTimes[(curFidx-3)%renderTimes.size()]) / 3.0f;
 
 	float avgTDelta = (targetRenderTime - renderTimes[(curFidx-1)%renderTimes.size()] 
 		+ targetRenderTime - renderTimes[(curFidx-2)%renderTimes.size()] 
@@ -198,9 +225,15 @@ SlowThread::SlowThread(Renderable* renderable, ShaderProgram* shaderProgram, Fra
 	colorOffset(0),
 	targetRenderTime(13.0f),
 	renderTime(10.0f),
-	adjustmentFactor(0.5f)
+	adjustmentFactor(0.5f),
+	avgRenderTime(0.0f),
+	m_queryBackBuffer(0),
+	m_queryFrontBuffer(1)
 {
 	generateModels(3.0f, 3.0f, 3.0f);
+	
+	glGenQueries(1, m_queryObjects[m_queryBackBuffer]);
+	glGenQueries(1, m_queryObjects[m_queryFrontBuffer]);
 }
 
 SlowThread::~SlowThread()
@@ -215,14 +248,16 @@ private: // SDL bookkeeping
 	SDL_Window	 *m_pWindow;
 	SDL_GLContext m_pContext;
 	GLFWwindow	 *m_pGLFWwindow;
-
-	RenderPass*		m_pRenderThread;
+	
+	RenderPass*		m_pGeomThread;
+	RenderPass*		m_pWarpingThread;
 	SlowThread*		m_pSlowThread;
 	
-	Renderable*			m_pRenderable;
+	Renderable*			m_pRenderable; // loaded model (bunny)
 	Quad*				m_pQuad;
 	ShaderProgram*		m_pSlowShader;
-	ShaderProgram*		m_pFastShader;
+	ShaderProgram*		m_pWarpingShader;
+	ShaderProgram*		m_pGeomShader;
 	FrameBufferObject*	m_pFbo;
 	FrameBufferObject*	m_pFboDisplay[2];
 	int					m_activeDisplayFBO;
@@ -294,23 +329,32 @@ public:
 
 	void loadShaders()
 	{
-		DEBUGLOG->log("Render Configuration: Slow Rendering"); DEBUGLOG->indent();
+		DEBUGLOG->log("Render Configuration: Slow Rendering and Warp Rendering"); DEBUGLOG->indent();
 		m_pSlowShader = new ShaderProgram("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleLighting.frag");
-		m_pFastShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
 		m_pFbo		  = new FrameBufferObject(m_pSlowShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
-		m_pFboDisplay[0] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
-		m_pFboDisplay[1] = new FrameBufferObject(m_pFastShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT);
+		m_pFboDisplay[0] = new FrameBufferObject(m_pSlowShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT); // FBO Double Buffer for warping: 
+		m_pFboDisplay[1] = new FrameBufferObject(m_pSlowShader->getOutputInfoMap(), SCREEN_WIDTH/2, SCREEN_HEIGHT); // one for reading from warp shader, one for writing from slow shader
 
 		m_pSlowShader->update("view", m_view); //initial, will be overwritten when on every "iteration"
 		m_pSlowShader->update("projection", m_perspective);
 		m_pSlowShader->update("color", glm::vec4(1.0));
 
-		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[0]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		m_pFastShader->update( "blendColor", 0.5f );
-		m_pFastShader->update( "newView", m_view );
-		m_pFastShader->update( "oldView", m_viewRenderingPresent ); 
-		m_pFastShader->update( "projection", m_perspective ); 
+		m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
+		m_pWarpingShader->bindTextureOnUse("tex", m_pFboDisplay[0]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_pWarpingShader->update( "blendColor", 0.85f );
+		m_pWarpingShader->update( "newView", m_view );
+		m_pWarpingShader->update( "oldView", m_viewRenderingPresent ); 
+		m_pWarpingShader->update( "projection", m_perspective ); 
 	DEBUGLOG->outdent();
+
+	DEBUGLOG->log("Render Configuration: Simple Geometry Rendering"); DEBUGLOG->indent();	
+		m_pGeomShader = new ShaderProgram("/modelSpace/modelViewProjection.vert", "/modelSpace/simpleLighting.frag");
+		m_pGeomShader->update( "view", m_view );
+		m_pGeomShader->update( "model", glm::translate(glm::vec3(0.0f, -0.5f, 2.0f)) * glm::scale(glm::vec3(3.0f) ) ); 
+		m_pGeomShader->update( "projection", m_perspective ); 
+		m_pGeomShader->update( "color", glm::vec4(1.0));
+	DEBUGLOG->outdent();
+
 	}
 
 	void initSceneVariables()
@@ -326,13 +370,18 @@ public:
 	void initThreads()
 	{
 		m_pSlowThread = new SlowThread(m_pRenderable, m_pSlowShader, m_pFbo);
-		m_pRenderThread = new RenderPass(m_pFastShader, 0);
-		m_pRenderThread->setViewport(SCREEN_WIDTH/2,0,SCREEN_WIDTH/2,SCREEN_HEIGHT);
-		m_pRenderThread->addRenderable(m_pQuad);
-		m_pRenderThread->addClearBit(GL_DEPTH_BUFFER_BIT);
+		m_pWarpingThread = new RenderPass(m_pWarpingShader, 0);
+		m_pWarpingThread->setViewport(SCREEN_WIDTH/2,0,SCREEN_WIDTH/2,SCREEN_HEIGHT);
+		m_pWarpingThread->addRenderable(m_pQuad);
+		m_pWarpingThread->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		m_pGeomThread = new RenderPass(m_pGeomShader, 0);
+		m_pGeomThread->setViewport(SCREEN_WIDTH/2,0,SCREEN_WIDTH/2,SCREEN_HEIGHT);
+		m_pGeomThread->addRenderable(m_pRenderable);
+		m_pGeomThread->addClearBit(GL_DEPTH_BUFFER_BIT); // ignore warped info for now
 	}
 
-	void updateFastRenderThread()
+	void updateFastRenderThreadSourceImage()
 	{
 		// copy
 		copyFBOContent(m_pFbo->getFramebufferHandle(), m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getFramebufferHandle(), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), GL_COLOR_BUFFER_BIT);
@@ -342,18 +391,49 @@ public:
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		//switch active display fbo
-		m_pFastShader->bindTextureOnUse("tex", m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_pWarpingShader->bindTextureOnUse("tex", m_pFboDisplay[(m_activeDisplayFBO+1)%2]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		m_viewRenderingPresent = m_viewRenderingIssued;
 		m_activeDisplayFBO = (m_activeDisplayFBO+1)%2;
-		m_pFastShader->update( "oldView", m_viewRenderingPresent ); // update with old view
+		m_pWarpingShader->update( "oldView", m_viewRenderingPresent ); // update with old view
 	}
 
-	void updateSlowRenderThread()
+	void updateSlowRenderThread(float currentTime, bool translateCam, bool predictPos)
 	{
-		m_viewRenderingIssued = m_view;
-		m_pSlowThread->shaderProgram->update("view", m_viewRenderingIssued); // update with current view
+		static float lastTime = currentTime;
+
+		if (!predictPos)
+		{
+			m_viewRenderingIssued = m_view; // use current view for next rendering
+		}
+		else
+		{
+			float predictionTime = currentTime + (currentTime - lastTime); // just add the last complete rendering time for prediction
+			View predictedView = getView(predictionTime, translateCam); // predict the future view configuration
+			m_viewRenderingIssued = predictedView.view;
+		}
+
+		m_pSlowThread->shaderProgram->update("view", m_viewRenderingIssued); // update uniform used for rendering
+
+		lastTime = currentTime;
 	}
 
+	
+	struct View { glm::vec4 eye; glm::vec4 center; glm::mat4 view; };
+	View getView(float t, bool translate)
+	{
+		View v;
+		if (translate)
+		{
+			v.eye = glm::vec4(0.5f * sin(t+1.4f), 0.15f * cos(t+1.4f), 4.5f + 0.5f * sin(t+0.34f), 1.0f);
+		}
+		else
+		{
+			v.eye = m_eye;
+		}
+		v.center = glm::vec4(sin(t), cos(t)*0.25f, 0.0f, 1.0f);
+		v.view = glm::lookAt(glm::vec3(v.eye), glm::vec3(v.center), glm::vec3(0,1,0));
+		return v;
+	}
 
 	void loop(){
 
@@ -366,48 +446,49 @@ public:
 			
 			static bool autoCorrect = false;
 			static bool translateCam = false;
+			static bool predictPos = false;
 			{
 				static float f = 10.0f;
 				ImGui::Checkbox("auto adjust render time", &autoCorrect);
 				ImGui::Checkbox("animate cam-translation", &translateCam);
+				ImGui::Checkbox("predict cam-position", &predictPos);
 				ImGui::ColorEdit3("clear color", (float*)&clear_color);
 				glClearColor(clear_color.x,clear_color.y,clear_color.z,0.0);
 				ImGui::SliderInt("Num Draws per Call",&m_pSlowThread->numDrawsPerCall, 1,NUM_INSTANCES);
 				ImGui::SliderFloat("Target Rendertime",&m_pSlowThread->targetRenderTime, 1.0, 30.0f);
 				ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
-				ImGui::PlotLines("FPS", &m_pSlowThread->renderTimes[0], m_pSlowThread->renderTimes.size(), 0, NULL, 0.0, 30.0, ImVec2(120,60));
+				ImGui::PlotLines("Time spent in sub-render-iteration", &m_pSlowThread->renderTimes[0], m_pSlowThread->renderTimes.size(), 0, NULL, 0.0, 30.0, ImVec2(120,60));
 				ImGui::PopStyleColor();
 				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-				float r = sin( ImGui::GetTime() * 4.0f ) * 0.25 + 0.75f;
-				float g = cos( ImGui::GetTime() * 4.0f ) * 0.25 + 0.75f;
-				float b = cos( ImGui::GetTime() * 4.0f + 1.42f ) * 0.25 + 0.75f;
-				m_pFastShader->update( "color", glm::vec4(r,g,b,1.0) );
+				ImVec4 color = ImColor::HSV(fmod(ImGui::GetTime() * 0.25f, 1.0f), 1.00f, 1.00f, 1.0f);
+
+				m_pWarpingShader->update( "color", glm::vec4(color.x,color.y,color.z,color.w) );
 
 				// update view
-				if (translateCam)
-				{
-					m_eye = glm::vec4(0.5f * sin(ImGui::GetTime()+1.4f), 0.5f * cos(ImGui::GetTime()+1.4f), 5.f, 1.0f);
-				}
-
-				m_center = glm::vec4(sin(ImGui::GetTime()), cos(ImGui::GetTime()), 0.0f, 1.0f);
-				m_view = glm::lookAt(glm::vec3(m_eye), glm::vec3(m_center), glm::vec3(0,1,0));
-				m_pFastShader->update( "newView", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
+				View v = getView(ImGui::GetTime(), translateCam);
+				m_eye = v.eye;
+				m_center = v.center;
+				m_view = v.view;
+				m_pWarpingShader->update( "newView", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
+				m_pGeomShader->update( "view", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
 			}
 
 			m_pSlowThread->render();
 
+			m_pWarpingThread->render();
+			m_pGeomThread->render();
 			copyFBOContent(m_pFbo->getFramebufferHandle(), 0, glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), glm::vec2(SCREEN_WIDTH/2, SCREEN_HEIGHT), GL_COLOR_BUFFER_BIT);
-			m_pRenderThread->render();
 
 			ImGui::Render();
 			SDL_GL_SwapWindow( m_pWindow );
-
+			
 			m_pSlowThread->profileRendertime();
+
 			if (m_pSlowThread->isFinished)
 			{
-				updateFastRenderThread();
-				updateSlowRenderThread();
+				updateFastRenderThreadSourceImage();
+				updateSlowRenderThread( ImGui::GetTime(), translateCam, predictPos);
 			}
 			else
 			{
