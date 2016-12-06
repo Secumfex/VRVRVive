@@ -528,7 +528,7 @@ int main(int argc, char *argv[])
 		&renderPass,
 		glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
 		glm::ivec2(96,96),
-		12
+		8
 		);
 
 	///////////////////////   Show Texture Renderpass    //////////////////////////
@@ -676,7 +676,10 @@ int main(int argc, char *argv[])
 		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
 		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
 
-		chunkedRenderPass.imguiInterface();
+		static bool profiler_visible = false;
+		ImGui::Checkbox("Chunk Performance Profiler", &profiler_visible);
+		if (profiler_visible) { chunkedRenderPass.imguiInterface(&profiler_visible); };
+
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////

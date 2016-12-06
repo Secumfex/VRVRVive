@@ -104,13 +104,19 @@ void ChunkedRenderPass::render()
 //+++++++++++++++++++++++ ChunkedAdaptiveRenderPass ++++++++++++++++++//
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++//
 
-ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, glm::ivec2 viewportSize, glm::ivec2 chunkSize, int timingsBufferSize)
+ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, glm::ivec2 viewportSize, glm::ivec2 chunkSize, int timingsBufferSize, float targetRenderTime, float bias )
 	: ChunkedRenderPass(pRenderPass, viewportSize, chunkSize),
 	m_timingsBufferSize(timingsBufferSize),
+	m_totalRenderTimesBuffer(timingsBufferSize),
 	m_currentChunkIdx(0),
 	m_currentFrameIdx(0),
 	m_currentBackQuery(0),
-	m_currentFrontQuery(1)
+	m_currentFrontQuery(1),
+	m_renderTimeBias(bias),
+	m_targetRenderTime(targetRenderTime),
+	m_autoAdjustRenderTime(false),
+	m_numChunksBuffer(16),
+	m_currentIterationIdx(0)
 {
 	//initialize timings buffers
 	resetTimingsBuffers();
@@ -118,14 +124,28 @@ ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, gl
 
 void ChunkedAdaptiveRenderPass::render()
 {
-	//++++++ DEBUG +++++++++++++++
-	int numIterationsPerFrame = 10;
+	//++++++ Predict number of iterations +++++++++++++++
+	int numChunksToRender = 0;
+	float predictedIterationRenderTime = 0.0f;
+	for (int i = m_currentChunkIdx; i < m_queryBuffer.size(); i++)
+	{
+		predictedIterationRenderTime += predictChunkRenderTime(i);
+		if ( predictedIterationRenderTime<= m_targetRenderTime )
+		{
+			numChunksToRender++; // good to go
+		}
+	}
+	numChunksToRender = std::max( numChunksToRender, 1); // minimum 1 chunk
+
+	m_numChunksBuffer[ m_currentIterationIdx ]=(float) numChunksToRender;
+	m_currentIterationIdx = (m_currentIterationIdx+1)%m_numChunksBuffer.size();
 	//++++++++++++++++++++++++++++
 
-	for (int i = m_currentChunkIdx; i < std::min<int>(m_currentChunkIdx + numIterationsPerFrame, m_queryBuffer.size()); i++)
+	for (int i = m_currentChunkIdx; i < std::min<int>(m_currentChunkIdx + numChunksToRender, m_queryBuffer.size()); i++)
 	{
 		if (m_isFinished)
 		{
+			profileTimings();
 			activateClearbits();
 		}
 		updateViewport();
@@ -153,11 +173,10 @@ void ChunkedAdaptiveRenderPass::render()
 	if (m_isFinished)
 	{
 		m_currentChunkIdx = 0;
-		profileTimings();
 	}
 	else
 	{
-		m_currentChunkIdx = m_currentChunkIdx + numIterationsPerFrame;
+		m_currentChunkIdx = m_currentChunkIdx + numChunksToRender;
 	}
 }
 
@@ -189,10 +208,53 @@ void ChunkedAdaptiveRenderPass::swapQueryBuffers(){
 		m_currentFrontQuery = 0;
 	}
 }
+namespace {int mod(int a, int b)
+{ return (a%b+b)%b; }}
+float ChunkedAdaptiveRenderPass::predictChunkRenderTime(int idx)
+{
+	float predicted = 1.0f;
+	int numCols = std::ceil( (float) m_viewportSize.x / (float) m_chunkSize.x);
+	int numRows = std::ceil( (float) m_viewportSize.y / (float) m_chunkSize.y);
+	int idx_ = idx % m_timingsBuffer.size();
+	int x = idx_ % numCols;
+	int y = idx_ / numCols;
+	int lastProfiledFrameIdx = mod((m_currentFrameIdx - 1), m_timingsBufferSize);
+
+	// retrieve this chunk's last render time
+	predicted = m_timingsBuffer[idx_].back();
+
+	// look at render times neighbouring chunks (4-neighborhood)
+	// always interpolate towards the maximum in the neighbourhood
+	if ( x < (numCols - 1) ) // there is a right-hand chunk
+	{
+		float r = m_timingsBuffer[idx_+1][lastProfiledFrameIdx]; 
+		predicted = std::max( predicted, predicted + 0.5f * (r - predicted) );
+	}
+
+	if ( x > 0 ) // there is a left-hand chunk
+	{
+		float l = m_timingsBuffer[idx_-1][lastProfiledFrameIdx]; 
+		predicted = std::max( predicted, predicted + 0.5f * (l - predicted) );
+	}
+	if ( y < (numRows - 1) ) // there is a top chunk
+	{
+		float t = m_timingsBuffer[idx_+ numCols][lastProfiledFrameIdx]; 
+		predicted = std::max( predicted, predicted + 0.5f * (t - predicted) );
+	}
+	if ( y > 0 ) // there is a bottom chunk
+	{
+		float b = m_timingsBuffer[idx_ - numCols][lastProfiledFrameIdx]; 
+		predicted = std::max( predicted, predicted + 0.5f * (b - predicted) );
+	}
+	
+	// apply conservative bias and return predicted value
+	return predicted * m_renderTimeBias;
+}
 
 
 namespace { const double NANOSECONDS_TO_MILLISECONDS = 1.0 / 1000000.0; }
 void ChunkedAdaptiveRenderPass::profileTimings(){
+	float totalRenderTime = 0.0f;
 	for ( int i = 0; i < m_timingsBuffer.size(); i++)
 	{
 		GLint available = 0;
@@ -211,16 +273,16 @@ void ChunkedAdaptiveRenderPass::profileTimings(){
 		
 		// convert to ms
 		float renderTime = (float) (NANOSECONDS_TO_MILLISECONDS * (double) timeElapsed);
-
 		// save for profiling
 		m_timingsBuffer[i][m_currentFrameIdx] = renderTime;
+
+		totalRenderTime += renderTime;
 	}
 
+	m_totalRenderTimesBuffer[m_currentFrameIdx] = totalRenderTime;
 	m_currentFrameIdx = (m_currentFrameIdx + 1) % m_timingsBufferSize;
 	swapQueryBuffers();
 }
-
-
 
 namespace { static std::vector< std::pair<ChunkedAdaptiveRenderPass*, int>* > s_refs; 
 static void clearRefs() {for (auto r : s_refs) { delete r;}}
@@ -228,7 +290,7 @@ static void clearRefs() {for (auto r : s_refs) { delete r;}}
 #include <UI/imgui/imgui.h>
 void ChunkedAdaptiveRenderPass::imguiInterface(bool* open)
 {
-	if (!ImGui::Begin("Chunk Profiler", open, ImVec2(300, 300), -1.0f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) return;
+	if (!ImGui::Begin("Chunk Profiler", open, ImVec2(300, 370), -1.0f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) return;
 
 	int numCols = std::ceil( (float) m_viewportSize.x / (float) m_chunkSize.x);
 	int numRows = std::ceil( (float) m_viewportSize.y / (float) m_chunkSize.y);
@@ -252,16 +314,18 @@ void ChunkedAdaptiveRenderPass::imguiInterface(bool* open)
 					return ref->first->getTimingsBuffer()[ref->second][ (ref->first->getCurrentFrameIdx() + idx) % ref->first->getTimingsBufferSize()];
 				};
 
-				//ImGui::PlotLines( label.c_str(), &m_timingsBuffer[idx][0], m_timingsBuffer[idx].size(), 0, NULL, 0.0, 1.0, ImVec2(0,ImGui::GetColumnWidth() - 20)); 
+				ImGui::SameLine(0,0);
 				s_refs[idx] = new std::pair<ChunkedAdaptiveRenderPass*, int> (this, idx);
+				//ImGui::PlotLines(
 				ImGui::PlotHistogram(
 					label.c_str(), 
 					value_getter,
 					(void*) s_refs[idx],
 					(int) m_timingsBuffer[idx].size(),
-					0, NULL,
+					0,
+					std::to_string((m_timingsBuffer[idx][mod(m_currentFrameIdx - 1, m_timingsBufferSize)])).c_str(),
 					0.0, 1.0,
-					ImVec2(ImGui::GetColumnWidth()-10,ImGui::GetColumnWidth()-10)); 
+					ImVec2(ImGui::GetColumnWidth(),ImGui::GetColumnWidth())); 
 				ImGui::NextColumn();
 			}
 		}
@@ -269,5 +333,60 @@ void ChunkedAdaptiveRenderPass::imguiInterface(bool* open)
 	ImGui::Columns( 1 );
 	ImGui::Separator();
 
+	//++++ Adaptive behaviour ++++//
+	ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.5f);
+	ImGui::SliderFloat("Render Time Bias", &getRenderTimeBias(), 0.5f, 2.0f);
+	ImGui::SliderFloat("Target Render Time", &getTargetRenderTime(), 0.0f, 20.0f);  
+	//ImGui::Checkbox("Auto Adjust Render Time", &getAutoAdjustRenderTime());  
+	ImGui::PopItemWidth();
+	
+	//++++ View number of number of rendered chunks ++++//
+	if (ImGui::CollapsingHeader("Total Render Time"))
+	{
+		ImGui::PlotHistogram(
+			"total Render Time",
+			&m_totalRenderTimesBuffer[0],
+			m_totalRenderTimesBuffer.size(),
+			0,
+			std::to_string( m_totalRenderTimesBuffer[mod(m_currentFrameIdx-1, m_totalRenderTimesBuffer.size())]).c_str(),
+			0.0f,
+			m_queryBuffer.size(),
+			ImVec2(0,ImGui::GetTextLineHeight()*3));
+	}
+
+	//++++ View number of number of rendered chunks ++++//
+	if (ImGui::CollapsingHeader("Number of Rendered Chunks Profiler"))
+	{
+		ImGui::PlotHistogram(
+			"numChunksToRender",
+			&m_numChunksBuffer[0],
+			m_numChunksBuffer.size(),
+			0,
+			std::to_string((int) m_numChunksBuffer[mod(m_currentIterationIdx-1, m_numChunksBuffer.size())]).c_str(),
+			0.0f,
+			m_queryBuffer.size(),
+			ImVec2(0,ImGui::GetTextLineHeight()*3));
+	}
+
+	//++++ Debug output of Predicted RenderTimes ++++//
+ 	if( ImGui::Button("Print Predicted Render Times") )
+	{
+		for (int i = 0; i < m_timingsBuffer.size(); i++)
+		{
+			DEBUGLOG->log( std::to_string( i%numCols ) + "," + std::to_string( i/numRows )  + ": " + std::to_string(predictChunkRenderTime(i)) );
+		}
+	}
+
 	ImGui::End();
+}
+
+ChunkedAdaptiveRenderPass::~ChunkedAdaptiveRenderPass()
+{
+	for (auto e : m_queryBuffer)
+	{
+		glDeleteQueries(e.size(), &e[0]);
+	}
+
+	// just in case they still existed
+	clearRefs();
 }
