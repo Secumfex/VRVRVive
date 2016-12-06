@@ -51,7 +51,7 @@ void clearOutputTexture(GLuint texture)
 	{
 		glGenBuffers(1,&s_pboHandle);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y, &s_texData[0], GL_STATIC_DRAW);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, &s_texData[0], GL_STATIC_DRAW);
 	}
 	
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE3);
