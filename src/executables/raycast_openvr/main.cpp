@@ -427,7 +427,7 @@ int main(int argc, char *argv[])
 		s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
 		s_scale = glm::scale(glm::vec3(1.0f,1.0f,1.0f));
 	}
-	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(1.0f,1.0f,1.0f));
+	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 
 
 	//glm::mat4 model(1.0f)
