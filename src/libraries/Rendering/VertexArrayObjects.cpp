@@ -510,25 +510,25 @@ void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& pos
 		positions.push_back(q.v1.y);
 		positions.push_back(q.v1.z);
 
-		positions.push_back(q.v3.x);
-		positions.push_back(q.v3.y);
-		positions.push_back(q.v3.z);
-
 		positions.push_back(q.v2.x);
 		positions.push_back(q.v2.y);
 		positions.push_back(q.v2.z);
+
+		positions.push_back(q.v3.x);
+		positions.push_back(q.v3.y);
+		positions.push_back(q.v3.z);
 		
 		uvwCoordinates.push_back(q.u1.x);
 		uvwCoordinates.push_back(q.u1.y);
 		uvwCoordinates.push_back(q.u1.z);
 
-		uvwCoordinates.push_back(q.u3.x);
-		uvwCoordinates.push_back(q.u3.y);
-		uvwCoordinates.push_back(q.u3.z);
-
 		uvwCoordinates.push_back(q.u2.x);
 		uvwCoordinates.push_back(q.u2.y);
 		uvwCoordinates.push_back(q.u2.z);
+
+		uvwCoordinates.push_back(q.u3.x);
+		uvwCoordinates.push_back(q.u3.y);
+		uvwCoordinates.push_back(q.u3.z);
 
 		normals.push_back(q.n.x);
 		normals.push_back(q.n.y);
@@ -547,25 +547,25 @@ void addQuadsRec(VolumeQuadData q, int depth, int pwr, std::vector<GLfloat>& pos
 		positions.push_back(q.v1.y);
 		positions.push_back(q.v1.z);
 
-		positions.push_back(q.v4.x);
-		positions.push_back(q.v4.y);
-		positions.push_back(q.v4.z);
-
 		positions.push_back(q.v3.x);
 		positions.push_back(q.v3.y);
 		positions.push_back(q.v3.z);
+
+		positions.push_back(q.v4.x);
+		positions.push_back(q.v4.y);
+		positions.push_back(q.v4.z);
 		
 		uvwCoordinates.push_back(q.u1.x);
 		uvwCoordinates.push_back(q.u1.y);
 		uvwCoordinates.push_back(q.u1.z);
 
-		uvwCoordinates.push_back(q.u4.x);
-		uvwCoordinates.push_back(q.u4.y);
-		uvwCoordinates.push_back(q.u4.z);
-
 		uvwCoordinates.push_back(q.u3.x);
 		uvwCoordinates.push_back(q.u3.y);
 		uvwCoordinates.push_back(q.u3.z);
+
+		uvwCoordinates.push_back(q.u4.x);
+		uvwCoordinates.push_back(q.u4.y);
+		uvwCoordinates.push_back(q.u4.z);
 
 		normals.push_back(q.n.x);
 		normals.push_back(q.n.y);
@@ -1278,7 +1278,7 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 						break;
 					}
 
-					setVertex(vIdx, i, j);
+					setVertex(vIdx, j, i);
 					vIdx += 2;
 				}
 				}
@@ -1291,7 +1291,7 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 		{
 			for (int i = height - 1; i >= 0; i--) // from top 
 			{
-				setVertex(vIdx, i, j);
+				setVertex(vIdx, j, i);
 				vIdx += 2;
 			}
 		}
@@ -1306,7 +1306,7 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 	setDrawMode(GL_POINTS);
 
 
-	/**
+	/** EXPERIMENT: rasterize GL_LINES
 	std::vector<float> vertexGridData(width * 2 * 2);
 	std::vector<float> uvData(width * 2 * 2);
 

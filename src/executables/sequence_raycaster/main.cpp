@@ -32,7 +32,7 @@ const glm::vec2 WINDOW_RESOLUTION = glm::vec2( VERTEX_GRID_SIZE, VERTEX_GRID_SIZ
 void createVertexGrid()
 {
 	// create VBO
-	s_vertexGrid = new VertexGrid(VERTEX_GRID_SIZE, VERTEX_GRID_SIZE, true);
+	s_vertexGrid = new VertexGrid(VERTEX_GRID_SIZE, VERTEX_GRID_SIZE, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
 }
 
 void bindImages(GLuint inputTexture, GLuint outputTexture)
@@ -52,10 +52,14 @@ void clearOutputTexture(GLuint texture)
 		glGenBuffers(1,&s_pboHandle);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
 		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, &s_texData[0], GL_STATIC_DRAW);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 	
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE3);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE4);
+	OPENGLCONTEXT->bindTexture(texture);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 void uploadInputData(GLuint inputTexture)
@@ -97,7 +101,7 @@ int main(int argc, char *argv[])
 	
 	GLuint inputTexture = createTexture((int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y, GL_RGBA32F);
 	GLuint outputTexture = createTexture((int) WINDOW_RESOLUTION.x,(int) WINDOW_RESOLUTION.y, GL_RGBA32F);
-	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE3);
+	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE4);
 	uploadInputData( inputTexture );
 	clearOutputTexture( outputTexture );
 
@@ -132,7 +136,6 @@ int main(int argc, char *argv[])
 	ShaderProgram vertexGridShader("/screenSpace/fullscreen.vert", "/modelSpace/vertexGrid.frag");
 	FrameBufferObject fbo( vertexGridShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x, (int) WINDOW_RESOLUTION.y );
 	RenderPass vertexGrid( &vertexGridShader, &fbo );
-	//vertexGrid.addRenderable( s_vertexGrid );
 	vertexGrid.addRenderable( s_vertexGrid );
 	vertexGrid.addClearBit( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	vertexGridShader.bindTextureOnUse( "depthTex", cubeFbo.getDepthTextureHandle());
@@ -216,7 +219,7 @@ int main(int argc, char *argv[])
 		}
 	});
 	///////////////////////////////////////////////////////////////////////////////
-
+	
 	render(window, [&](double dt)
 	{	
 		////////////////////////////////     GUI      ////////////////////////////////
@@ -228,6 +231,7 @@ int main(int argc, char *argv[])
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 		///////////////////////////////////////////////////////////////////////////////
+		checkGLError();
 
 		cubeShader.update("model", glm::rotate( (float) glfwGetTime() / 2.0f, glm::vec3(1.0f, 1.0f, 0.0f)));
 		cube.render();
@@ -243,7 +247,7 @@ int main(int argc, char *argv[])
 
 		showTex.render();
 
-		ImGui::Render();
+		//ImGui::Render();
 	});
 
 	destroyWindow(window);

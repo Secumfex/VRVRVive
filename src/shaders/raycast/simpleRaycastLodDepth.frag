@@ -19,6 +19,8 @@ uniform float uWindowingMinVal; // windowing lower bound
 uniform float uStepSize;		// ray sampling step size
 uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD and step size 
 uniform float uLodBias;        // depth at which lod begins to degrade
+
+uniform mat4 uScreenToTexture;
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -48,7 +50,7 @@ vec4 transferFunction(int value, float stepSize)
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= 10.0 * stepSize;
+	color.a *= 20.0 * stepSize;
 	color.rgb *= (color.a);
 
 	return color;
@@ -109,7 +111,14 @@ void main()
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
 
-	if (uvwStart.a == 0.0) { discard; } //invalid pixel
+	if (uvwStart.a == 0.0 && uvwEnd.a == 0.0) { 
+		discard; 
+	} //invalid pixel
+	else if( uvwStart.a == 0.0 && uvwEnd.a != 0.0)
+	{
+		uvwStart = uScreenToTexture * vec4(passUV,0,1);
+		uvwStart.a = 0.0;
+	}
 
 	// EA-raycasting
 	vec4 color = raycast( 

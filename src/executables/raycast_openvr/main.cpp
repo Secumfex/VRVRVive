@@ -49,7 +49,7 @@ static TransferFunction s_transferFunction;
 static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
-float s_near = 0.1f;
+float s_near = 1.0f;
 float s_far = 30.0f;
 
 // matrices
@@ -78,16 +78,16 @@ void generateTransferFunction()
 {
 	s_transferFunction.getValues().clear();
 	s_transferFunction.getColors().clear();
-	s_transferFunction.getValues().push_back(164);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0, 0.0, 0.0, 0.0));
-	s_transferFunction.getValues().push_back(312);
-	s_transferFunction.getColors().push_back(glm::vec4(1.0, 0.07, 0.07, 0.6));
-	s_transferFunction.getValues().push_back(872);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0, 0.5, 1.0, 0.3));
-	s_transferFunction.getValues().push_back(1142);
-	s_transferFunction.getColors().push_back(glm::vec4(0.4, 0.3, 0.8, 0.0));
-	s_transferFunction.getValues().push_back(2500);
-	s_transferFunction.getColors().push_back(glm::vec4(0.95, 0.83, 1.0, 1.0));
+	s_transferFunction.getValues().push_back(58);
+	s_transferFunction.getColors().push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
+	s_transferFunction.getValues().push_back(539);
+	s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 231.0/255.0f));
+	s_transferFunction.getValues().push_back(572);
+	s_transferFunction.getColors().push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
+	s_transferFunction.getValues().push_back(1356);
+	s_transferFunction.getColors().push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
+	s_transferFunction.getValues().push_back(1500);
+	s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 255.0 /255.0f));
 }
 
 void updateTransferFunctionTex()
@@ -420,14 +420,14 @@ int main(int argc, char *argv[])
 	if (m_pHMD)
 	{
 		s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
-		s_scale = glm::scale(glm::vec3(0.3f,-0.3f,0.3f));
+		s_scale = glm::scale(glm::vec3(0.3f,0.3f,0.3f));
 	}
 	else
 	{	
 		s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
-		s_scale = glm::scale(glm::vec3(1.0f,-1.0f,1.0f));
+		s_scale = glm::scale(glm::vec3(1.0f,1.0f,1.0f));
 	}
-	s_rotation = glm::mat4(1.0f);
+	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(1.0f,1.0f,1.0f));
 
 
 	//glm::mat4 model(1.0f)
@@ -439,8 +439,8 @@ int main(int argc, char *argv[])
 	s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 	if (!m_pHMD)
 	{
-		s_perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
-		s_perspective_r = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+		s_perspective = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
+		s_perspective_r = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
 	}
 	else
 	{
@@ -465,7 +465,8 @@ int main(int argc, char *argv[])
 
 
 	// create Volume and VertexGrid
-	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
+	glm::vec3 volumeSize(1.0f, 0.886f, 1.0);
+	VolumeSubdiv volume(volumeSize.x, volumeSize.y, volumeSize.z, 3);
 	Quad quad;
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
@@ -602,6 +603,16 @@ int main(int argc, char *argv[])
 				{
 					turntable.setDragActive(true);
 				}
+				if (event->button.button == SDL_BUTTON_RIGHT)
+				{
+					unsigned char pick_col[15];
+					glReadPixels(old_x-2, getResolution(window).y-old_y, 5, 1, GL_RGB, GL_UNSIGNED_BYTE, pick_col);
+
+					for (int i = 0; i < 15; i += 3)
+					{
+						DEBUGLOG->log("color: ", glm::vec3(pick_col[i + 0], pick_col[i + 1], pick_col[i+2]));
+					}
+				}
 				break;
 			}
 			case SDL_MOUSEBUTTONUP:
@@ -624,7 +635,39 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	//++++++++++++++ DEBUG
+	float nearZ = s_near;
+	float nearH = nearZ * std::tanf( glm::radians(45.0f/2.0f) );
+	float nearW = nearH * getResolution(window).x / (2.0f * getResolution(window).y);
+	
+	glm::mat4 screenToView   =  glm::inverse( glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f)) );
+	screenToView = glm::scale(glm::vec3(nearW, nearH, nearZ)) * screenToView;
+
+	glm::mat4 modelToTexture = glm::mat4( // swap components
+		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
+		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
+		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
+		* glm:: inverse(glm::scale( 2.0f * volumeSize) ) // moves origin to front left
+		* glm::translate( glm::vec3(volumeSize.x, volumeSize.y, -volumeSize.z) );
+
+	glm::mat4 screenToTexture =	modelToTexture 
+	* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
+	* glm::inverse(s_view) // inverse view
+	* screenToView;
+
+	glm::vec4 p = screenToTexture * glm::vec4(0.5f,0.5f,0.0f,1.0f);
+	p = modelToTexture * glm::vec4(volumeSize,1.0f);
+	p = modelToTexture * glm::vec4(-volumeSize.x,-volumeSize.y,volumeSize.z,1.0f);
+	p = modelToTexture * glm::vec4(0,0,0,1.0f);
+	p = glm::inverse(s_view) * screenToView * glm::vec4(0.5f,0.5f,0.0f,1.0f);
+	p = screenToView * glm::vec4(0.0f,0.0f,0.0f,1.0f);
+	p = screenToView * glm::vec4(1.0f,1.0f,0.0f,1.0f); 
+	p =  modelToTexture 
+		* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
+		* glm::vec4(0.0f,0.0f,volumeSize.z,1.0f); 
+
 	//++++++++++++++ DEBUG
+
 	double elapsedTime = 0.0;
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
@@ -671,7 +714,7 @@ int main(int argc, char *argv[])
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 		ImGui::PopItemWidth();
 
-		static float lodScale = 3.5f;
+		static float lodScale = 2.0f;
 		static float lodBias  = 0.25f;
 		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
 		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
@@ -700,6 +743,11 @@ int main(int argc, char *argv[])
 			s_view = m_mat4eyePosLeft * m_mat4HMDPose;
 			s_view_r = m_mat4eyePosRight * m_mat4HMDPose;
 		}
+
+		screenToTexture =	modelToTexture 
+		* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
+		* glm::inverse( s_view_r ) // inverse view
+		* screenToView;
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
@@ -712,6 +760,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
 		shaderProgram.update("uLodBias", lodBias);
 		shaderProgram.update("uLodDepthScale", lodScale); 
+		shaderProgram.update("uScreenToTexture", screenToTexture); 
 
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
