@@ -655,16 +655,10 @@ int main(int argc, char *argv[])
 	* glm::inverse(s_view) // inverse view
 	* screenToView;
 
-	glm::vec4 p = screenToTexture * glm::vec4(0.5f,0.5f,0.0f,1.0f);
-	p = modelToTexture * glm::vec4(volumeSize,1.0f);
-	p = modelToTexture * glm::vec4(-volumeSize.x,-volumeSize.y,volumeSize.z,1.0f);
-	p = modelToTexture * glm::vec4(0,0,0,1.0f);
-	p = glm::inverse(s_view) * screenToView * glm::vec4(0.5f,0.5f,0.0f,1.0f);
-	p = screenToView * glm::vec4(0.0f,0.0f,0.0f,1.0f);
-	p = screenToView * glm::vec4(1.0f,1.0f,0.0f,1.0f); 
-	p =  modelToTexture 
-		* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
-		* glm::vec4(0.0f,0.0f,volumeSize.z,1.0f); 
+	glm::mat4 screenToTexture_r =	modelToTexture 
+	* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
+	* glm::inverse(s_view_r) // inverse view
+	* screenToView;
 
 	//++++++++++++++ DEBUG
 
@@ -744,10 +738,13 @@ int main(int argc, char *argv[])
 			s_view_r = m_mat4eyePosRight * m_mat4HMDPose;
 		}
 
-		screenToTexture =	modelToTexture 
-		* glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ) //inverse model
-		* glm::inverse( s_view_r ) // inverse view
-		* screenToView;
+		glm::mat4 invView = glm::inverse(s_view);
+		glm::mat4 invView_r = glm::inverse(s_view_r);
+		
+		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
+		glm::mat4 invModel = glm::inverse( model ); 
+		screenToTexture   =	modelToTexture * invModel * invView   * screenToView;
+		screenToTexture_r = modelToTexture * invModel * invView_r * screenToView;
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
@@ -759,8 +756,7 @@ int main(int argc, char *argv[])
 		// ray start/end parameters
 		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
 		shaderProgram.update("uLodBias", lodBias);
-		shaderProgram.update("uLodDepthScale", lodScale); 
-		shaderProgram.update("uScreenToTexture", screenToTexture); 
+		shaderProgram.update("uLodDepthScale", lodScale);  
 
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
@@ -777,6 +773,8 @@ int main(int argc, char *argv[])
 		uvwShaderProgram.update("view", s_view);
 		uvwShaderProgram.update("projection", s_perspective);
 		uvwRenderPass.render();
+		
+		shaderProgram.update("uScreenToTexture", screenToTexture);
 
 		OPENGLCONTEXT->bindFBO(0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -800,6 +798,8 @@ int main(int argc, char *argv[])
 		uvwShaderProgram.update("projection", s_perspective_r);
 		uvwRenderPass.render();
 		
+		shaderProgram.update("uScreenToTexture", screenToTexture_r);
+
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
 		renderPass.setFrameBufferObject( &FBO_r );
@@ -811,7 +811,11 @@ int main(int argc, char *argv[])
 
 		if ( m_pHMD )
 		{
-			submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
+			if ( chunkedRenderPass.isFinished() )
+			{
+				submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
+			}
+
 			submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
 		}
 
