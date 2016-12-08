@@ -583,14 +583,16 @@ int main(int argc, char *argv[])
 			if ( chunkedRenderPass.isFinished() )
 			{
 				FBO.bind();
-				//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 				ovr.renderModels(vr::Eye_Left);
 				ovr.submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
 			}
-			
+
 			FBO_r.bind();
+			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 			ovr.renderModels(vr::Eye_Right);
 			ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
+			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 		}
 
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
