@@ -25,6 +25,7 @@ uniform mat4 uScreenToTexture;
 
 // out-variables
 layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragFirstHit;
 
 /**
  * @brief Struct of a volume sample point
@@ -33,6 +34,16 @@ struct VolumeSample
 {
 	int value; // scalar intensity
 	vec3 uvw;  // uvw coordinates
+};
+
+/**
+ * @brief Struct of a volume sample point
+ */
+struct RaycastResult
+{
+	vec4 color;  // end color
+	vec4 firstHit; // position of first non-zero alpha hit
+	vec4 lastHit; // position of last non-zero alpha hit
 };
 
 /**
@@ -67,10 +78,14 @@ vec4 transferFunction(int value, float stepSize)
  * 
  * @return sample point in volume, holding value and uvw coordinates
  */
-vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth)
+RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 	
+	RaycastResult result;
+	result.color = vec4(0);
+	result.firstHit = vec4(startUVW, endDepth);
+	result.lastHit = vec4(endUVW, endDepth);
 	vec4 curColor = vec4(0);
 
 	// traverse ray front to back rendering
@@ -78,7 +93,8 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
-		float curDepth = mix( startDepth, endDepth, t);
+		
+		float curDepth = mix( startDepth, endDepth, t); // stupid approx
 		float curLod = max(0.0, uLodDepthScale * (curDepth - uLodBias)); // bad approximation, but idc for now
 		float curStepSize = stepSize * pow(2.0, curLod);
 		parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
@@ -98,11 +114,19 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float
 			break;
 		}
 		
+		// first hit?
+		if (result.firstHit.a > curDepth && sampleColor.a > 0.001)
+		{
+			result.firstHit.rgb = curSample.uvw;
+			result.firstHit.a = curDepth;
+		} 
+
 		t += parameterStepSize;
 	}
 
+	result.color = curColor;
 	// return emission absorbtion result
-	return curColor;
+	return result;
 }
 
 void main()
@@ -121,7 +145,7 @@ void main()
 	}
 
 	// EA-raycasting
-	vec4 color = raycast( 
+	RaycastResult raycastResult = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize    			// sampling step size
@@ -130,5 +154,6 @@ void main()
 		);
 
 	// final color
-	fragColor = color;// * 0.8 + 0.2 * uvwStart; //debug
+	fragColor = raycastResult.color;// * 0.8 + 0.2 * uvwStart; //debug
+	fragFirstHit = vec4(raycastResult.firstHit);
 }
