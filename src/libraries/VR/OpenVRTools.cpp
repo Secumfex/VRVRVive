@@ -142,9 +142,9 @@ bool OpenVRSystem::initialize()
 	if ( eError != vr::VRInitError_None )
 	{
 		m_pHMD = NULL;
-		char buf[1024];
-		sprintf_s( buf, sizeof( buf ), "Unable to init VR runtime: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
-		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", buf, NULL );
+		std::string message = std::string("ERROR: Unable to init VR runtime: ") +  vr::VR_GetVRInitErrorAsEnglishDescription( eError );
+		DEBUGLOG->log( message );
+		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", message.c_str(), NULL );
 		return false;
 	}
 
@@ -154,10 +154,9 @@ bool OpenVRSystem::initialize()
 	{
 		m_pHMD = NULL;
 		vr::VR_Shutdown();
-
-		char buf[1024];
-		sprintf_s( buf, sizeof( buf ), "Unable to get render model interface: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
-		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", buf, NULL );
+		std::string message = "Unable to get render model interface: " + std::string(vr::VR_GetVRInitErrorAsEnglishDescription( eError ));
+		DEBUGLOG->log( message );
+		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", message.c_str(), NULL );
 		return false;
 	}
 
@@ -264,7 +263,7 @@ GLuint OpenVRSystem::CompileGLShader( const char *pchShaderName, const char *pch
 	glGetShaderiv( nSceneVertexShader, GL_COMPILE_STATUS, &vShaderCompiled);
 	if ( vShaderCompiled != GL_TRUE)
 	{
-		sprintf("%s - Unable to compile vertex shader %d!\n", pchShaderName, nSceneVertexShader);
+		DEBUGLOG->log(std::string(pchShaderName) + " - Unable to compile vertex shader " + std::to_string(nSceneVertexShader) + "!");
 		glDeleteProgram( unProgramID );
 		glDeleteShader( nSceneVertexShader );
 		return 0;
@@ -280,7 +279,7 @@ GLuint OpenVRSystem::CompileGLShader( const char *pchShaderName, const char *pch
 	glGetShaderiv( nSceneFragmentShader, GL_COMPILE_STATUS, &fShaderCompiled);
 	if (fShaderCompiled != GL_TRUE)
 	{
-		sprintf("%s - Unable to compile fragment shader %d!\n", pchShaderName, nSceneFragmentShader );
+		DEBUGLOG->log(std::string(pchShaderName) + " - Unable to compile fragment shader " + std::to_string(nSceneFragmentShader) + "!");
 		glDeleteProgram( unProgramID );
 		glDeleteShader( nSceneFragmentShader );
 		return 0;	
@@ -295,7 +294,7 @@ GLuint OpenVRSystem::CompileGLShader( const char *pchShaderName, const char *pch
 	glGetProgramiv( unProgramID, GL_LINK_STATUS, &programSuccess);
 	if ( programSuccess != GL_TRUE )
 	{
-		sprintf("%s - Error linking program %d!\n", pchShaderName, unProgramID);
+		DEBUGLOG->log(std::string(pchShaderName) + " - Error linking program" +  std::to_string(unProgramID) + "!");
 		glDeleteProgram( unProgramID );
 		return 0;
 	}
@@ -312,7 +311,7 @@ GLuint OpenVRSystem::CompileGLShader( const char *pchShaderName, const char *pch
 void OpenVRSystem::PollVREvents( )
 {
 	vr::VREvent_t event;
-	while( m_pHMD->PollNextEvent( &event, sizeof( event ) ) )
+	while( m_pHMD && m_pHMD->PollNextEvent( &event, sizeof( event ) ) )
 	{
 		ProcessVREvent( event );
 	}
@@ -321,7 +320,7 @@ void OpenVRSystem::PollVREvents( )
 	for( vr::TrackedDeviceIndex_t unDevice = 0; unDevice < vr::k_unMaxTrackedDeviceCount; unDevice++ )
 	{
 		vr::VRControllerState_t state;
-		if( m_pHMD->GetControllerState( unDevice, &state ) )
+		if( m_pHMD && m_pHMD->GetControllerState( unDevice, &state ) )
 		{
 			m_rbShowTrackedDevice[ unDevice ] = state.ulButtonPressed == 0;
 		}
@@ -339,17 +338,17 @@ void OpenVRSystem::ProcessVREvent( const vr::VREvent_t & event )
 	case vr::VREvent_TrackedDeviceActivated:
 		{
 			SetupRenderModelForTrackedDevice( event.trackedDeviceIndex );
-			sprintf( "Device %u attached. Setting up render model.\n", std::to_string(event.trackedDeviceIndex).c_str() );
+			DEBUGLOG->log( "Device " + std::to_string(event.trackedDeviceIndex) + " attached. Setting up render model." );
 		}
 		break;
 	case vr::VREvent_TrackedDeviceDeactivated:
 		{
-			sprintf( "Device %u detached.\n", std::to_string(event.trackedDeviceIndex).c_str() );
+			DEBUGLOG->log( "Device " + std::to_string(event.trackedDeviceIndex) + " detached." );
 		}
 		break;
 	case vr::VREvent_TrackedDeviceUpdated:
 		{
-			sprintf( "Device %u updated.\n", std::to_string(event.trackedDeviceIndex).c_str() );
+			DEBUGLOG->log( "Device " + std::to_string(event.trackedDeviceIndex) + " updated." );
 		}
 		break;
 	}
@@ -391,7 +390,7 @@ bool OpenVRSystem::CreateShaders()
 	m_nRenderModelMatrixLocation = glGetUniformLocation( m_unRenderModelProgramID, "matrix" );
 	if( m_nRenderModelMatrixLocation == -1 )
 	{
-		sprintf( "Unable to find matrix uniform in render model shader\n", "" );
+		DEBUGLOG->log( "ERROR: Unable to find matrix uniform in render model shader" );
 		return false;
 	}
 
@@ -433,7 +432,7 @@ void OpenVRSystem::SetupRenderModelForTrackedDevice( vr::TrackedDeviceIndex_t un
 	if( !pRenderModel )
 	{
 		std::string sTrackingSystemName = GetTrackedDeviceString( m_pHMD, unTrackedDeviceIndex, vr::Prop_TrackingSystemName_String );
-		sprintf( "Unable to load render model for tracked device %d (%s.%s)", std::to_string(unTrackedDeviceIndex).c_str(), sTrackingSystemName.c_str(), sRenderModelName.c_str() );
+		DEBUGLOG->log( "ERROR: Unable to load render model for tracked device " + std::to_string(unTrackedDeviceIndex) + "(" + sTrackingSystemName + "." + sRenderModelName );
 	}
 	else
 	{
@@ -473,7 +472,7 @@ CGLRenderModel *OpenVRSystem::FindOrLoadRenderModel( const char *pchRenderModelN
 
 		if ( error != vr::VRRenderModelError_None )
 		{
-			sprintf( "Unable to load render model %s - %s\n", pchRenderModelName, vr::VRRenderModels()->GetRenderModelErrorNameFromEnum( error ) );
+			DEBUGLOG->log( std::string("ERROR: Unable to load render model ") + pchRenderModelName + "-" + vr::VRRenderModels()->GetRenderModelErrorNameFromEnum( error ) );
 			return NULL; // move on to the next tracked device
 		}
 
@@ -489,7 +488,7 @@ CGLRenderModel *OpenVRSystem::FindOrLoadRenderModel( const char *pchRenderModelN
 
 		if ( error != vr::VRRenderModelError_None )
 		{
-			sprintf( "Unable to load render texture id:%d for render model %s\n", std::to_string(pModel->diffuseTextureId).c_str(), pchRenderModelName );
+			DEBUGLOG->log( "ERROR: Unable to load render texture id:" + std::to_string(pModel->diffuseTextureId) +" for render model " + pchRenderModelName );
 			vr::VRRenderModels()->FreeRenderModel( pModel );
 			return NULL; // move on to the next tracked device
 		}
@@ -497,7 +496,7 @@ CGLRenderModel *OpenVRSystem::FindOrLoadRenderModel( const char *pchRenderModelN
 		pRenderModel = new CGLRenderModel( pchRenderModelName );
 		if ( !pRenderModel->BInit( *pModel, *pTexture ) )
 		{
-			sprintf( "Unable to create GL model from render model %s\n", pchRenderModelName );
+			DEBUGLOG->log( "ERROR: Unable to create GL model from render model" + std::string(pchRenderModelName) );
 			delete pRenderModel;
 			pRenderModel = NULL;
 		}
