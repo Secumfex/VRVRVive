@@ -20,6 +20,7 @@
 
 // openvr includes
 #include <openvr.h>
+#include <VR/OpenVRTools.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = INT_MIN; // minimal value in data set; to be overwitten after import
@@ -57,13 +58,6 @@ glm::mat4 s_view;
 glm::mat4 s_view_r;
 glm::mat4 s_perspective;
 glm::mat4 s_perspective_r;
-
-glm::mat4 m_mat4ProjectionLeft;
-glm::mat4  m_mat4ProjectionRight;
-
-glm::mat4 m_mat4HMDPose;
-glm::mat4 m_mat4eyePosLeft;
-glm::mat4 m_mat4eyePosRight;
 
 glm::mat4 s_translation;
 glm::mat4 s_rotation;
@@ -122,242 +116,6 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
-//-----------------------------------------------------------------------------
-// OpenVR related values
-//-----------------------------------------------------------------------------
-vr::IVRSystem *m_pHMD;
-vr::IVRRenderModels *m_pRenderModels;
-std::string m_strDriver;
-std::string m_strDisplay;
-vr::TrackedDevicePose_t m_rTrackedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-glm::mat4 m_rmat4DevicePose[ vr::k_unMaxTrackedDeviceCount ];
-bool m_rbShowTrackedDevice[ vr::k_unMaxTrackedDeviceCount ];
-
-std::string m_strPoseClasses; // what classes we saw poses for this frame
-char m_rDevClassChar[ vr::k_unMaxTrackedDeviceCount ];   // for each device, a character representing its class
-
-int m_iValidPoseCount = 0; // to keep track of currently visible poses (HMD, controller, controller,...)
-int m_iValidPoseCount_Last = 0; // as seen last
-
-//-----------------------------------------------------------------------------
-// Purpose: Helper to get a string from a tracked device property and turn it
-//			into a std::string
-//-----------------------------------------------------------------------------
-std::string GetTrackedDeviceString( vr::IVRSystem *pHmd, vr::TrackedDeviceIndex_t unDevice, vr::TrackedDeviceProperty prop, vr::TrackedPropertyError *peError = NULL )
-{
-	uint32_t unRequiredBufferLen = pHmd->GetStringTrackedDeviceProperty( unDevice, prop, NULL, 0, peError );
-	if( unRequiredBufferLen == 0 )
-		return "";
-
-	char *pchBuffer = new char[ unRequiredBufferLen ];
-	unRequiredBufferLen = pHmd->GetStringTrackedDeviceProperty( unDevice, prop, pchBuffer, unRequiredBufferLen, peError );
-	std::string sResult = pchBuffer;
-	delete [] pchBuffer;
-	return sResult;
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Returns the Projection Matrix for an eye
-//-----------------------------------------------------------------------------
-glm::mat4 GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
-{
-	if ( !m_pHMD )
-		return glm::mat4();
-
-	vr::HmdMatrix44_t mat = m_pHMD->GetProjectionMatrix( nEye, s_near, s_far, vr::API_OpenGL);
-
-	return glm::mat4(
-		mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
-		mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1], 
-		mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2], 
-		mat.m[0][3], mat.m[1][3], mat.m[2][3], mat.m[3][3]
-	);
-}
-
-
-//-----------------------------------------------------------------------------
-// Purpose: Returns the Pose Matrix for an eye (head->eye), essentially a translation
-//-----------------------------------------------------------------------------
-glm::mat4 GetHMDMatrixPoseEye( vr::Hmd_Eye nEye )
-{
-	if ( !m_pHMD )
-		return glm::mat4();
-
-	vr::HmdMatrix34_t matEyeRight = m_pHMD->GetEyeToHeadTransform( nEye );
-	glm::mat4 matrixObj(
-		matEyeRight.m[0][0], matEyeRight.m[1][0], matEyeRight.m[2][0], 0.0, 
-		matEyeRight.m[0][1], matEyeRight.m[1][1], matEyeRight.m[2][1], 0.0,
-		matEyeRight.m[0][2], matEyeRight.m[1][2], matEyeRight.m[2][2], 0.0,
-		matEyeRight.m[0][3], matEyeRight.m[1][3], matEyeRight.m[2][3], 1.0f
-		);
-
-	return glm::inverse(matrixObj);
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Returns the ViewProjection Matrix or an eye
-//-----------------------------------------------------------------------------
-glm::mat4 GetCurrentViewProjectionMatrix( vr::Hmd_Eye nEye )
-{
-	glm::mat4 matMVP;
-	if( nEye == vr::Eye_Left )
-	{
-		matMVP = m_mat4ProjectionLeft * m_mat4eyePosLeft * m_mat4HMDPose;
-	}
-	else if( nEye == vr::Eye_Right )
-	{
-		matMVP = m_mat4ProjectionRight * m_mat4eyePosRight *  m_mat4HMDPose;
-	}
-
-	return matMVP;
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Converts a SteamVR matrix to our local matrix class (adds a column)
-//-----------------------------------------------------------------------------
-glm::mat4 ConvertSteamVRMatrixToGLMMat4( const vr::HmdMatrix34_t &matPose )
-{
-	glm::mat4 matrixObj(
-		matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
-		matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
-		matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
-		matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], 1.0f
-		);
-	return matrixObj;
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Setup OpenVR the Driver
-//-----------------------------------------------------------------------------
-bool setupOpenVR()
-{
-	//if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_TIMER ) < 0 )
-	//{
-	//	printf("%s - SDL could not initialize! SDL Error: %s\n", __FUNCTION__, SDL_GetError());
-	//	return false;
-	//}
-
-	// Loading the SteamVR Runtime
-	vr::EVRInitError eError = vr::VRInitError_None;
-	m_pHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
-
-	if ( eError != vr::VRInitError_None )
-	{
-		m_pHMD = NULL;
-		char buf[1024];
-		sprintf_s( buf, sizeof( buf ), "Unable to init VR runtime: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
-		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", buf, NULL );
-		return false;
-	}
-
-
-	m_pRenderModels = (vr::IVRRenderModels *)vr::VR_GetGenericInterface( vr::IVRRenderModels_Version, &eError );
-	if( !m_pRenderModels )
-	{
-		m_pHMD = NULL;
-		vr::VR_Shutdown();
-
-		char buf[1024];
-		sprintf_s( buf, sizeof( buf ), "Unable to get render model interface: %s", vr::VR_GetVRInitErrorAsEnglishDescription( eError ) );
-		SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "VR_Init Failed", buf, NULL );
-		return false;
-	}
-
-	glewExperimental = GL_TRUE;
-	GLenum nGlewError = glewInit();
-	if (nGlewError != GLEW_OK)
-	{
-		printf( "%s - Error initializing GLEW! %s\n", __FUNCTION__, glewGetErrorString( nGlewError ) );
-		return false;
-	}
-	glGetError(); // to clear the error caused deep in GLEW
-
-	//if ( SDL_GL_SetSwapInterval( m_bVblank ? 1 : 0 ) < 0 )
-	if ( SDL_GL_SetSwapInterval( 0 ) < 0 ) // or 1?
-	{
-		printf( "%s - Warning: Unable to set VSync! SDL Error: %s\n", __FUNCTION__, SDL_GetError() );
-		return false;
-	}
-
-	m_strDriver = "No Driver";
-	m_strDisplay = "No Display";
-
-	m_strDriver = GetTrackedDeviceString( m_pHMD, vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_TrackingSystemName_String );
-	m_strDisplay = GetTrackedDeviceString( m_pHMD, vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_SerialNumber_String );
- 		 	
-	//if (!BInitGL())
-	//{
-	//	printf("%s - Unable to initialize OpenGL!\n", __FUNCTION__);
-	//	return false;
-	//}
-
-	vr::EVRInitError peError = vr::VRInitError_None;
-
-	if ( !vr::VRCompositor() ) //init compositor
-	{
-		printf( "Compositor initialization failed. See log file for details\n" );
-		printf("%s - Failed to initialize VR Compositor!\n", __FUNCTION__);
-		return false;
-	}
-
-	// everything went alright when we reached this!
-	return true;
-}
-
-void setupHMDMatrices()
-{
-	m_mat4ProjectionLeft = GetHMDMatrixProjectionEye( vr::Eye_Left );
-	m_mat4ProjectionRight = GetHMDMatrixProjectionEye( vr::Eye_Right );
-	m_mat4eyePosLeft = GetHMDMatrixPoseEye( vr::Eye_Left );
-	m_mat4eyePosRight = GetHMDMatrixPoseEye( vr::Eye_Right );
-}
-
-void updateTrackedDevicePoses()
-{
-	if ( !m_pHMD )
-	return;
-
-	vr::VRCompositor()->WaitGetPoses(m_rTrackedDevicePose, vr::k_unMaxTrackedDeviceCount, NULL, 0 );
-
-	m_iValidPoseCount = 0;
-	m_strPoseClasses = "";
-	for ( int nDevice = 0; nDevice < vr::k_unMaxTrackedDeviceCount; ++nDevice )
-	{
-		if ( m_rTrackedDevicePose[nDevice].bPoseIsValid )
-		{
-			m_iValidPoseCount++;
-			m_rmat4DevicePose[nDevice] = ConvertSteamVRMatrixToGLMMat4( m_rTrackedDevicePose[nDevice].mDeviceToAbsoluteTracking );
-			if (m_rDevClassChar[nDevice]==0)
-			{
-				switch (m_pHMD->GetTrackedDeviceClass(nDevice))
-				{
-				case vr::TrackedDeviceClass_Controller:        m_rDevClassChar[nDevice] = 'C'; break;
-				case vr::TrackedDeviceClass_HMD:               m_rDevClassChar[nDevice] = 'H'; break;
-				case vr::TrackedDeviceClass_Invalid:           m_rDevClassChar[nDevice] = 'I'; break;
-				case vr::TrackedDeviceClass_Other:             m_rDevClassChar[nDevice] = 'O'; break;
-				case vr::TrackedDeviceClass_TrackingReference: m_rDevClassChar[nDevice] = 'T'; break;
-				default:                                       m_rDevClassChar[nDevice] = '?'; break;
-				}
-			}
-			m_strPoseClasses += m_rDevClassChar[nDevice];
-		}
-	}
-
-	if ( m_rTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
-	{
-		m_mat4HMDPose = glm::inverse(m_rmat4DevicePose[vr::k_unTrackedDeviceIndex_Hmd]);
-	}
-}
-
-void submitImage(GLuint source, vr::EVREye eye)
-{
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE11); // Some unused unit
-	vr::Texture_t eyeTexture = {(void*) source, vr::API_OpenGL, vr::ColorSpace_Gamma };
-	vr::VRCompositor()->Submit(eye, &eyeTexture );
-	OPENGLCONTEXT->updateActiveTextureCache(); // Due to dirty state
-}
-
-
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -365,7 +123,6 @@ void submitImage(GLuint source, vr::EVREye eye)
 int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
-
 
 	// create window and opengl context
 	auto window = generateWindow_SDL(1600,800);
@@ -390,12 +147,14 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// INITIALIZE OPENVR   //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	if ( setupOpenVR() )
+	
+	OpenVRSystem ovr(s_near, s_far);
+	
+	if ( ovr.initialize() )
 	{
 		DEBUGLOG->log("Alright! OpenVR up and running!");
-		setupHMDMatrices();
+		ovr.initializeHMDMatrices();
 	}
-
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
@@ -417,7 +176,7 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 	
 	/////////////////////     Scene / View Settings     //////////////////////////
-	if (m_pHMD)
+	if (ovr.m_pHMD)
 	{
 		s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
 		s_scale = glm::scale(glm::vec3(0.3f,0.3f,0.3f));
@@ -437,17 +196,18 @@ int main(int argc, char *argv[])
 	// use waitgetPoses to update matrices
 	s_view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 	s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-	if (!m_pHMD)
+	if (!ovr.m_pHMD)
 	{
 		s_perspective = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
 		s_perspective_r = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
 	}
 	else
 	{
-		s_view = m_mat4eyePosLeft * s_view;
-		s_view_r = m_mat4eyePosRight * s_view_r;
-		s_perspective = m_mat4ProjectionLeft; 
-		s_perspective_r = m_mat4ProjectionRight; 
+		s_view = ovr.m_mat4eyePosLeft * s_view;
+		s_view_r = ovr.m_mat4eyePosRight * s_view_r;
+		s_perspective = ovr.m_mat4ProjectionLeft; 
+		s_perspective_r = ovr.m_mat4ProjectionRight; 
+
 
 		//DEBUGLOG->log("LEFT EYE"); DEBUGLOG->indent();
 		//	DEBUGLOG->log("eyepos", m_mat4eyePosLeft);
@@ -462,7 +222,6 @@ int main(int argc, char *argv[])
 		//	DEBUGLOG->log("perspective_r", s_perspective_r);
 		//DEBUGLOG->outdent();
 	}
-
 
 	// create Volume and VertexGrid
 	glm::vec3 volumeSize(1.0f, 0.886f, 1.0);
@@ -726,16 +485,16 @@ int main(int argc, char *argv[])
 		}
 
 		// use waitgetPoses to update matrices, or just use regular stuff
-		if (!m_pHMD)
+		if (!ovr.m_pHMD)
 		{
 			s_view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 			s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 		}
 		else
 		{
-			updateTrackedDevicePoses();
-			s_view = m_mat4eyePosLeft * m_mat4HMDPose;
-			s_view_r = m_mat4eyePosRight * m_mat4HMDPose;
+			ovr.updateTrackedDevicePoses();
+			s_view = ovr.m_mat4eyePosLeft * ovr.m_mat4HMDPose;
+			s_view_r = ovr.m_mat4eyePosRight * ovr.m_mat4HMDPose;
 		}
 
 		glm::mat4 invView = glm::inverse(s_view);
@@ -809,17 +568,17 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);
 
-		if ( m_pHMD )
+		if ( ovr.m_pHMD )
 		{
 			if ( chunkedRenderPass.isFinished() )
 			{
-				submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
+				ovr.submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
 			}
 
-			submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
+			ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
 		}
 
-		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !m_pHMD)
+		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
 			showTexShader.update("tex", 10);
 			showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
@@ -841,7 +600,7 @@ int main(int argc, char *argv[])
 	}
 	
 	ImGui_ImplSdlGL3_Shutdown();
-	vr::VR_Shutdown();
+	ovr.shutdown();
 	destroyWindow(window);
 	SDL_Quit();
 
