@@ -50,8 +50,9 @@ static TransferFunction s_transferFunction;
 static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
-float s_near = 1.0f;
+float s_near = 0.1f;
 float s_far = 30.0f;
+float s_fovY = 45.0f;
 
 // matrices
 glm::mat4 s_view;
@@ -395,7 +396,8 @@ int main(int argc, char *argv[])
 
 	//++++++++++++++ DEBUG
 	float nearZ = s_near;
-	float nearH = nearZ * std::tanf( glm::radians(45.0f/2.0f) );
+	float fovY = s_fovY;
+	float nearH = nearZ * std::tanf( glm::radians(fovY/2.0f) );
 	float nearW = nearH * getResolution(window).x / (2.0f * getResolution(window).y);
 	
 	glm::mat4 screenToView   =  glm::inverse( glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f)) );
