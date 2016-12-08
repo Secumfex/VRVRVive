@@ -297,6 +297,19 @@ int main(int argc, char *argv[])
 		8
 		);
 
+	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
+	int occlusionBlockSize = 4;
+	int vertexGridWidth = (int) getResolution(window).x/2 / occlusionBlockSize;
+	int vertexGridHeight = (int) getResolution(window).y  / occlusionBlockSize;
+	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
+	ShaderProgram occlusionFrustumShader("/screenSpace/fullscreen.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom");
+	FrameBufferObject occlusionFrustumFBO( occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(), uvwFBO.getHeight() );
+	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);
+	occlusionFrustum.addRenderable(&vertexGrid);
+	occlusionFrustum.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	occlusionFrustum.addEnable(GL_DEPTH_TEST);
+	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
+
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -559,6 +572,9 @@ int main(int argc, char *argv[])
 		FBO_r.bind(); 
 		glClearColor(renderPass.getClearColor().r,renderPass.getClearColor().g,renderPass.getClearColor().b,renderPass.getClearColor().a); 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
+		occlusionFrustumShader.update("firstHitMap", 8);
+		occlusionFrustum.render();
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 		
 		// render right image
@@ -577,6 +593,8 @@ int main(int argc, char *argv[])
 		// display left and right image
 		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
 		OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE8, GL_TEXTURE_2D); // firstHit Texture
+		OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE7, GL_TEXTURE_2D);
 
 		if ( ovr.m_pHMD )
 		{
@@ -600,7 +618,7 @@ int main(int argc, char *argv[])
 			showTexShader.update("tex", 10);
 			showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
 			showTex.render();
-			showTexShader.update("tex", 9);
+			showTexShader.update("tex", 7);
 			showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
 			showTex.render();
 
