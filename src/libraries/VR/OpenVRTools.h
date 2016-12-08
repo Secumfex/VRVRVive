@@ -6,6 +6,34 @@
 #include <string>
 #include <Rendering/GLTools.h>
 
+///////// helper class for opengl rendering
+class CGLRenderModel
+{
+public:
+	CGLRenderModel( const std::string & sRenderModelName );
+	~CGLRenderModel();
+
+	bool BInit( const vr::RenderModel_t & vrModel, const vr::RenderModel_TextureMap_t & vrDiffuseTexture );
+	void Cleanup();
+	void Draw();
+	const std::string & GetName() const { return m_sModelName; }
+
+private:
+	GLuint m_glVertBuffer;
+	GLuint m_glIndexBuffer;
+	GLuint m_glVertArray;
+	GLuint m_glTexture;
+	GLsizei m_unVertexCount;
+	std::string m_sModelName;
+};
+
+/**
+* @brief Recommended process while Running:
+*    WaitGetPoses
+*    Render Left and Right cameras
+*    Submit Left and Right render targets
+*    Update game logic
+*/
 class OpenVRSystem
 {
 public: 
@@ -36,8 +64,22 @@ public:
 	std::string m_strPoseClasses; // what classes we saw poses for this frame
 	char m_rDevClassChar[ vr::k_unMaxTrackedDeviceCount ];   // for each device, a character representing its class
 
+	int m_iTrackedControllerCount; // keep track of currently visible controllers
+	int m_iTrackedControllerCount_Last;
+
 	int m_iValidPoseCount; // to keep track of currently visible poses (HMD, controller, controller,...)
 	int m_iValidPoseCount_Last; // as seen last
+
+	//-----------------------------------------------------------------------------
+	// OpenGL related values
+	//-----------------------------------------------------------------------------
+	SDL_GLContext m_pContext;
+	GLuint m_unRenderModelProgramID;
+	GLint m_nRenderModelMatrixLocation;
+
+	std::vector< CGLRenderModel * > m_vecRenderModels;
+	CGLRenderModel *m_rTrackedDeviceToRenderModel[ vr::k_unMaxTrackedDeviceCount ];
+	
 
 	//-----------------------------------------------------------------------------
 	// Purpose: Constructor/Destructor
@@ -66,9 +108,33 @@ public:
 	void updateTrackedDevicePoses();
 
 	//-----------------------------------------------------------------------------
+	// Purpose: render tracked devices into active FBO, using the provided eye's view
+	//-----------------------------------------------------------------------------
+	void renderModels( vr::Hmd_Eye nEye );
+
+	//-----------------------------------------------------------------------------
 	// Purpose: submits the content of texture source for the specified eye to the compositor
 	//-----------------------------------------------------------------------------
 	void submitImage(GLuint source, vr::EVREye eye);
+
+	//-----------------------------------------------------------------------------
+	// Purpose: Create/destroy GL a Render Model for tracked devices
+	//-----------------------------------------------------------------------------
+	void SetupRenderModels();
+	void SetupRenderModelForTrackedDevice( vr::TrackedDeviceIndex_t unTrackedDeviceIndex );
+	CGLRenderModel *FindOrLoadRenderModel( const char *pchRenderModelName );
+
+	//-----------------------------------------------------------------------------
+	// Purpose: Creates all the shaders to render a device model
+	//-----------------------------------------------------------------------------
+	bool CreateShaders();
+	GLuint CompileGLShader( const char *pchShaderName, const char *pchVertexShader, const char *pchFragmentShader ); // helper
+
+	//-----------------------------------------------------------------------------
+	// Purpose: Processes VR events
+	//-----------------------------------------------------------------------------
+	void PollVREvents();
+	void ProcessVREvent( const vr::VREvent_t & event );
 
 	//-----------------------------------------------------------------------------
 	// Purpose: Helper to get a string from a tracked device property and turn it
@@ -105,8 +171,5 @@ public:
 	// computes the vertical field of view from the current raw projection matrix
 	float getFovY(vr::Hmd_Eye nEye = vr::Eye_Left);
 };
-
-
-
 #endif
 

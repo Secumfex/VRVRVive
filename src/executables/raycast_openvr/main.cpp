@@ -155,6 +155,11 @@ int main(int argc, char *argv[])
 	{
 		DEBUGLOG->log("Alright! OpenVR up and running!");
 		ovr.initializeHMDMatrices();
+
+		ovr.CreateShaders();
+		ovr.SetupRenderModels();
+
+		s_fovY = ovr.getFovY();
 	}
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -427,11 +432,14 @@ int main(int argc, char *argv[])
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
 	{
+		////////////////////////////////    EVENTS    ////////////////////////////////
+		pollSDLEvents(window, sdlEventHandler);
+		ovr.PollVREvents();
+
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 		ImGui_ImplSdlGL3_NewFrame(window);
-		pollSDLEvents(window, sdlEventHandler);
 	
 		ImGui::Value("FPS", io.Framerate);
 		mirrorScreenTimer += io.DeltaTime;
@@ -574,9 +582,14 @@ int main(int argc, char *argv[])
 		{
 			if ( chunkedRenderPass.isFinished() )
 			{
+				FBO.bind();
+				//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+				ovr.renderModels(vr::Eye_Left);
 				ovr.submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
 			}
-
+			
+			FBO_r.bind();
+			ovr.renderModels(vr::Eye_Right);
 			ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
 		}
 

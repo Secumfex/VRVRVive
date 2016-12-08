@@ -45,6 +45,8 @@ void setCursorEnterCallback(GLFWwindow* window, std::function<void (int)> func);
 void setWindowResizeCallback(GLFWwindow* window, std::function<void (int, int)> func); //!< set callback function called when cursor enters window
 
 void printSDLRenderDriverInfo();
+
+SDL_GLContext getCurrentSDLGLContext();
 //TODO SDL Event handler
 
 glm::vec2 getMainWindowResolution(); //!< returns width and height of the main window (if it exists)

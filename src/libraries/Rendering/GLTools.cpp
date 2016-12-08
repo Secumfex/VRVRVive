@@ -383,6 +383,10 @@ void printSDLRenderDriverInfo()
 	} DEBUGLOG->outdent();
 }
 
+SDL_GLContext getCurrentSDLGLContext()
+{
+	return g_sdl_glcontext;
+}
 
 glm::vec2 getResolution(GLFWwindow* window) {
     int w, h;
