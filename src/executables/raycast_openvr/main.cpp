@@ -556,9 +556,9 @@ int main(int argc, char *argv[])
 		glm::mat4 screenToTexture   = s_modelToTexture * invModel * invView   * s_screenToView;
 		glm::mat4 screenToTexture_r = s_modelToTexture * invModel * invView_r * s_screenToView;
 
-			//++++++++++++++ DEBUG			
-		static glm::mat4 invOldModel = model;   // state of model matrix when left was rendered
-		static glm::mat4 invOldModel_r = model; // state of model matrix when right was rendered
+		//++++++++++++++ DEBUG			
+		static glm::mat4 invOldModel = invModel;   // state of model matrix when left was rendered
+		static glm::mat4 invOldModel_r = invModel; // state of model matrix when right was rendered
 		static glm::mat4 invOldView   = glm::inverse(s_view);
 		static glm::mat4 invOldView_r = glm::inverse(s_view_r);
 		static glm::mat4 oldScreenToTexture = screenToTexture;
@@ -590,7 +590,7 @@ int main(int argc, char *argv[])
 		if (chunkedRenderPass.isFinished())
 		{
 			//update raycasting matrices for next iteration	// for occlusion frustum
-			glm::mat4 oldViewToNewViewProjection   = s_perspective   * s_view   * invOldView;   // old view to new projection space
+			glm::mat4 oldViewToNewViewProjection  = s_perspective * s_view * (model * invOldModel) * invOldView;   // old view to new projection space
 			glm::mat4 oldViewToTexture   = s_modelToTexture * invOldModel * invOldView;
 
 			// uvw maps
@@ -617,8 +617,12 @@ int main(int argc, char *argv[])
 		shaderProgram.update("front_uvw_map", 2);
 		shaderProgram.update("occlusion_map", 8);
 
-		renderPass.render(); // use chunked rendering instead
-		//chunkedRenderPass.render(); 
+		//if (ImGui::Button("Render Left"))
+		{
+			//invOldModel = invModel;// save current model 
+			//invOldView = invView;
+			renderPass.render(); // use chunked rendering instead
+		}//chunkedRenderPass.render(); 
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -627,8 +631,8 @@ int main(int argc, char *argv[])
 		// uvw maps
 		if (chunkedRenderPass_r.isFinished())
 		{
-			glm::mat4 oldViewToNewViewProjection_r = s_perspective_r * s_view_r * invOldView_r; // old view to new projection space
-			glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel * invOldView_r;
+			glm::mat4 oldViewToNewViewProjection_r = s_perspective_r * s_view_r * (model * invOldModel_r) *invOldView_r; // old view to new projection space
+			glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
 
 			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
 			uvwShaderProgram.update("view", s_view_r);
@@ -643,6 +647,7 @@ int main(int argc, char *argv[])
 			occlusionFrustum.render();
 
 			invOldView_r = invView_r; // save current view
+			invOldModel_r = invModel;// save current model 
 			oldScreenToTexture_r = screenToTexture_r; // save current screenToTexture matrix
 		}
 
