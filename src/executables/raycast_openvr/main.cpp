@@ -301,14 +301,15 @@ int main(int argc, char *argv[])
 	int occlusionBlockSize = 4;
 	int vertexGridWidth = (int) getResolution(window).x/2 / occlusionBlockSize;
 	int vertexGridHeight = (int) getResolution(window).y  / occlusionBlockSize;
-	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
-	ShaderProgram occlusionFrustumShader("/screenSpace/fullscreen.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom");
+	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
+	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom");
 	FrameBufferObject occlusionFrustumFBO( occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(), uvwFBO.getHeight() );
 	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);
 	occlusionFrustum.addRenderable(&vertexGrid);
 	occlusionFrustum.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	occlusionFrustum.addEnable(GL_DEPTH_TEST);
 	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
+	occlusionFrustumShader.update("uResolution", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
 
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
@@ -525,6 +526,8 @@ int main(int argc, char *argv[])
 		
 		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
 		glm::mat4 invModel = glm::inverse( model ); 
+
+		glm::mat4 viewProjection_r = s_perspective_r * s_view_r * invView;
 		screenToTexture   =	modelToTexture * invModel * invView   * screenToView;
 		screenToTexture_r = modelToTexture * invModel * invView_r * screenToView;
 		//////////////////////////////////////////////////////////////////////////////
@@ -574,6 +577,8 @@ int main(int argc, char *argv[])
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
 		occlusionFrustumShader.update("firstHitMap", 8);
+		occlusionFrustumShader.update("uScreenToView", screenToView);
+		occlusionFrustumShader.update("uViewToNewViewProjection", viewProjection_r);
 		occlusionFrustum.render();
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 		

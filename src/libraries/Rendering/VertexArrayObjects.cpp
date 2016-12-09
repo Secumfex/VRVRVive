@@ -1253,8 +1253,8 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 
 	auto setVertex = [&](int vIdx, float x, float y)
 	{
-		float nX = ((float) x + 0.5f) / (float) width;  // 0..1
-		float nY = ((float) y + 0.5f) / (float) height; // 0..1
+		float nX = ((float) x) / (float) width;  // 0..1
+		float nY = ((float) y) / (float) height; // 0..1
 		vertexGridData[vIdx+0] = (doScaleCoords) ? ( nX ) : x; // x
 		vertexGridData[vIdx+1] = (doScaleCoords) ? ( nY ) : y; // y
 		uvData[vIdx+0] = nX;
@@ -1264,9 +1264,9 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 	if (groupSize != glm::ivec2(-1)) // has been provided
 	{
 		// always process groups from top right to bottom left
-		for (int curX = width-1; curX > 0; curX -= (groupSize.x+1))
+		for (int curX = width-1; curX >= 0; curX -= (groupSize.x+1))
 		{
-		for( int curY = height -1; curY > 0; curY -= (groupSize.y+1) )
+		for( int curY = height -1; curY >= 0; curY -= (groupSize.y+1) )
 		{
 				// process inner group from top right to bottom left
 				for (int j = curX; j >= curX - groupSize.x; j--) // from right
