@@ -53,6 +53,8 @@ static int s_curFPSidx = 0;
 float s_near = 0.1f;
 float s_far = 30.0f;
 float s_fovY = 45.0f;
+float s_nearH;
+float s_nearW;
 
 // matrices
 glm::mat4 s_view;
@@ -60,9 +62,14 @@ glm::mat4 s_view_r;
 glm::mat4 s_perspective;
 glm::mat4 s_perspective_r;
 
+glm::mat4 s_screenToView;
+glm::mat4 s_modelToTexture;
+
 glm::mat4 s_translation;
 glm::mat4 s_rotation;
 glm::mat4 s_scale;
+
+glm::vec3 s_volumeSize(1.0f, 0.886f, 1.0);
 
 //////////////////////////////////////////////////////////////////////////////
 ////////////////////////////// MISC //////////////////////////////////////////
@@ -212,26 +219,30 @@ int main(int argc, char *argv[])
 		s_view = ovr.m_mat4eyePosLeft * s_view;
 		s_view_r = ovr.m_mat4eyePosRight * s_view_r;
 		s_perspective = ovr.m_mat4ProjectionLeft; 
-		s_perspective_r = ovr.m_mat4ProjectionRight; 
-
-
-		//DEBUGLOG->log("LEFT EYE"); DEBUGLOG->indent();
-		//	DEBUGLOG->log("eyepos", m_mat4eyePosLeft);
-		//	DEBUGLOG->log("projection", m_mat4ProjectionLeft);
-		//	DEBUGLOG->log("view", s_view);
-		//	DEBUGLOG->log("perspective", s_perspective); 
-		//DEBUGLOG->outdent();
-		//DEBUGLOG->log("RIGHT EYE"); DEBUGLOG->indent();
-		//	DEBUGLOG->log("eyepos", m_mat4eyePosRight);
-		//	DEBUGLOG->log("projection", m_mat4ProjectionRight);
-		//	DEBUGLOG->log("view_r", s_view_r);
-		//	DEBUGLOG->log("perspective_r", s_perspective_r);
-		//DEBUGLOG->outdent();
+		s_perspective_r = ovr.m_mat4ProjectionRight;
 	}
+	
+	s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
+	s_nearW = s_nearH * getResolution(window).x / (2.0f * getResolution(window).y);
+
+	// constant
+	s_screenToView = glm::scale(glm::vec3(s_nearW, s_nearH, s_near)) * 
+		glm::inverse( 
+			glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * 
+			glm::scale(glm::vec3(0.5f,0.5f,0.5f)) 
+			);
+    
+	// constant
+	s_modelToTexture = glm::mat4( // swap components
+		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
+		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
+		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
+		* glm:: inverse(glm::scale( 2.0f * s_volumeSize) ) // moves origin to front left
+		* glm::translate( glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z) );
 
 	// create Volume and VertexGrid
-	glm::vec3 volumeSize(1.0f, 0.886f, 1.0);
-	VolumeSubdiv volume(volumeSize.x, volumeSize.y, volumeSize.z, 3);
+	VolumeSubdiv volume(s_volumeSize.x, s_volumeSize.y, s_volumeSize.z, 3);
 	Quad quad;
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
@@ -272,15 +283,21 @@ int main(int argc, char *argv[])
 
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE3, GL_TEXTURE_1D); // transfer function
+
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D); // left uvw back
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw front
+
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE4, GL_TEXTURE_2D); // right uvw back
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
+	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
+	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D);// right raycasting result
 
 	shaderProgram.update("volume_texture", 0); // volume texture
-	shaderProgram.update("back_uvw_map",  1);
-	shaderProgram.update("front_uvw_map", 2);
-	shaderProgram.update("occlusion_map", 6);
 	shaderProgram.update("transferFunctionTex", 3);
 
 	RenderPass renderPass(&shaderProgram, &FBO);
@@ -289,30 +306,56 @@ int main(int argc, char *argv[])
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
+
+	RenderPass renderPass_r(&shaderProgram, &FBO_r);
+	renderPass_r.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	renderPass_r.setClearColor(0.1f,0.12f,0.15f,0.0f);
+	renderPass_r.addRenderable(&quad);
+	renderPass_r.addEnable(GL_DEPTH_TEST);
+	renderPass_r.addDisable(GL_BLEND);
 	
-	///////////////////////   Chunked RenderPass    //////////////////////////
+	///////////////////////   Chunked RenderPasses    //////////////////////////
+	glm::ivec2 viewportSize = glm::ivec2(getResolution(window).x / 2, getResolution(window).y);
+	glm::ivec2 chunkSize = glm::ivec2(96,96);
 	ChunkedAdaptiveRenderPass chunkedRenderPass(
 		&renderPass,
-		glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
-		glm::ivec2(96,96),
-		//glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
+		viewportSize,
+		chunkSize,
+		8
+		);
+	ChunkedAdaptiveRenderPass chunkedRenderPass_r(
+		&renderPass_r,
+		viewportSize,
+		chunkSize,
 		8
 		);
 
+	//DEBUG
+	chunkedRenderPass.activateClearbits();
+	chunkedRenderPass_r.activateClearbits();
+
 	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
 	int occlusionBlockSize = 6;
-	int vertexGridWidth = (int) getResolution(window).x/2 / occlusionBlockSize;
-	int vertexGridHeight = (int) getResolution(window).y  / occlusionBlockSize;
+	int vertexGridWidth  = (int) getResolution(window).x/2 / occlusionBlockSize;
+	int vertexGridHeight = (int) getResolution(window).y   / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
 	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom");
-	FrameBufferObject occlusionFrustumFBO( occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(), uvwFBO.getHeight() );
+	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
+	FrameBufferObject occlusionFrustumFBO_r( occlusionFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
 	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);
 	occlusionFrustum.addRenderable(&vertexGrid);
 	occlusionFrustum.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	occlusionFrustum.addEnable(GL_DEPTH_TEST);
+	occlusionFrustum.addDisable(GL_BLEND);
 	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
 	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
+	occlusionFrustumShader.update("uScreenToView", s_screenToView);
 
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE12, GL_TEXTURE_2D); // left occlusion map depth
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE13, GL_TEXTURE_2D); // right occlusion map depth
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -413,37 +456,6 @@ int main(int argc, char *argv[])
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-	//++++++++++++++ DEBUG
-	float nearZ = s_near;
-	float fovY = s_fovY;
-	float nearH = nearZ * std::tanf( glm::radians(fovY/2.0f) );
-	float nearW = nearH * getResolution(window).x / (2.0f * getResolution(window).y);
-	
-	glm::mat4 screenToView   =  glm::inverse( glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f)) );
-	screenToView = glm::scale(glm::vec3(nearW, nearH, nearZ)) * screenToView;
-
-	glm::mat4 modelToTexture = glm::mat4( // swap components
-		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
-		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
-		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
-		* glm:: inverse(glm::scale( 2.0f * volumeSize) ) // moves origin to front left
-		* glm::translate( glm::vec3(volumeSize.x, volumeSize.y, -volumeSize.z) );
-	
-	glm::mat4 worldToModel = glm::inverse( s_translation * turntable.getRotationMatrix() * s_rotation * s_scale ); //inverse model
-	glm::mat4 viewToModel =  worldToModel * glm::inverse(s_view);
-
-	glm::mat4 screenToTexture =	modelToTexture 
-	* viewToModel
-	* screenToView;
-
-	glm::mat4 screenToTexture_r =	modelToTexture 
-	* worldToModel
-	* glm::inverse(s_view_r) // inverse view
-	* screenToView;
-
-	//++++++++++++++ DEBUG
-
 	double elapsedTime = 0.0;
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
@@ -502,6 +514,16 @@ int main(int argc, char *argv[])
 		ImGui::Checkbox("Chunk Performance Profiler", &profiler_visible);
 		if (profiler_visible) { chunkedRenderPass.imguiInterface(&profiler_visible); };
 
+		static int  leftDebugView = 10;
+		static int rightDebugView = 11;
+		ImGui::Columns(2);
+		ImGui::SliderInt("Left Debug View", &leftDebugView, 1, 13);
+		ImGui::NextColumn();
+		ImGui::SliderInt("Right Debug View", &rightDebugView, 1, 13);
+		ImGui::NextColumn();
+		ImGui::Columns(1);
+		
+
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -523,26 +545,31 @@ int main(int argc, char *argv[])
 			s_view_r = ovr.m_mat4eyePosRight * ovr.m_mat4HMDPose;
 		}
 
+		// Update Matrices
+		// compute current auxiliary matrices
 		glm::mat4 invView = glm::inverse(s_view);
 		glm::mat4 invView_r = glm::inverse(s_view_r);
 		
 		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
 		glm::mat4 invModel = glm::inverse( model ); 
+	
+		glm::mat4 screenToTexture   = s_modelToTexture * invModel * invView   * s_screenToView;
+		glm::mat4 screenToTexture_r = s_modelToTexture * invModel * invView_r * s_screenToView;
 
-		viewToModel =  invModel * glm::inverse(s_view);
+			//++++++++++++++ DEBUG			
+		static glm::mat4 invOldModel = model;   // state of model matrix when left was rendered
+		static glm::mat4 invOldModel_r = model; // state of model matrix when right was rendered
+		static glm::mat4 invOldView   = glm::inverse(s_view);
+		static glm::mat4 invOldView_r = glm::inverse(s_view_r);
+		static glm::mat4 oldScreenToTexture = screenToTexture;
+		static glm::mat4 oldScreenToTexture_r = screenToTexture_r;
+		//++++++++++++++ DEBUG
 
-		// for occlusion frustum
-		glm::mat4 viewLeftToProjectionRight = s_perspective_r * s_view_r * invView;
-		glm::mat4 viewToTexture = modelToTexture * viewToModel;
-		
-		screenToTexture   =	modelToTexture * invModel * invView   * screenToView;
-		screenToTexture_r = modelToTexture * invModel * invView_r * screenToView;
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
-		uvwShaderProgram.update("model", s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
-		uvwShaderProgram.update("view", s_view);
+		uvwShaderProgram.update("model", model);
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
@@ -553,63 +580,82 @@ int main(int argc, char *argv[])
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		/************* update experimental  parameters ******************/
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// /////////////////////////////
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
-		// render left image
-		uvwRenderPass.setFrameBufferObject( &uvwFBO );
-		uvwShaderProgram.update("view", s_view);
-		uvwShaderProgram.update("projection", s_perspective);
-		uvwRenderPass.render();
-		
-		shaderProgram.update("uScreenToTexture", screenToTexture);
+		//%%%%%%%%%%%% render left image
+		if (chunkedRenderPass.isFinished())
+		{
+			//update raycasting matrices for next iteration	// for occlusion frustum
+			glm::mat4 oldViewToNewViewProjection   = s_perspective   * s_view   * invOldView;   // old view to new projection space
+			glm::mat4 oldViewToTexture   = s_modelToTexture * invOldModel * invOldView;
 
-		shaderProgram.update("occlusion_map", 2); // DEBUG
+			// uvw maps
+			uvwRenderPass.setFrameBufferObject( &uvwFBO );
+			uvwShaderProgram.update("view", s_view);
+			uvwShaderProgram.update("projection", s_perspective);
+			uvwRenderPass.render();
 
-		OPENGLCONTEXT->bindFBO(0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-		renderPass.setFrameBufferObject( &FBO );
-		//renderPass.render();
-		chunkedRenderPass.render(); // use chunked rendering instead
+			// occlusion maps 
+			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
+			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
+			occlusionFrustumShader.update("uViewToNewViewProjection", oldViewToNewViewProjection);
+			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture);
+			occlusionFrustum.render();
+
+			invOldView = invView; // save current view
+			invOldModel = invModel;// save current model 
+			oldScreenToTexture = screenToTexture; // save current screenToTexture matrix
+		}
+
+		// raycasting (chunked)
+		shaderProgram.update("uScreenToTexture", oldScreenToTexture);
+		shaderProgram.update("back_uvw_map",  1);
+		shaderProgram.update("front_uvw_map", 2);
+		shaderProgram.update("occlusion_map", 8);
+
+		renderPass.render(); // use chunked rendering instead
+		//chunkedRenderPass.render(); 
 		
-		//+++++++++ DEBUG : restore values for regular rendering ++++++ 
-		shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
-		renderPass.setViewport(0,0,getResolution(window).x/2, getResolution(window).y);	
-		FBO_r.bind(); 
-		glClearColor(renderPass.getClearColor().r,renderPass.getClearColor().g,renderPass.getClearColor().b,renderPass.getClearColor().a); 
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		shaderProgram.update("occlusion_map", 6);
+		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 		
-		// render right image
-		uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
-		uvwShaderProgram.update("view", s_view_r);
-		uvwShaderProgram.update("projection", s_perspective_r);
-		uvwRenderPass.render();
+		//%%%%%%%%%%%% render right image
+		// uvw maps
+		if (chunkedRenderPass_r.isFinished())
+		{
+			glm::mat4 oldViewToNewViewProjection_r = s_perspective_r * s_view_r * invOldView_r; // old view to new projection space
+			glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel * invOldView_r;
+
+			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
+			uvwShaderProgram.update("view", s_view_r);
+			uvwShaderProgram.update("projection", s_perspective_r);
+			uvwRenderPass.render();
 		
-		shaderProgram.update("uScreenToTexture", screenToTexture_r);
+			// occlusion maps 
+			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
+			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
+			occlusionFrustumShader.update("uViewToNewViewProjection", oldViewToNewViewProjection_r);
+			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture_r);
+			occlusionFrustum.render();
 
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-		renderPass.setFrameBufferObject( &FBO_r );
-		renderPass.render();
+			invOldView_r = invView_r; // save current view
+			oldScreenToTexture_r = screenToTexture_r; // save current screenToTexture matrix
+		}
 
-		// display left and right image
-		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
-		OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D);// right raycasting result
+		// raycasting (chunked)
+		shaderProgram.update("uScreenToTexture", oldScreenToTexture_r);
+		shaderProgram.update("back_uvw_map",  4);
+		shaderProgram.update("front_uvw_map", 5);
+		shaderProgram.update("occlusion_map", 9);
 
-		//+++++++++++ DEBUG +++++++++ // TODO move these where they belong
-		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE8, GL_TEXTURE_2D); // first hit map
-		OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE6, GL_TEXTURE_2D); // occlusion Frustum FBO result
-		//+++++++++++++++++++++++++++
+		renderPass_r.render();
+		//chunkedRenderPass_r.render();
 
-		if ( ovr.m_pHMD )
+		if ( ovr.m_pHMD ) // submit images only when finished
 		{
 			if ( chunkedRenderPass.isFinished() )
 			{
@@ -619,32 +665,30 @@ int main(int argc, char *argv[])
 				ovr.submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
 			}
 
-			FBO_r.bind();
-			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-			ovr.renderModels(vr::Eye_Right);
-			ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
+			if ( chunkedRenderPass_r.isFinished() )
+			{
+				FBO_r.bind();
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+				ovr.renderModels(vr::Eye_Right);
+				ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
+			}
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 		}
 
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
-			if ( chunkedRenderPass.isFinished() )
+			//if (chunkedRenderPass.isFinished())
 			{
-				occlusionFrustumShader.update("first_hit_map", 8);
-				occlusionFrustumShader.update("uScreenToView", screenToView);
-				occlusionFrustumShader.update("uViewToNewViewProjection", viewLeftToProjectionRight);
-				//occlusionFrustumShader.update("uViewToNewViewProjection", s_perspective_r * glm::lookAt(glm::vec3(2.0,2.0,3.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f)) * invView); //DEBUG
-				occlusionFrustumShader.update("uViewToTexture", viewToTexture);
-				occlusionFrustum.render();
+				showTexShader.update("tex", leftDebugView);
+				showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+				showTex.render();
 			}
-
-			showTexShader.update("tex", 9);
-			showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
-			showTex.render();
-			showTexShader.update("tex", 6);
-			showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
-			showTex.render();
-
+			//if (chunkedRenderPass_r.isFinished())
+			{
+				showTexShader.update("tex", rightDebugView);
+				showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+				showTex.render();
+			}
 			//////////////////////////////////////////////////////////////////////////////
 			ImGui::Render();
 			SDL_GL_SwapWindow( window ); // swap buffers
@@ -653,7 +697,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			glFlush(); // just Flush
+			glFinish(); // just Flush
 		}
 	}
 	

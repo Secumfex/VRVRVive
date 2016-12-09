@@ -138,7 +138,7 @@ void main()
 
 	// check uvw coords against occlusion map
 	vec4 uvwOcclusion = texture( occlusion_map, passUV );
-	if (uvwOcclusion.a < uvwEnd.a) // found starting point in front of back face
+	if (uvwOcclusion.a < uvwEnd.a && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
 	{
 		uvwStart = uvwOcclusion;
 	}

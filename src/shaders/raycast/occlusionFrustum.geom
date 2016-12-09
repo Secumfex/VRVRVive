@@ -25,8 +25,8 @@ uniform mat4 uViewToNewViewProjection; // from old view to new projection space
 uniform mat4 uViewToTexture;		   // from old view to texture space
 
 #define MAX_DISTANCE 30.0
-#define DEPTH_SCALE 10.0
-#define DEPTH_BIAS 0.05
+#define DEPTH_SCALE 5.0
+#define DEPTH_BIAS 0.1
 
 struct VertexData
 {
@@ -98,10 +98,10 @@ void main()
 	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS );
 	VertexData b01 = getVertexData( screenPos + vec2(-0.5,						uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS );
 
-	VertexData t00 = getVertexData( screenPos + vec2(-0.5,						- 0.5)						/ texSize, DEPTH_SCALE * minSample.a + 1.0);
-	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	-0.5)						/ texSize, DEPTH_SCALE * minSample.a + 1.0);
-	VertexData t11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5, uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 1.0);
-	VertexData t01 = getVertexData( screenPos + vec2(-0.5,						uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 1.0);
+	VertexData t00 = getVertexData( screenPos + vec2(-0.5,						- 0.5)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	-0.5)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5, uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t01 = getVertexData( screenPos + vec2(-0.5,						uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
 
 	// single triangle_strip
 	emitVertex(b01); // 1
