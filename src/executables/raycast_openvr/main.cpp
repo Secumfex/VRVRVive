@@ -294,13 +294,13 @@ int main(int argc, char *argv[])
 	ChunkedAdaptiveRenderPass chunkedRenderPass(
 		&renderPass,
 		glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
-		//glm::ivec2(96,96),
-		glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
+		glm::ivec2(96,96),
+		//glm::ivec2(getResolution(window).x / 2, getResolution(window).y),
 		8
 		);
 
 	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
-	int occlusionBlockSize = 4;
+	int occlusionBlockSize = 6;
 	int vertexGridWidth = (int) getResolution(window).x/2 / occlusionBlockSize;
 	int vertexGridHeight = (int) getResolution(window).y  / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
@@ -606,7 +606,6 @@ int main(int argc, char *argv[])
 
 		//+++++++++++ DEBUG +++++++++ // TODO move these where they belong
 		OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE8, GL_TEXTURE_2D); // first hit map
-		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE7, GL_TEXTURE_2D); // view position map
 		OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE6, GL_TEXTURE_2D); // occlusion Frustum FBO result
 		//+++++++++++++++++++++++++++
 
@@ -634,6 +633,7 @@ int main(int argc, char *argv[])
 				occlusionFrustumShader.update("first_hit_map", 8);
 				occlusionFrustumShader.update("uScreenToView", screenToView);
 				occlusionFrustumShader.update("uViewToNewViewProjection", viewLeftToProjectionRight);
+				//occlusionFrustumShader.update("uViewToNewViewProjection", s_perspective_r * glm::lookAt(glm::vec3(2.0,2.0,3.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f)) * invView); //DEBUG
 				occlusionFrustumShader.update("uViewToTexture", viewToTexture);
 				occlusionFrustum.render();
 			}

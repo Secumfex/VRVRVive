@@ -1253,25 +1253,25 @@ VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder or
 
 	auto setVertex = [&](int vIdx, float x, float y)
 	{
-		float nX = (((float) x) + 0.5) / (float) width;  // 0..1
-		float nY = (((float) y) + 0.5)/ (float) height; // 0..1
+		float nX = ((float) x + 0.5f) / (float) width;  // 0..1
+		float nY = ((float) y + 0.5f) / (float) height; // 0..1
 		vertexGridData[vIdx+0] = (doScaleCoords) ? ( nX ) : x; // x
 		vertexGridData[vIdx+1] = (doScaleCoords) ? ( nY ) : y; // y
-		uvData[vIdx+0] = nX;
-		uvData[vIdx+1] = nY; 
+		uvData[vIdx+0] = ((float) x) / (float) (width - 1);
+		uvData[vIdx+1] = ((float) y) / (float) (height - 1); 
 	};
 
 	if (groupSize != glm::ivec2(-1)) // has been provided
 	{
 		// always process groups from top right to bottom left
-		for (int curX = width-1; curX >= 0; curX -= (groupSize.x))
+		for (int curX = width; curX >= 0; curX -= (groupSize.x))
 		{
-		for( int curY = height -1; curY >= 0; curY -= (groupSize.y) )
+		for( int curY = height; curY >= 0; curY -= (groupSize.y) )
 		{
 				// process inner group from top right to bottom left
-				for (int j = curX; j >= curX - groupSize.x; j--) // from right
+				for (int j = curX-1; j >= curX - groupSize.x; j--) // from right
 				{
-				for (int i = curY; i >= curY - groupSize.y; i--) // from top 
+				for (int i = curY-1; i >= curY - groupSize.y; i--) // from top 
 				{
 					if ( i < 0 || j < 0 || vIdx >= vertexGridData.size() )
 					{
