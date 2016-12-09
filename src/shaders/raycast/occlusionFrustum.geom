@@ -1,7 +1,7 @@
 #version 430
 
 layout (points) in;
-layout (triangle_strip, max_vertices = 13) out;
+layout (triangle_strip, max_vertices = 14) out;
 //layout (points, max_vertices = 36) out; //debug
 //layout (line_strip, max_vertices = 36) out; //debug
 
@@ -26,7 +26,7 @@ uniform mat4 uViewToTexture;		   // from old view to texture space
 
 #define MAX_DISTANCE 30.0
 #define DEPTH_SCALE 5.0
-#define DEPTH_BIAS 0.1
+#define DEPTH_BIAS 0.05
 
 struct VertexData
 {
@@ -93,15 +93,15 @@ void main()
 	}
 
 	// define 8 corner vertices: projected position and uvw coordinates
-	VertexData b00 = getVertexData( screenPos + vec2(-0.5,						-0.5)						/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS);
-	VertexData b10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	-0.5)						/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS );
-	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS );
-	VertexData b01 = getVertexData( screenPos + vec2(-0.5,						uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a - DEPTH_BIAS );
+	VertexData b00 = getVertexData( screenPos + vec2(-0.25,						-0.25)							/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
+	VertexData b10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
+	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25)	/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
+	VertexData b01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
 
-	VertexData t00 = getVertexData( screenPos + vec2(-0.5,						- 0.5)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5,	-0.5)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.5, uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t01 = getVertexData( screenPos + vec2(-0.5,						uOcclusionBlockSize + 0.5)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t00 = getVertexData( screenPos + vec2(-0.25,						- 0.25)							/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25, uOcclusionBlockSize + 0.25)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, DEPTH_SCALE * minSample.a + 2.0);
 
 	// single triangle_strip
 	emitVertex(b01); // 1

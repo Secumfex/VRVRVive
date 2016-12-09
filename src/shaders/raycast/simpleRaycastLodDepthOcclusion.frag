@@ -28,6 +28,9 @@ uniform mat4 uScreenToTexture;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragFirstHit;
 
+#define DEPTH_BIAS 0.05
+#define DEPTH_SCALE 5.0
+
 /**
  * @brief Struct of a volume sample point
  */
@@ -85,7 +88,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	
 	RaycastResult result;
 	result.color = vec4(0);
-	result.firstHit = vec4(startUVW, endDepth);
+	result.firstHit = vec4(0.0);
 	result.lastHit = vec4(endUVW, endDepth);
 	vec4 curColor = vec4(0);
 
@@ -116,7 +119,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		}
 		
 		// first hit?
-		if (result.firstHit.a > curDepth && sampleColor.a > 0.001)
+		if (result.firstHit.a == 0.0 && sampleColor.a > 0.001)
 		{
 			result.firstHit.rgb = curSample.uvw;
 			result.firstHit.a = curDepth;
@@ -138,7 +141,7 @@ void main()
 
 	// check uvw coords against occlusion map
 	vec4 uvwOcclusion = texture( occlusion_map, passUV );
-	if (uvwOcclusion.a < uvwEnd.a && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
+	if (uvwOcclusion.a != 0.0 && uvwOcclusion.a < uvwEnd.a - (DEPTH_BIAS / DEPTH_SCALE) && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
 	{
 		uvwStart = uvwOcclusion;
 	}
