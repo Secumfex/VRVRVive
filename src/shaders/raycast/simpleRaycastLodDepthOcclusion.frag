@@ -5,8 +5,9 @@ in vec2 passUV;
 
 // textures
 uniform sampler1D transferFunctionTex;
-uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
+uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
+uniform sampler2D occlusion_map;   // uvw coordinates map of occlusion map
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
 
@@ -134,6 +135,13 @@ void main()
 	// define ray start and end points in volume
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
+
+	// check uvw coords against occlusion map
+	vec4 uvwOcclusion = texture( occlusion_map, passUV );
+	if (uvwOcclusion.a < uvwEnd.a) // found starting point in front of back face
+	{
+		uvwStart = uvwOcclusion;
+	}
 
 	if (uvwStart.a == 0.0 && uvwEnd.a == 0.0) { 
 		discard; 

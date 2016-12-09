@@ -18,7 +18,7 @@ void main()
 		fragUVRCoordFront = vec4(passUVWCoord, length(passPosition)/10.0 ); // alpha contains fragment (scaled) view space depth
 		fragUVRCoordBack  = vec4(0.0);
 
-		fragPosFront = vec4(passWorldPosition, 1.0); 
+		fragPosFront = vec4(passPosition, length(passPosition)/10.0); 
 		fragPosBack = vec4(0.0);
 	}
 	else // back face
@@ -27,7 +27,7 @@ void main()
 		fragUVRCoordBack = vec4(passUVWCoord, length(passPosition)/10.0 ); // alpha contains fragment (scaled) view space depth
 		fragUVRCoordFront  = vec4(0.0);
 
-		fragPosBack = vec4(passWorldPosition, 1.0);
+		fragPosBack = vec4(passPosition, length(passPosition)/10.0);
 		fragPosFront = vec4(0.0);
 
 	}

@@ -474,7 +474,7 @@ int main(int argc, char *argv[])
 		uvwShaderProgram.update("model", turntable.getRotationMatrix() * model);
 		uvwShaderProgram.update("view", view);
 
-		shaderProgram.update( "viewprojection_r", viewprojection_r );
+		shaderProgram.update( "viewprojection_r", viewprojection_r * glm::inverse(view) ); //since position map contains view space coords
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
