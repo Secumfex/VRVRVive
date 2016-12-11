@@ -45,7 +45,7 @@ void Shader::loadFromString(const std::string &sourceString)
 {
     // Keep hold of a copy of the source
     m_source = sourceString;
-        
+
     // Get the source as a pointer to an array of characters
     const char *sourceChars = m_source.c_str();
         
@@ -76,12 +76,38 @@ void Shader::loadFromFile(const std::string &filename)
         
     // Convert the StringStream into a string
     m_source = stream.str();
-    
+
     // Get the source string as a pointer to an array of characters
     const char *sourceChars = m_source.c_str();
     
     // Associate the source with the shader id
     glShaderSource(m_id, 1, &sourceChars, NULL);
+}
+
+#include <sstream>
+void Shader::addDefines(const std::vector<std::string>& defines)
+{
+	// extract the "#version" line
+	std::istringstream ss(m_source);
+	std::string version;
+	std::getline(ss, version);
+
+	// Add the defines
+	std::string definesString = "\n";
+	for (int i = 0; i < defines.size(); i++)
+	{
+		definesString += //"#ifdef " + "" + " " //TODO split defines into name and value 
+			"#define " + defines[i]
+			//+ " #endif "
+			+ "\n ";
+	}
+	m_source = version + definesString + m_source.substr( version.length() );
+
+	// Get the source as a pointer to an array of characters
+	const char *sourceChars = m_source.c_str();
+
+	// Re-Associate the source with the shader id
+	glShaderSource(m_id, 1, &sourceChars, NULL);
 }
 
 void Shader::compile()

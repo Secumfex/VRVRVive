@@ -2,6 +2,7 @@
 #define SHADER_H
 
 #include <string>
+#include <vector>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
@@ -26,7 +27,8 @@ public:
     * @brief Loads the shader contents from a file
     * 
     * @param sourceString string of the shader source 
-    */
+	* @param defines vector of defines that will be added to the top of the source string
+	*/
     void loadFromString(const std::string &sourceString);
 
     /**
@@ -36,7 +38,12 @@ public:
     */
     void loadFromFile(const std::string &filename);
     
-    /**
+	/**
+	*@param defines vector of defines that will be added to the top of the source string
+	*/
+	void addDefines(const std::vector<std::string>& defines);
+
+	/**
     * @brief Compile a shader and display any problems if compilation fails.
     * 
     */
