@@ -24,9 +24,13 @@ uniform mat4 uScreenToView;
 uniform mat4 uViewToNewViewProjection; // from old view to new projection space
 uniform mat4 uViewToTexture;		   // from old view to texture space
 
-#define MAX_DISTANCE 30.0
-#define DEPTH_SCALE 5.0
+#ifdef DEPTH_SCALE 
+#define DEPTH_SCALE 5.0 
+#endif
+#ifdef DEPTH_BIAS 
 #define DEPTH_BIAS 0.05
+#endif
+#define MAX_DISTANCE 30.0
 
 struct VertexData
 {

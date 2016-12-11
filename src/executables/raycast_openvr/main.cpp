@@ -40,6 +40,11 @@ static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.1f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
+static const std::vector<std::string> s_shaderDefines( { 
+	"DEPTH_BIAS 0.05", 
+	"DEPTH_SCALE 5.0" 
+} );
+
 struct TFPoint{
 	int v; // value 
 	glm::vec4 col; // mapped color
@@ -247,7 +252,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
-	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
+	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", s_shaderDefines); DEBUGLOG->outdent();
 	uvwShaderProgram.update("model", s_translation * s_rotation * s_scale);
 	uvwShaderProgram.update("view", s_view);
 	uvwShaderProgram.update("projection", s_perspective);
@@ -267,7 +272,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepthOcclusion.frag"); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepthOcclusion.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
 	shaderProgram.update("uResolution", glm::vec4(getResolution(window).x/2, getResolution(window).y,0,0));
@@ -339,7 +344,7 @@ int main(int argc, char *argv[])
 	int vertexGridWidth  = (int) getResolution(window).x/2 / occlusionBlockSize;
 	int vertexGridHeight = (int) getResolution(window).y   / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
-	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom");
+	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", s_shaderDefines);
 	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
 	FrameBufferObject occlusionFrustumFBO_r( occlusionFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
 	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);

@@ -11,7 +11,12 @@ layout(location = 1) out vec4 fragUVRCoordFront;
 layout(location = 2) out vec4 fragPosBack; // world space coords
 layout(location = 3) out vec4 fragPosFront;// world space coords
 
-#define DEPTH_SCALE 5.0
+#ifdef DEPTH_SCALE 
+#define DEPTH_SCALE 5.0 
+#endif
+#ifdef DEPTH_BIAS 
+#define DEPTH_BIAS 0.05
+#endif
 
 void main()
 {

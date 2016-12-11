@@ -1,5 +1,12 @@
 #version 430
 
+#ifdef DEPTH_SCALE 
+#define DEPTH_SCALE 5.0 
+#endif
+#ifdef DEPTH_BIAS 
+#define DEPTH_BIAS 0.05 
+#endif
+
 // in-variables
 in vec2 passUV;
 
@@ -27,9 +34,6 @@ uniform mat4 uScreenToTexture;
 // out-variables
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragFirstHit;
-
-#define DEPTH_BIAS 0.05
-#define DEPTH_SCALE 5.0
 
 /**
  * @brief Struct of a volume sample point
