@@ -40,10 +40,7 @@ static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.1f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static const std::vector<std::string> s_shaderDefines( { 
-	"DEPTH_BIAS 0.05", 
-	"DEPTH_SCALE 5.0" 
-} );
+static const std::vector<std::string> s_shaderDefines;
 
 struct TFPoint{
 	int v; // value 
@@ -67,14 +64,26 @@ glm::mat4 s_view_r;
 glm::mat4 s_perspective;
 glm::mat4 s_perspective_r;
 
-glm::mat4 s_screenToView;
-glm::mat4 s_modelToTexture;
+glm::mat4 s_screenToView;   // const
+glm::mat4 s_modelToTexture; // const
 
 glm::mat4 s_translation;
 glm::mat4 s_rotation;
 glm::mat4 s_scale;
 
 glm::vec3 s_volumeSize(1.0f, 0.886f, 1.0);
+
+struct MatrixSet
+{
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 perspective;
+} matrices[2][2]; // left, right, firsthit, current
+const int FIRST_HIT = 0;
+const int CURRENT = 1;
+const int LEFT = vr::Eye_Left;
+const int RIGHT = vr::Eye_Right;
+
 
 //////////////////////////////////////////////////////////////////////////////
 ////////////////////////////// MISC //////////////////////////////////////////
@@ -360,8 +369,9 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
 
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE12, GL_TEXTURE_2D); // left occlusion map depth
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE13, GL_TEXTURE_2D); // right occlusion map depth
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE12, GL_TEXTURE_2D); // left occlusion map depth
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE13, GL_TEXTURE_2D); // right occlusion map depth
+	
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -553,31 +563,15 @@ int main(int argc, char *argv[])
 
 		// Update Matrices
 		// compute current auxiliary matrices
-		glm::mat4 invView = glm::inverse(s_view);
-		glm::mat4 invView_r = glm::inverse(s_view_r);
-		
 		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
-		glm::mat4 invModel = glm::inverse( model ); 
-	
-		glm::mat4 screenToTexture   = s_modelToTexture * invModel * invView   * s_screenToView;
-		glm::mat4 screenToTexture_r = s_modelToTexture * invModel * invView_r * s_screenToView;
 
 		//++++++++++++++ DEBUG			
-		static glm::mat4 invOldModel = invModel;   // state of model matrix when left was rendered
-		static glm::mat4 invOldModel_r = invModel; // state of model matrix when right was rendered
-		static glm::mat4 invOldView   = glm::inverse(s_view);
-		static glm::mat4 invOldView_r = glm::inverse(s_view_r);
-		static glm::mat4 oldScreenToTexture = screenToTexture;
-		static glm::mat4 oldScreenToTexture_r = screenToTexture_r;
-		static glm::mat4 oldViewToTexture   = s_modelToTexture * invOldModel   * invOldView;
-		static glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
 		//++++++++++++++ DEBUG
 
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
-		uvwShaderProgram.update("model", model);
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
@@ -597,35 +591,41 @@ int main(int argc, char *argv[])
 		//%%%%%%%%%%%% render left image
 		if (chunkedRenderPass.isFinished())
 		{
+			matrices[LEFT][FIRST_HIT] = matrices[LEFT][CURRENT]; // first hit map was rendered with last "current" matrices
+			matrices[LEFT][CURRENT].model = model; // overwrite with current  matrices
+			matrices[LEFT][CURRENT].view = s_view;
+			matrices[LEFT][CURRENT].perspective = s_perspective; 
+
+			MatrixSet& firstHit = matrices[LEFT][FIRST_HIT]; /// convenient access
+			MatrixSet& current = matrices[LEFT][CURRENT];
+			
 			//update raycasting matrices for next iteration	// for occlusion frustum
-			glm::mat4 oldViewToNewView  = s_view * (model * invOldModel) * invOldView;   // old view to new view space
+			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
+			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
 			
 			// uvw maps
 			uvwRenderPass.setFrameBufferObject( &uvwFBO );
-			uvwShaderProgram.update("view", s_view);
-			uvwShaderProgram.update("projection", s_perspective);
+			uvwShaderProgram.update("view", current.view);
+			uvwShaderProgram.update("model", current.model);
+			uvwShaderProgram.update("projection", current.perspective);
 			uvwRenderPass.render();
 
 			// occlusion maps 
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
 			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
-			occlusionFrustumShader.update("uViewToNewView", oldViewToNewView);
-			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture);
-			occlusionFrustumShader.update("uProjection", s_perspective);
+			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
+			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
+			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
-
-			invOldView = invView; // save current view
-			invOldModel = invModel;// save current model 
-			oldScreenToTexture = screenToTexture; // save current screenToTexture matrix
-			oldViewToTexture = s_modelToTexture * invOldModel * invOldView;
 		}
 
 		// raycasting (chunked)
-		shaderProgram.update("uScreenToTexture", oldScreenToTexture);
-		shaderProgram.update("uViewToTexture", oldViewToTexture);
-		shaderProgram.update("back_uvw_map",  1);
-		shaderProgram.update("front_uvw_map", 2);
-		shaderProgram.update("occlusion_map", 8);
+		shaderProgram.update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrices[LEFT][CURRENT].model ) * glm::inverse( matrices[LEFT][CURRENT].view ) * s_screenToView );
+		shaderProgram.update( "uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
+		shaderProgram.update( "uProjection", matrices[LEFT][CURRENT].perspective);
+		shaderProgram.update( "back_uvw_map",  1 );
+		shaderProgram.update( "front_uvw_map", 2 );
+		shaderProgram.update( "occlusion_map", 8 );
 
 		//if (ImGui::Button("Render Left"))
 		{
@@ -641,30 +641,37 @@ int main(int argc, char *argv[])
 		// uvw maps
 		if (chunkedRenderPass_r.isFinished())
 		{
-			glm::mat4 oldViewToNewView_r = s_view_r * (model * invOldModel_r) *invOldView_r; // old view to new projection space
+			matrices[RIGHT][FIRST_HIT] = matrices[RIGHT][CURRENT]; // first hit map was rendered with last "current" matrices
+			matrices[RIGHT][CURRENT].model = model; // overwrite with current  matrices
+			matrices[RIGHT][CURRENT].view = s_view;
+			matrices[RIGHT][CURRENT].perspective = s_perspective; 
+
+			MatrixSet& firstHit = matrices[RIGHT][FIRST_HIT]; /// convenient access
+			MatrixSet& current = matrices[RIGHT][CURRENT];
+
+			//update raycasting matrices for next iteration	// for occlusion frustum
+			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
+			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
 
 			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
-			uvwShaderProgram.update("view", s_view_r);
-			uvwShaderProgram.update("projection", s_perspective_r);
+			uvwShaderProgram.update( "view", current.view );
+			uvwShaderProgram.update( "model", current.model );
+			uvwShaderProgram.update( "projection", current.perspective );
 			uvwRenderPass.render();
 		
 			// occlusion maps 
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
 			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
-			occlusionFrustumShader.update("uProjection", s_perspective_r);
-			occlusionFrustumShader.update("uViewToNewView", oldViewToNewView_r);
-			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture_r);
+			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
+			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
+			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
-
-			invOldView_r = invView_r; // save current view
-			invOldModel_r = invModel;// save current model 
-			oldScreenToTexture_r = screenToTexture_r; // save current screenToTexture matrix
-			oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
 		}
 
 		// raycasting (chunked)
-		shaderProgram.update("uScreenToTexture", oldScreenToTexture_r);
-		shaderProgram.update("uViewToTexture", oldViewToTexture_r);
+		shaderProgram.update("uScreenToTexture", s_modelToTexture * glm::inverse( matrices[RIGHT][CURRENT].model ) * glm::inverse( matrices[RIGHT][CURRENT].view ) * s_screenToView );
+		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
+		shaderProgram.update("uProjection", matrices[RIGHT][CURRENT].perspective);
 		shaderProgram.update("back_uvw_map",  4);
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("occlusion_map", 9);

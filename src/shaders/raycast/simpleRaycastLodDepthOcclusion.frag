@@ -1,9 +1,9 @@
 #version 430
 
-#ifdef DEPTH_SCALE 
+#ifndef DEPTH_SCALE 
 #define DEPTH_SCALE 5.0 
 #endif
-#ifdef DEPTH_BIAS 
+#ifndef DEPTH_BIAS 
 #define DEPTH_BIAS 0.05 
 #endif
 
@@ -31,6 +31,7 @@ uniform float uLodBias;        // depth at which lod begins to degrade
 uniform mat4 uViewToTexture;
 uniform mat4 uScreenToView;
 uniform mat4 uScreenToTexture;
+uniform mat4 uProjection;
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -139,13 +140,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	return result;
 }
 
-/**
-*   @param screenPos screen position in [0..1]
-*   @param depth in view space [near..far]
+/** 
+*   @param screenPos screen space position in [0..1]
 **/
-vec4 getViewCoord(vec2 screenPos, float depth)
+vec4 getViewCoord( vec3 screenPos )
 {
-	return vec4(depth * normalize((uScreenToView * vec4(screenPos, 0.0, 1.0)).xyz), 1.0);
+	vec4 unProject = inverse(uProjection) * vec4( (screenPos * 2.0) - 1.0 , 1.0);
+	unProject /= unProject.w;
+	
+	return unProject;
 }
 
 void main()
@@ -157,7 +160,8 @@ void main()
 	if (uvwStart.a == 0.0 && uvwEnd.a == 0.0) { 
 		discard; 
 	} //invalid pixel
-	else if( uvwStart.a == 0.0 && uvwEnd.a != 0.0)
+	
+	if( uvwStart.a == 0.0 && uvwEnd.a != 0.0) // only back-uvws visible (camera inside volume)
 	{
 		uvwStart = uScreenToTexture * vec4(passUV,0,1); // clamp to near plane
 		uvwStart.a = 0.0;
@@ -165,10 +169,10 @@ void main()
 
 	// check uvw coords against occlusion map
 	vec4 uvwOcclusion = texture(occlusion_map, passUV);
-	if (uvwOcclusion.a != 0.0 && uvwOcclusion.a < uvwEnd.a - (DEPTH_BIAS / DEPTH_SCALE) && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
+	if (uvwOcclusion.a != 0.0 && uvwOcclusion.a < uvwEnd.a && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
 	{
 		// compute uvw from depth value
-		uvwStart = uViewToTexture * getViewCoord(passUV, uvwOcclusion.a * DEPTH_SCALE);
+		uvwStart = uViewToTexture * getViewCoord( vec3(passUV, uvwOcclusion.a) );
 	}
 
 	// EA-raycasting
@@ -182,5 +186,11 @@ void main()
 
 	// final color
 	fragColor = raycastResult.color;// * 0.8 + 0.2 * uvwStart; //debug
-	fragFirstHit = vec4(raycastResult.firstHit);
+
+	if (raycastResult.firstHit.a != 0.0)
+	{
+		fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords
+		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4( raycastResult.firstHit.xyz, 1.0);
+		fragFirstHit.a = firstHitProjected.z / firstHitProjected.w;
+	}	
 }

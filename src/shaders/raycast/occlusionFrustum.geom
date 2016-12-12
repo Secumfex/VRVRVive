@@ -10,7 +10,7 @@ in PointData {
 	vec2 uv;
 } PointGeom[];
 
-out vec4 passUVWCoord;
+out vec3 passUVWCoord;
 out vec3 passWorldPosition; // world space
 out vec3 passPosition; // view space
 
@@ -18,52 +18,56 @@ out vec3 passPosition; // view space
 uniform sampler2D first_hit_map;
 
 //!< uniforms
-uniform int uOcclusionBlockSize;
+uniform int  uOcclusionBlockSize;
 uniform vec4 uGridSize; // vec4(width, height, 1/width, 1/height)
-uniform mat4 uScreenToView;
+uniform mat4 uScreenToView; // const
 uniform mat4 uProjection; // projection
-uniform mat4 uViewToNewView; // from old view to new projection space
-uniform mat4 uViewToTexture; // from old view to texture space
+uniform mat4 uFirstHitViewToCurrentView; // from old view to new projection space
+uniform mat4 uFirstHitViewToTexture; // from old view to texture space
 
 // some defines
-#ifdef DEPTH_SCALE 
+#ifndef DEPTH_SCALE 
 #define DEPTH_SCALE 5.0 
 #endif
-#ifdef DEPTH_BIAS 
-#define DEPTH_BIAS 0.05
+#ifndef DEPTH_BIAS 
+#define DEPTH_BIAS 0.1
 #endif
-#define MAX_DISTANCE 30.0
+#define MAX_DEPTH 1.0
 
 struct VertexData
 {
 	vec4 pos;
-	vec4 uvw;
+	vec3 uvw;
 	vec3 posView;
 };
 
 /** 
-*   @param screenPos screen position in [0..1]
-*   @param depth in view space [near..far] 
+*   @param screenPos screen space position in [0..1]
 **/
-vec4 getViewCoord( vec2 screenPos, float depth )
+vec4 getViewCoord( vec3 screenPos )
 {
-	return vec4(depth * normalize( ( uScreenToView * vec4(screenPos, 0.0, 1.0) ).xyz ), 1.0);
+	vec4 unProject = inverse(uProjection) * vec4( (screenPos * 2.0) - 1.0 , 1.0);
+	unProject /= unProject.w;
+
+	return unProject;
 }
 
 /** 
-*   @param screenPos screen position in [0..1]
-*   @param depth in OLD view space [near..far] 
+*   @param screenPos screen space position in [0..1]
 *   @return VertexData object with pos in NEW projection space, uvw and posView in NEW view space
 **/
-VertexData getVertexData(vec2 screenPos, float depth)
+VertexData getVertexData(vec3 screenPos)
 {
-	vec4 posView = getViewCoord(screenPos, depth); // position in old view
-	vec4 posNewView = uViewToNewView * posView; // position in new view
-	
+	vec4 posView = getViewCoord(screenPos); // position in first hit view space
+	posView.z = min( 0.0, posView.z); // apply bias towards camera
+	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
+	vec4 posNewProj = uProjection * posNewView; // new view space position projected
+	posNewProj.z = max(posNewProj.z, 0.0); // clamp to near plane to force fragment generation
+
 	VertexData result;
+	result.pos = posNewProj; // new view space position projected
 	result.posView = posNewView.xyz;
-	result.pos = uProjection * posNewView; // new view space position projected
-	result.uvw = vec4((uViewToTexture * posView).xyz, length(posView.xyz) / DEPTH_SCALE);
+	result.uvw = vec4(uFirstHitViewToTexture * posView).xyz;
 	return result;
 }
 
@@ -79,41 +83,43 @@ void emitVertex(VertexData vert)
 void main()
 {
 	// point position
-	vec4 pos = vec4(gl_in[0].gl_Position.xyz, 1.0);
+	vec4 pos = vec4( gl_in[0].gl_Position.xyz, 1.0 );
 	
 	vec2 texSize = vec2(textureSize(first_hit_map, 0));
 	vec2 screenPos = ((uGridSize.zw) * (pos.xy + 0.5)); // gridSize -> 0..1
 	ivec2 texCoord = ivec2( texSize * PointGeom[0].uv ); // 0..1 -> texSize
 
 	//traverse neighbourhood, find texel with min depth value
-	vec4 minSample = vec4(1.0, 0.0, 0.0, MAX_DISTANCE / DEPTH_SCALE); //arbitrary color
+	float minDepth = 1.0;
 	for (int i = 0; i < uOcclusionBlockSize; i++)
 	{
 		for (int j = 0; j < uOcclusionBlockSize; j++)
 		{
 			vec4 texel = texelFetch(first_hit_map, texCoord + ivec2(j,i), 0);
-			if (texel.a != 0.0 && texel.a < minSample.a)
+			if (texel.a != 0.0 && texel.a < minDepth) // valid and nearer
 			{
-				minSample = texel;
+				minDepth = texel.a;
 			}
 		}		
 	}
 
-	if (minSample.a == (MAX_DISTANCE / DEPTH_SCALE) )
+	if ( minDepth == 1.0 )
 	{
 		return; // stop, no valid samples found
 	}
 
 	// define 8 corner vertices: projected position and uvw coordinates
-	VertexData b00 = getVertexData( screenPos + vec2(-0.25,						-0.25)							/ texSize, DEPTH_SCALE * minSample.a);
-	VertexData b10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, DEPTH_SCALE * minSample.a);
-	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25)	/ texSize, DEPTH_SCALE * minSample.a);
-	VertexData b01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, DEPTH_SCALE * minSample.a);
+	vec2 offsetMin = vec2(-0.25, -0.25) / texSize;
+	vec2 offsetMax = vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25) / texSize;
+	VertexData b00 = getVertexData( vec3( screenPos + offsetMin,						minDepth) );
+	VertexData b10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	minDepth) );
+	VertexData b11 = getVertexData( vec3( screenPos + offsetMax,						minDepth) );
+	VertexData b01 = getVertexData( vec3( screenPos + vec2(offsetMin.x, offsetMax.y),	minDepth) );
 
-	VertexData t00 = getVertexData( screenPos + vec2(-0.25,						- 0.25)							/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25, uOcclusionBlockSize + 0.25)	/ texSize, DEPTH_SCALE * minSample.a + 2.0);
-	VertexData t01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, DEPTH_SCALE * minSample.a + 2.0);
+	VertexData t00 = getVertexData( vec3( screenPos + offsetMin,						MAX_DEPTH) );
+	VertexData t10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	MAX_DEPTH) );
+	VertexData t11 = getVertexData( vec3( screenPos + offsetMax,						MAX_DEPTH) );
+	VertexData t01 = getVertexData( vec3( screenPos + vec2(offsetMin.x, offsetMax.y),	MAX_DEPTH) );
 
 	// single triangle_strip
 	emitVertex(b01); // 1
@@ -131,72 +137,4 @@ void main()
 	emitVertex(t01); // 13
 	emitVertex(t11); // 14
 	EndPrimitive();
-
-	// emit 12 triangles defining the frustum
-	// front
-	//emitVertex(b00);
-	//emitVertex(b10);
-	//emitVertex(b11);
-	//EndPrimitive();
-	
-	//emitVertex(b11);
-	//emitVertex(b01);
-	//emitVertex(b00);
-	//EndPrimitive();
-
-	//// back
-	//emitVertex(t00);
-	//emitVertex(t01);
-	//emitVertex(t11);
-	//EndPrimitive();
-	
-	//emitVertex(t11);
-	//emitVertex(t10);
-	//emitVertex(t00);
-	//EndPrimitive();
-
-	//// right
-	//emitVertex(b10);
-	//emitVertex(t10);
-	//emitVertex(t11);
-	//EndPrimitive();
-	
-	//emitVertex(t11);
-	//emitVertex(b11);
-	//emitVertex(b10);
-	//EndPrimitive();
-
-	//// left
-	//emitVertex(t00);
-	//emitVertex(b00);
-	//emitVertex(b01);
-	//EndPrimitive();
-	
-	//emitVertex(b01);
-	//emitVertex(t01);
-	//emitVertex(t00);
-	//EndPrimitive();
-	
-
-	//// up
-	//emitVertex(b01);
-	//emitVertex(b11);
-	//emitVertex(t11);
-	//EndPrimitive();
-	
-	//emitVertex(t11);
-	//emitVertex(t01);
-	//emitVertex(b01);
-	//EndPrimitive();
-	
-	//// down
-	//emitVertex(b10);
-	//emitVertex(b00);
-	//emitVertex(t00);
-	//EndPrimitive();
-	
-	//emitVertex(t00);
-	//emitVertex(t10);
-	//emitVertex(b10);
-	//EndPrimitive();
 }
