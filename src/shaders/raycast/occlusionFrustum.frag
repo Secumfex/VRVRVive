@@ -11,5 +11,5 @@ layout(location = 1) out vec4 fragDepth;
 void main()
 {
 	fragUVRCoordFront = passUVWCoord; // alpha contains fragment (scaled) view space depth
-	fragDepth = vec4(passUVWCoord.a);
+	fragDepth = vec4(passPosition, passUVWCoord.a);
 }

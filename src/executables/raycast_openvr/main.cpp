@@ -276,7 +276,8 @@ int main(int argc, char *argv[])
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
 	shaderProgram.update("uResolution", glm::vec4(getResolution(window).x/2, getResolution(window).y,0,0));
-		
+	shaderProgram.update("uScreenToView", s_screenToView);
+
 	// DEBUG
 	generateTransferFunction();
 	updateTransferFunctionTex();
@@ -568,6 +569,8 @@ int main(int argc, char *argv[])
 		static glm::mat4 invOldView_r = glm::inverse(s_view_r);
 		static glm::mat4 oldScreenToTexture = screenToTexture;
 		static glm::mat4 oldScreenToTexture_r = screenToTexture_r;
+		static glm::mat4 oldViewToTexture   = s_modelToTexture * invOldModel   * invOldView;
+		static glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
 		//++++++++++++++ DEBUG
 
 		//////////////////////////////////////////////////////////////////////////////
@@ -595,9 +598,8 @@ int main(int argc, char *argv[])
 		if (chunkedRenderPass.isFinished())
 		{
 			//update raycasting matrices for next iteration	// for occlusion frustum
-			glm::mat4 oldViewToNewViewProjection  = s_perspective * s_view * (model * invOldModel) * invOldView;   // old view to new projection space
-			glm::mat4 oldViewToTexture   = s_modelToTexture * invOldModel * invOldView;
-
+			glm::mat4 oldViewToNewView  = s_view * (model * invOldModel) * invOldView;   // old view to new view space
+			
 			// uvw maps
 			uvwRenderPass.setFrameBufferObject( &uvwFBO );
 			uvwShaderProgram.update("view", s_view);
@@ -607,17 +609,20 @@ int main(int argc, char *argv[])
 			// occlusion maps 
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
 			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
-			occlusionFrustumShader.update("uViewToNewViewProjection", oldViewToNewViewProjection);
+			occlusionFrustumShader.update("uViewToNewView", oldViewToNewView);
 			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture);
+			occlusionFrustumShader.update("uProjection", s_perspective);
 			occlusionFrustum.render();
 
 			invOldView = invView; // save current view
 			invOldModel = invModel;// save current model 
 			oldScreenToTexture = screenToTexture; // save current screenToTexture matrix
+			oldViewToTexture = s_modelToTexture * invOldModel * invOldView;
 		}
 
 		// raycasting (chunked)
 		shaderProgram.update("uScreenToTexture", oldScreenToTexture);
+		shaderProgram.update("uViewToTexture", oldViewToTexture);
 		shaderProgram.update("back_uvw_map",  1);
 		shaderProgram.update("front_uvw_map", 2);
 		shaderProgram.update("occlusion_map", 8);
@@ -636,8 +641,7 @@ int main(int argc, char *argv[])
 		// uvw maps
 		if (chunkedRenderPass_r.isFinished())
 		{
-			glm::mat4 oldViewToNewViewProjection_r = s_perspective_r * s_view_r * (model * invOldModel_r) *invOldView_r; // old view to new projection space
-			glm::mat4 oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
+			glm::mat4 oldViewToNewView_r = s_view_r * (model * invOldModel_r) *invOldView_r; // old view to new projection space
 
 			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
 			uvwShaderProgram.update("view", s_view_r);
@@ -647,17 +651,20 @@ int main(int argc, char *argv[])
 			// occlusion maps 
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
 			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
-			occlusionFrustumShader.update("uViewToNewViewProjection", oldViewToNewViewProjection_r);
+			occlusionFrustumShader.update("uProjection", s_perspective_r);
+			occlusionFrustumShader.update("uViewToNewView", oldViewToNewView_r);
 			occlusionFrustumShader.update("uViewToTexture", oldViewToTexture_r);
 			occlusionFrustum.render();
 
 			invOldView_r = invView_r; // save current view
 			invOldModel_r = invModel;// save current model 
 			oldScreenToTexture_r = screenToTexture_r; // save current screenToTexture matrix
+			oldViewToTexture_r = s_modelToTexture * invOldModel_r * invOldView_r;
 		}
 
 		// raycasting (chunked)
 		shaderProgram.update("uScreenToTexture", oldScreenToTexture_r);
+		shaderProgram.update("uViewToTexture", oldViewToTexture_r);
 		shaderProgram.update("back_uvw_map",  4);
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("occlusion_map", 9);

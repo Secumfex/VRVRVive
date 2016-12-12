@@ -21,9 +21,11 @@ uniform sampler2D first_hit_map;
 uniform int uOcclusionBlockSize;
 uniform vec4 uGridSize; // vec4(width, height, 1/width, 1/height)
 uniform mat4 uScreenToView;
-uniform mat4 uViewToNewViewProjection; // from old view to new projection space
-uniform mat4 uViewToTexture;		   // from old view to texture space
+uniform mat4 uProjection; // projection
+uniform mat4 uViewToNewView; // from old view to new projection space
+uniform mat4 uViewToTexture; // from old view to texture space
 
+// some defines
 #ifdef DEPTH_SCALE 
 #define DEPTH_SCALE 5.0 
 #endif
@@ -36,6 +38,7 @@ struct VertexData
 {
 	vec4 pos;
 	vec4 uvw;
+	vec3 posView;
 };
 
 /** 
@@ -49,22 +52,27 @@ vec4 getViewCoord( vec2 screenPos, float depth )
 
 /** 
 *   @param screenPos screen position in [0..1]
-*   @param depth in view space [near..far] 
+*   @param depth in OLD view space [near..far] 
+*   @return VertexData object with pos in NEW projection space, uvw and posView in NEW view space
 **/
 VertexData getVertexData(vec2 screenPos, float depth)
 {
+	vec4 posView = getViewCoord(screenPos, depth); // position in old view
+	vec4 posNewView = uViewToNewView * posView; // position in new view
+	
 	VertexData result;
-	vec4 posView = getViewCoord(screenPos, depth);
-	result.pos = uViewToNewViewProjection * posView;
+	result.posView = posNewView.xyz;
+	result.pos = uProjection * posNewView; // new view space position projected
 	result.uvw = vec4((uViewToTexture * posView).xyz, length(posView.xyz) / DEPTH_SCALE);
 	return result;
 }
 
 void emitVertex(VertexData vert)
 {
-	gl_PointSize = 2.0;
+	//gl_PointSize = 1.5;
 	gl_Position = vert.pos;
 	passUVWCoord= vert.uvw;
+	passPosition = vert.posView;
 	EmitVertex();
 }
 
@@ -97,10 +105,10 @@ void main()
 	}
 
 	// define 8 corner vertices: projected position and uvw coordinates
-	VertexData b00 = getVertexData( screenPos + vec2(-0.25,						-0.25)							/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
-	VertexData b10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
-	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25)	/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
-	VertexData b01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, max(0.1, DEPTH_SCALE * minSample.a - DEPTH_BIAS));
+	VertexData b00 = getVertexData( screenPos + vec2(-0.25,						-0.25)							/ texSize, DEPTH_SCALE * minSample.a);
+	VertexData b10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, DEPTH_SCALE * minSample.a);
+	VertexData b11 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25)	/ texSize, DEPTH_SCALE * minSample.a);
+	VertexData b01 = getVertexData( screenPos + vec2(-0.25,						uOcclusionBlockSize + 0.25)		/ texSize, DEPTH_SCALE * minSample.a);
 
 	VertexData t00 = getVertexData( screenPos + vec2(-0.25,						- 0.25)							/ texSize, DEPTH_SCALE * minSample.a + 2.0);
 	VertexData t10 = getVertexData( screenPos + vec2(uOcclusionBlockSize + 0.25,	-0.25)						/ texSize, DEPTH_SCALE * minSample.a + 2.0);

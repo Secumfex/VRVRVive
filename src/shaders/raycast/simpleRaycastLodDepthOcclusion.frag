@@ -28,6 +28,8 @@ uniform float uStepSize;		// ray sampling step size
 uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD and step size 
 uniform float uLodBias;        // depth at which lod begins to degrade
 
+uniform mat4 uViewToTexture;
+uniform mat4 uScreenToView;
 uniform mat4 uScreenToTexture;
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -137,18 +139,20 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	return result;
 }
 
+/**
+*   @param screenPos screen position in [0..1]
+*   @param depth in view space [near..far]
+**/
+vec4 getViewCoord(vec2 screenPos, float depth)
+{
+	return vec4(depth * normalize((uScreenToView * vec4(screenPos, 0.0, 1.0)).xyz), 1.0);
+}
+
 void main()
 {
 	// define ray start and end points in volume
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
-
-	// check uvw coords against occlusion map
-	vec4 uvwOcclusion = texture( occlusion_map, passUV );
-	if (uvwOcclusion.a != 0.0 && uvwOcclusion.a < uvwEnd.a - (DEPTH_BIAS / DEPTH_SCALE) && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
-	{
-		uvwStart = uvwOcclusion;
-	}
 
 	if (uvwStart.a == 0.0 && uvwEnd.a == 0.0) { 
 		discard; 
@@ -157,6 +161,14 @@ void main()
 	{
 		uvwStart = uScreenToTexture * vec4(passUV,0,1); // clamp to near plane
 		uvwStart.a = 0.0;
+	}
+
+	// check uvw coords against occlusion map
+	vec4 uvwOcclusion = texture(occlusion_map, passUV);
+	if (uvwOcclusion.a != 0.0 && uvwOcclusion.a < uvwEnd.a - (DEPTH_BIAS / DEPTH_SCALE) && uvwOcclusion.a > uvwStart.a) // found starting point in front of back face but in back of front face
+	{
+		// compute uvw from depth value
+		uvwStart = uViewToTexture * getViewCoord(passUV, uvwOcclusion.a * DEPTH_SCALE);
 	}
 
 	// EA-raycasting
