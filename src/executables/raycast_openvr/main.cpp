@@ -489,6 +489,7 @@ int main(int argc, char *argv[])
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	float elapsedTime = 0.0;
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
