@@ -294,6 +294,8 @@ int main(int argc, char *argv[])
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_front_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	DEBUGLOG->outdent();
 
 	// bind volume texture, back uvw textures, front uvws
@@ -311,6 +313,9 @@ int main(int argc, char *argv[])
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
 	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D);// right raycasting result
+	
+	OPENGLCONTEXT->bindTextureToUnit(FBO_front.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D); // left  raycasting result (for display)
+	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE13, GL_TEXTURE_2D);// right raycasting result (for display)
 
 	shaderProgram.update("volume_texture", 0); // volume texture
 	shaderProgram.update("transferFunctionTex", 3);
@@ -368,10 +373,22 @@ int main(int argc, char *argv[])
 
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
-
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE12, GL_TEXTURE_2D); // left occlusion map depth
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE13, GL_TEXTURE_2D); // right occlusion map depth
 	
+	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
+	auto m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
+	m_pWarpingShader->update( "blendColor", 1.0f );
+
+	FrameBufferObject FBO_warp(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_warp_r(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+
+	auto m_pWarpingThread = new RenderPass(m_pWarpingShader, &FBO_warp);
+	m_pWarpingThread->addRenderable(&quad);
+	m_pWarpingThread->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	DEBUGLOG->outdent();
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO_warp.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
+	OPENGLCONTEXT->bindTextureToUnit(FBO_warp_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE15, GL_TEXTURE_2D);// right raycasting result (for display)
+
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -472,7 +489,7 @@ int main(int argc, char *argv[])
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-	double elapsedTime = 0.0;
+	float elapsedTime = 0.0;
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
 	{
@@ -487,6 +504,7 @@ int main(int argc, char *argv[])
 	
 		ImGui::Value("FPS", io.Framerate);
 		mirrorScreenTimer += io.DeltaTime;
+		elapsedTime += io.DeltaTime;
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
@@ -520,26 +538,39 @@ int main(int argc, char *argv[])
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 		ImGui::PopItemWidth();
+		
+		ImGui::Separator();
 
 		static float lodScale = 2.0f;
 		static float lodBias  = 0.25f;
 		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
 		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
-
-		static bool profiler_visible = false;
-		ImGui::Checkbox("Chunk Performance Profiler", &profiler_visible);
-		if (profiler_visible) { chunkedRenderPass.imguiInterface(&profiler_visible); };
-
-		static int  leftDebugView = 10;
-		static int rightDebugView = 11;
+		
+		ImGui::Separator();
 		ImGui::Columns(2);
-		ImGui::SliderInt("Left Debug View", &leftDebugView, 1, 13);
+		static bool profiler_visible, profiler_visible_r = false;
+		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
+		if (profiler_visible) { chunkedRenderPass.imguiInterface(&profiler_visible); };
 		ImGui::NextColumn();
-		ImGui::SliderInt("Right Debug View", &rightDebugView, 1, 13);
+		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
+		if (profiler_visible_r) { chunkedRenderPass_r.imguiInterface(&profiler_visible_r); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 
+		static int  leftDebugView = 10;
+		static int rightDebugView = 11;
+		
+		ImGui::Separator();
+		ImGui::Columns(2);
+		ImGui::SliderInt("Left Debug View", &leftDebugView, 1, 15);
+		ImGui::NextColumn();
+		ImGui::SliderInt("Right Debug View", &rightDebugView, 1, 15);
+		ImGui::NextColumn();
+		ImGui::Columns(1);
+		ImGui::Separator();
+		//static bool pauseFirstHitUpdates = false;
 		static bool useOcclusionMap = true;
+		//ImGui::Checkbox("Pause First Hit Updated", &pauseFirstHitUpdates);
 		ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
 		
 
@@ -568,7 +599,15 @@ int main(int argc, char *argv[])
 		// compute current auxiliary matrices
 		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
 
-		//++++++++++++++ DEBUG			
+		//++++++++++++++ DEBUG
+		static bool animateView = false;
+		ImGui::Checkbox("Animate View", &animateView);
+		if (animateView)
+		{
+			glm::vec4 warpCenter  = glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			s_view   = glm::lookAt(glm::vec3(eye), glm::vec3(warpCenter), glm::vec3(0.0f, 1.0f, 0.0f));
+			s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::vec3(0.0f, 1.0f, 0.0f));
+		}
 		//++++++++++++++ DEBUG
 
 		//////////////////////////////////////////////////////////////////////////////
@@ -590,6 +629,16 @@ int main(int argc, char *argv[])
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
+		// check for finished left/right images, copy to Front FBOs
+		if (chunkedRenderPass.isFinished())
+		{
+			copyFBOContent(&FBO, &FBO_front, GL_COLOR_BUFFER_BIT);
+		}
+		if (chunkedRenderPass_r.isFinished())
+		{
+			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
+		}
+
 		//%%%%%%%%%%%% render left image
 		if (chunkedRenderPass.isFinished())
 		{
@@ -676,6 +725,24 @@ int main(int argc, char *argv[])
 		//renderPass_r.render();
 		chunkedRenderPass_r.render();
 
+		//%%%%%%%%%%%% Image Warping
+		// warp left
+		m_pWarpingThread->setFrameBufferObject( &FBO_warp );
+		m_pWarpingShader->update( "tex", 12 ); // last result left
+		m_pWarpingShader->update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
+		m_pWarpingShader->update( "newView", s_view ); // most current view
+		m_pWarpingShader->update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
+		m_pWarpingThread->render();
+		
+		// warp right
+		m_pWarpingThread->setFrameBufferObject( &FBO_warp_r );
+		m_pWarpingShader->update( "tex", 13 ); // last result right
+		m_pWarpingShader->update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+		m_pWarpingShader->update( "newView", s_view_r); // most current view
+		m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
+		m_pWarpingThread->render();
+
+		//%%%%%%%%%%%% Submit/Display images
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{
 			if ( chunkedRenderPass.isFinished() )
