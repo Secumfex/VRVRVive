@@ -346,8 +346,8 @@ int main(int argc, char *argv[])
 		);
 
 	//DEBUG
-	chunkedRenderPass.activateClearbits();
-	chunkedRenderPass_r.activateClearbits();
+	//chunkedRenderPass.activateClearbits();
+	//chunkedRenderPass_r.activateClearbits();
 
 	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
 	int occlusionBlockSize = 6;
@@ -538,6 +538,9 @@ int main(int argc, char *argv[])
 		ImGui::SliderInt("Right Debug View", &rightDebugView, 1, 13);
 		ImGui::NextColumn();
 		ImGui::Columns(1);
+
+		static bool useOcclusionMap = true;
+		ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
 		
 
         //////////////////////////////////////////////////////////////////////////////
@@ -571,7 +574,6 @@ int main(int argc, char *argv[])
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
-		// update view related uniforms
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
@@ -625,14 +627,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "uProjection", matrices[LEFT][CURRENT].perspective);
 		shaderProgram.update( "back_uvw_map",  1 );
 		shaderProgram.update( "front_uvw_map", 2 );
-		shaderProgram.update( "occlusion_map", 8 );
+		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
 
-		//if (ImGui::Button("Render Left"))
-		{
-			//invOldModel = invModel;// save current model 
-			//invOldView = invView;
-			renderPass.render(); // use chunked rendering instead
-		}//chunkedRenderPass.render(); 
+		chunkedRenderPass.render(); 
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -643,8 +640,8 @@ int main(int argc, char *argv[])
 		{
 			matrices[RIGHT][FIRST_HIT] = matrices[RIGHT][CURRENT]; // first hit map was rendered with last "current" matrices
 			matrices[RIGHT][CURRENT].model = model; // overwrite with current  matrices
-			matrices[RIGHT][CURRENT].view = s_view;
-			matrices[RIGHT][CURRENT].perspective = s_perspective; 
+			matrices[RIGHT][CURRENT].view = s_view_r;
+			matrices[RIGHT][CURRENT].perspective = s_perspective_r; 
 
 			MatrixSet& firstHit = matrices[RIGHT][FIRST_HIT]; /// convenient access
 			MatrixSet& current = matrices[RIGHT][CURRENT];
@@ -674,10 +671,10 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uProjection", matrices[RIGHT][CURRENT].perspective);
 		shaderProgram.update("back_uvw_map",  4);
 		shaderProgram.update("front_uvw_map", 5);
-		shaderProgram.update("occlusion_map", 9);
+		shaderProgram.update("occlusion_map", (useOcclusionMap) ? 9 : 5);
 
-		renderPass_r.render();
-		//chunkedRenderPass_r.render();
+		//renderPass_r.render();
+		chunkedRenderPass_r.render();
 
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{

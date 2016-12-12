@@ -30,7 +30,7 @@ uniform mat4 uFirstHitViewToTexture; // from old view to texture space
 #define DEPTH_SCALE 5.0 
 #endif
 #ifndef DEPTH_BIAS 
-#define DEPTH_BIAS 0.1
+#define DEPTH_BIAS 0.05
 #endif
 #define MAX_DEPTH 1.0
 
@@ -108,13 +108,13 @@ void main()
 		return; // stop, no valid samples found
 	}
 
-	// define 8 corner vertices: projected position and uvw coordinates
+	// define 8 corner vertices: projected position and uvw coordinates // slightly enlarged and moved towards camera
 	vec2 offsetMin = vec2(-0.25, -0.25) / texSize;
 	vec2 offsetMax = vec2(uOcclusionBlockSize + 0.25,	uOcclusionBlockSize + 0.25) / texSize;
-	VertexData b00 = getVertexData( vec3( screenPos + offsetMin,						minDepth) );
-	VertexData b10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	minDepth) );
-	VertexData b11 = getVertexData( vec3( screenPos + offsetMax,						minDepth) );
-	VertexData b01 = getVertexData( vec3( screenPos + vec2(offsetMin.x, offsetMax.y),	minDepth) );
+	VertexData b00 = getVertexData( vec3( screenPos + offsetMin,						max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
+	VertexData b10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
+	VertexData b11 = getVertexData( vec3( screenPos + offsetMax,						max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
+	VertexData b01 = getVertexData( vec3( screenPos + vec2(offsetMin.x, offsetMax.y),	max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
 
 	VertexData t00 = getVertexData( vec3( screenPos + offsetMin,						MAX_DEPTH) );
 	VertexData t10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	MAX_DEPTH) );

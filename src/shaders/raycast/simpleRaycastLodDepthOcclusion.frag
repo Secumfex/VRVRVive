@@ -175,6 +175,10 @@ void main()
 		uvwStart = uViewToTexture * getViewCoord( vec3(passUV, uvwOcclusion.a) );
 	}
 
+	// linearize depth
+	uvwStart.a = abs( getViewCoord( vec3( 0.5,0.5,uvwStart.a ) ).a );
+	uvwEnd.a   = abs( getViewCoord( vec3( 0.5,0.5,uvwEnd.a ) ).a );
+
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
 		uvwStart.rgb, 			// ray start
@@ -192,5 +196,9 @@ void main()
 		fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords
 		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4( raycastResult.firstHit.xyz, 1.0);
 		fragFirstHit.a = firstHitProjected.z / firstHitProjected.w;
-	}	
+	}
+	else
+	{
+		fragFirstHit = uvwEnd;
+	}
 }
