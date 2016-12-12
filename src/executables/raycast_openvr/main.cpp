@@ -205,8 +205,8 @@ int main(int argc, char *argv[])
 	/////////////////////     Scene / View Settings     //////////////////////////
 	if (ovr.m_pHMD)
 	{
-		s_translation = glm::translate(glm::vec3(0.0f,1.0f,-0.5f));
-		s_scale = glm::scale(glm::vec3(0.3f,0.3f,0.3f));
+		s_translation = glm::translate(glm::vec3(0.0f,1.0f,0.0f));
+		s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 	}
 	else
 	{	
@@ -341,13 +341,15 @@ int main(int argc, char *argv[])
 		&renderPass,
 		viewportSize,
 		chunkSize,
-		8
+		8,
+		6.0f
 		);
 	ChunkedAdaptiveRenderPass chunkedRenderPass_r(
 		&renderPass_r,
 		viewportSize,
 		chunkSize,
-		8
+		8,
+		6.0f
 		);
 
 	//DEBUG
@@ -498,6 +500,26 @@ int main(int argc, char *argv[])
 		pollSDLEvents(window, sdlEventHandler);
 		ovr.PollVREvents();
 
+
+		//++++++++++++++ DEBUG 
+		static int  leftDebugView = 10;
+		static int rightDebugView = 11;
+
+		// Process SteamVR controller state
+		//for (vr::TrackedDeviceIndex_t unDevice = 0; unDevice < vr::k_unMaxTrackedDeviceCount; unDevice++)
+		//{
+		//	vr::VRControllerState_t state;
+		//	if (ovr.m_pHMD && ovr.m_pHMD->GetControllerState(unDevice, &state))
+		//	{
+		//		if (state.ulButtonPressed != 0 )
+		//		{
+		//			leftDebugView = (leftDebugView + 1) % 15;
+		//			rightDebugView = (rightDebugView + 1) % 15;
+		//		}
+		//	}
+		//}
+		//++++++++++++++
+
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
@@ -557,9 +579,6 @@ int main(int argc, char *argv[])
 		if (profiler_visible_r) { chunkedRenderPass_r.imguiInterface(&profiler_visible_r); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
-
-		static int  leftDebugView = 10;
-		static int rightDebugView = 11;
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
@@ -748,22 +767,23 @@ int main(int argc, char *argv[])
 		{
 			if ( chunkedRenderPass.isFinished() )
 			{
-				FBO.bind();
+				FBO_front.bind();
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				ovr.renderModels(vr::Eye_Left);
-				ovr.submitImage(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Left);
+				//ovr.renderModels(vr::Eye_Left); //TODO find out what dirty states are caused
 			}
 
 			if ( chunkedRenderPass_r.isFinished() )
 			{
-				FBO_r.bind();
+				FBO_front_r.bind();
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				ovr.renderModels(vr::Eye_Right);
-				ovr.submitImage(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), vr::Eye_Right);
+				//ovr.renderModels(vr::Eye_Right);
 			}
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-		}
 
+			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + leftDebugView], vr::Eye_Left);
+			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + rightDebugView], vr::Eye_Right);
+		}
+		
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
 			//if (chunkedRenderPass.isFinished())
