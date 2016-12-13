@@ -324,14 +324,14 @@ int main(int argc, char *argv[])
 
 	RenderPass renderPass(&shaderProgram, &FBO);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	renderPass.setClearColor(0.1f,0.12f,0.15f,0.0f);
+	//renderPass.setClearColor(0.1f,0.12f,0.15f,0.0f);
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
 
 	RenderPass renderPass_r(&shaderProgram, &FBO_r);
 	renderPass_r.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	renderPass_r.setClearColor(0.1f,0.12f,0.15f,0.0f);
+	//renderPass_r.setClearColor(0.1f,0.12f,0.15f,0.0f);
 	renderPass_r.addRenderable(&quad);
 	renderPass_r.addEnable(GL_DEPTH_TEST);
 	renderPass_r.addDisable(GL_BLEND);
