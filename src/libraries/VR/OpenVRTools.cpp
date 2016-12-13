@@ -537,9 +537,9 @@ void OpenVRSystem::renderModels( vr::Hmd_Eye nEye )
 }
 
 
-void OpenVRSystem::submitImage(GLuint source, vr::EVREye eye)
+void OpenVRSystem::submitImage(GLuint source, vr::EVREye eye, GLenum textureUnit)
 {
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20); // Some unused unit
+	OPENGLCONTEXT->activeTexture(textureUnit);
 	vr::Texture_t eyeTexture = {(void*) source, vr::API_OpenGL, vr::ColorSpace_Gamma };
 	vr::VRCompositor()->Submit(eye, &eyeTexture );
 	OPENGLCONTEXT->updateActiveTextureCache(); // Due to dirty state

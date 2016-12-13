@@ -115,7 +115,7 @@ public:
 	//-----------------------------------------------------------------------------
 	// Purpose: submits the content of texture source for the specified eye to the compositor
 	//-----------------------------------------------------------------------------
-	void submitImage(GLuint source, vr::EVREye eye);
+	void submitImage(GLuint source, vr::EVREye eye, GLenum textureUnit = GL_TEXTURE20);
 
 	//-----------------------------------------------------------------------------
 	// Purpose: Create/destroy GL a Render Model for tracked devices
