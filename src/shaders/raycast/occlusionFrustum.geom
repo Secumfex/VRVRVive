@@ -59,7 +59,6 @@ vec4 getViewCoord( vec3 screenPos )
 VertexData getVertexData(vec3 screenPos)
 {
 	vec4 posView = getViewCoord(screenPos); // position in first hit view space
-	posView.z = min( 0.0, posView.z); // apply bias towards camera
 	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
 	vec4 posNewProj = uProjection * posNewView; // new view space position projected
 
