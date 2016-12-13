@@ -62,12 +62,13 @@ VertexData getVertexData(vec3 screenPos)
 	posView.z = min( 0.0, posView.z); // apply bias towards camera
 	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
 	vec4 posNewProj = uProjection * posNewView; // new view space position projected
-	posNewProj.z = max(posNewProj.z, 0.0); // clamp to near plane to force fragment generation
+
+	posNewProj.z = max( min( posNewProj.z / posNewProj.w, 1.0), -1.0 ) * posNewProj.w; // clamp to near/far plane to force fragment generation
 
 	VertexData result;
 	result.pos = posNewProj; // new view space position projected
 	result.posView = posNewView.xyz;
-	result.uvw = vec4(uFirstHitViewToTexture * posView).xyz;
+	result.uvw = (uFirstHitViewToTexture * posView).xyz;
 	return result;
 }
 
