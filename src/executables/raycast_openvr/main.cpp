@@ -625,8 +625,9 @@ int main(int argc, char *argv[])
 		if (animateView)
 		{
 			glm::vec4 warpCenter  = glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
-			s_view   = glm::lookAt(glm::vec3(eye), glm::vec3(warpCenter), glm::vec3(0.0f, 1.0f, 0.0f));
-			s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::vec4 warpEye  = eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 		}
 		//++++++++++++++ DEBUG
 
