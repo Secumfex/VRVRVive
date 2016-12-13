@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->setAutoPrint(true);
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(1600,800);
+	auto window = generateWindow_SDL(1400,700);
 	SDL_DisplayMode currentDisplayMode;
 	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
 
@@ -829,7 +829,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			glFinish(); // just Flush
+			glFlush(); // just Flush
 		}
 	}
 	
