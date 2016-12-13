@@ -308,12 +308,13 @@ GLuint OpenVRSystem::CompileGLShader( const char *pchShaderName, const char *pch
 //-----------------------------------------------------------------------------
 // Purpose: Processes a single VR event
 //-----------------------------------------------------------------------------
-void OpenVRSystem::PollVREvents( )
+void OpenVRSystem::PollVREvents(std::function<bool(const vr::VREvent_t & event)> eventHandler)
 {
 	vr::VREvent_t event;
 	while( m_pHMD && m_pHMD->PollNextEvent( &event, sizeof( event ) ) )
 	{
-		ProcessVREvent( event );
+		bool handled = eventHandler( event );
+		if (!handled) ProcessVREvent( event );
 	}
 
 	// Process SteamVR controller state

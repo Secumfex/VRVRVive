@@ -488,6 +488,25 @@ int main(int argc, char *argv[])
 		return true;
 	};
 
+	static int  leftDebugView = 10;
+	static int rightDebugView = 11;
+
+	auto vrEventHandler = [&](const vr::VREvent_t & event)
+	{
+		switch( event.eventType )
+		{
+			case vr::VREvent_ButtonPress:
+			{
+				DEBUGLOG->log("button pressed dude");
+				leftDebugView = leftDebugView - (leftDebugView % 2 );
+				leftDebugView = max((leftDebugView + 2) % 16, 2);
+				rightDebugView = leftDebugView + 1;
+				break;
+			}
+		}
+		return false;
+	};
+
 	std::string window_header = "Volume Renderer - OpenVR";
 	SDL_SetWindowTitle(window, window_header.c_str() );
 
@@ -502,24 +521,24 @@ int main(int argc, char *argv[])
 	{
 		////////////////////////////////    EVENTS    ////////////////////////////////
 		pollSDLEvents(window, sdlEventHandler);
-		ovr.PollVREvents();
+		ovr.PollVREvents(vrEventHandler);
 
 
 		//++++++++++++++ DEBUG 
-		static int  leftDebugView = 10;
-		static int rightDebugView = 11;
-
 		// Process SteamVR controller state
 		//for (vr::TrackedDeviceIndex_t unDevice = 0; unDevice < vr::k_unMaxTrackedDeviceCount; unDevice++)
 		//{
 		//	vr::VRControllerState_t state;
 		//	if (ovr.m_pHMD && ovr.m_pHMD->GetControllerState(unDevice, &state))
 		//	{
-		//		if (state.ulButtonPressed != 0 )
+		//		static auto lastPacketNum = state.unPacketNum;
+		//		if (state.ulButtonPressed != 0 && lastPacketNum !=state.unPacketNum) //is pressed
 		//		{
-		//			leftDebugView = (leftDebugView + 1) % 15;
-		//			rightDebugView = (rightDebugView + 1) % 15;
+		//			leftDebugView = leftDebugView - (leftDebugView % 2 );
+		//			leftDebugView = max((leftDebugView + 2) % 16, 2);
+		//			rightDebugView = leftDebugView + 1;
 		//		}
+		//		lastPacketNum = state.unPacketNum;
 		//	}
 		//}
 		//++++++++++++++

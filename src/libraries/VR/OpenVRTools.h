@@ -133,7 +133,7 @@ public:
 	//-----------------------------------------------------------------------------
 	// Purpose: Processes VR events
 	//-----------------------------------------------------------------------------
-	void PollVREvents();
+	void PollVREvents(std::function<bool(const vr::VREvent_t & event)> eventHandler = std::function<bool(const vr::VREvent_t & event)>());
 	void ProcessVREvent( const vr::VREvent_t & event );
 
 	//-----------------------------------------------------------------------------
