@@ -300,12 +300,12 @@ int main(int argc, char *argv[])
 
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE3, GL_TEXTURE_1D); // transfer function
+	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
 
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D); // left uvw back
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw front
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
 
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE4, GL_TEXTURE_2D); // right uvw back
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE3, GL_TEXTURE_2D); // right uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
@@ -318,7 +318,7 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE13, GL_TEXTURE_2D);// right raycasting result (for display)
 
 	shaderProgram.update("volume_texture", 0); // volume texture
-	shaderProgram.update("transferFunctionTex", 3);
+	shaderProgram.update("transferFunctionTex", 1);
 
 	RenderPass renderPass(&shaderProgram, &FBO);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -582,9 +582,9 @@ int main(int argc, char *argv[])
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
-		ImGui::SliderInt("Left Debug View", &leftDebugView, 1, 15);
+		ImGui::SliderInt("Left Debug View", &leftDebugView, 2, 15);
 		ImGui::NextColumn();
-		ImGui::SliderInt("Right Debug View", &rightDebugView, 1, 15);
+		ImGui::SliderInt("Right Debug View", &rightDebugView, 2, 15);
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		ImGui::Separator();
@@ -694,8 +694,8 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrices[LEFT][CURRENT].model ) * glm::inverse( matrices[LEFT][CURRENT].view ) * s_screenToView );
 		shaderProgram.update( "uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
 		shaderProgram.update( "uProjection", matrices[LEFT][CURRENT].perspective);
-		shaderProgram.update( "back_uvw_map",  1 );
-		shaderProgram.update( "front_uvw_map", 2 );
+		shaderProgram.update( "back_uvw_map",  2 );
+		shaderProgram.update( "front_uvw_map", 4 );
 		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
 
 		chunkedRenderPass.render(); 
@@ -738,7 +738,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uScreenToTexture", s_modelToTexture * glm::inverse( matrices[RIGHT][CURRENT].model ) * glm::inverse( matrices[RIGHT][CURRENT].view ) * s_screenToView );
 		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
 		shaderProgram.update("uProjection", matrices[RIGHT][CURRENT].perspective);
-		shaderProgram.update("back_uvw_map",  4);
+		shaderProgram.update("back_uvw_map",  3);
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("occlusion_map", (useOcclusionMap) ? 9 : 5);
 
