@@ -292,7 +292,7 @@ int main(int argc, char *argv[])
 	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
+	//FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
@@ -364,7 +364,7 @@ int main(int argc, char *argv[])
 	int vertexGridHeight = (int) getResolution(window).y   / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
 	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", s_shaderDefines);
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
+	//FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
 	FrameBufferObject occlusionFrustumFBO_r( occlusionFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
 	FrameBufferObject::s_internalFormat = GL_RGBA;
@@ -522,7 +522,6 @@ int main(int argc, char *argv[])
 		////////////////////////////////    EVENTS    ////////////////////////////////
 		pollSDLEvents(window, sdlEventHandler);
 		ovr.PollVREvents(vrEventHandler);
-
 
 		//++++++++++++++ DEBUG 
 		// Process SteamVR controller state
