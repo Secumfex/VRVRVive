@@ -128,7 +128,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		// first hit?
 		if (result.firstHit.a == 0.0 && sampleColor.a > 0.001)
 		{
-			result.firstHit.rgb = curSample.uvw;
+			result.firstHit.rgb = mix( startUVW, endUVW, t - (3.0 * parameterStepSize)); // move towards camera a little bit
 			result.firstHit.a = curDepth;
 		} 
 
@@ -195,7 +195,7 @@ void main()
 	{
 		fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords
 		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4( raycastResult.firstHit.xyz, 1.0);
-		fragFirstHit.a = firstHitProjected.z / firstHitProjected.w;
+		fragFirstHit.a = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
 	}
 	else
 	{
