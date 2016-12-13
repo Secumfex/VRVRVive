@@ -30,7 +30,7 @@ uniform mat4 uFirstHitViewToTexture; // from old view to texture space
 #define DEPTH_SCALE 5.0 
 #endif
 #ifndef DEPTH_BIAS 
-#define DEPTH_BIAS 0.05
+#define DEPTH_BIAS 0.01
 #endif
 #define MAX_DEPTH 1.0
 
