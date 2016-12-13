@@ -9,5 +9,5 @@ in vec3 passPosition; // view space
 layout(location = 0) out vec4 fragUVRCoordFront;
 void main()
 {
-	fragUVRCoordFront = vec4(passUVWCoord, gl_FragCoord.z); // alpha contains fragment screen space depth
+	fragUVRCoordFront = vec4(passUVWCoord, gl_FragDepth); // alpha contains fragment screen space depth
 }

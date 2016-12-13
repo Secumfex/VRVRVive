@@ -15,7 +15,7 @@ out vec3 passWorldPosition; // world space
 out vec3 passPosition; // view space
 
 //!< samplers
-uniform sampler2D first_hit_map;
+uniform sampler2D first_hit_map; // depth texture
 
 //!< uniforms
 uniform int  uOcclusionBlockSize;
@@ -95,10 +95,11 @@ void main()
 	{
 		for (int j = 0; j < uOcclusionBlockSize; j++)
 		{
+			if ( any( greaterThanEqual(texCoord + ivec2(j,i), texSize) ) ) { continue; }
 			vec4 texel = texelFetch(first_hit_map, texCoord + ivec2(j,i), 0);
-			if (texel.a != 0.0 && texel.a < minDepth) // valid and nearer
+			if ( texel.x < minDepth ) // valid (aka not 1.0) and nearer
 			{
-				minDepth = texel.a;
+				minDepth = texel.x;
 			}
 		}		
 	}

@@ -310,8 +310,11 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE3, GL_TEXTURE_2D); // right uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
 
-	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
-	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
+	//OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
+	//OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO.getDepthTextureHandle(), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
+	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getDepthTextureHandle(), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
 	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D);// right raycasting result
@@ -377,8 +380,10 @@ int main(int argc, char *argv[])
 	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
 	occlusionFrustumShader.update("uScreenToView", s_screenToView);
 
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+	//OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
+	//OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
+	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
 	
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
 	auto m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
@@ -522,25 +527,6 @@ int main(int argc, char *argv[])
 		////////////////////////////////    EVENTS    ////////////////////////////////
 		pollSDLEvents(window, sdlEventHandler);
 		ovr.PollVREvents(vrEventHandler);
-
-		//++++++++++++++ DEBUG 
-		// Process SteamVR controller state
-		//for (vr::TrackedDeviceIndex_t unDevice = 0; unDevice < vr::k_unMaxTrackedDeviceCount; unDevice++)
-		//{
-		//	vr::VRControllerState_t state;
-		//	if (ovr.m_pHMD && ovr.m_pHMD->GetControllerState(unDevice, &state))
-		//	{
-		//		static auto lastPacketNum = state.unPacketNum;
-		//		if (state.ulButtonPressed != 0 && lastPacketNum !=state.unPacketNum) //is pressed
-		//		{
-		//			leftDebugView = leftDebugView - (leftDebugView % 2 );
-		//			leftDebugView = max((leftDebugView + 2) % 16, 2);
-		//			rightDebugView = leftDebugView + 1;
-		//		}
-		//		lastPacketNum = state.unPacketNum;
-		//	}
-		//}
-		//++++++++++++++
 
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
