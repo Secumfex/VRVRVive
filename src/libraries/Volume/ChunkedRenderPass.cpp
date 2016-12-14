@@ -393,7 +393,4 @@ ChunkedAdaptiveRenderPass::~ChunkedAdaptiveRenderPass()
 	{
 		glDeleteQueries(e.size(), &e[0]);
 	}
-
-	// just in case they still existed
-	clearRefs();
 }

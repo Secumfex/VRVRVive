@@ -84,7 +84,16 @@ const int CURRENT = 1;
 const int LEFT = vr::Eye_Left;
 const int RIGHT = vr::Eye_Right;
 
-
+enum DebugViews{
+	UVW_BACK,
+	UVW_FRONT,
+	FIRST_HIT_,
+	OCCLUSION,
+	CURRENT_,
+	FRONT,
+	WARPED,
+	NUM_VIEWS // auxiliary
+};
 //////////////////////////////////////////////////////////////////////////////
 ////////////////////////////// MISC //////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -407,10 +416,15 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Depth To TextureCoords Renderpass    //////////////////////////
 	ShaderProgram depthToTextureShader("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
-	RenderPass depthToTexture(&depthToTextureShader, 0);
+	FrameBufferObject FBO_debug_depth(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_debug_depth_r(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	RenderPass depthToTexture(&depthToTextureShader, &FBO_debug_depth);
 	depthToTexture.addClearBit(GL_COLOR_BUFFER_BIT);
 	depthToTexture.addDisable(GL_DEPTH_TEST);
 	depthToTexture.addRenderable(&quad);
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE16, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE17, GL_TEXTURE_2D);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -503,7 +517,9 @@ int main(int argc, char *argv[])
 	static int  leftDebugView = 10;
 	static int rightDebugView = 11;
 	static bool predictPose = false;
-
+	
+	int activeView = WARPED;
+	
 	auto vrEventHandler = [&](const vr::VREvent_t & event)
 	{
 		switch( event.eventType )
@@ -513,41 +529,47 @@ int main(int argc, char *argv[])
 				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
 				DEBUGLOG->log("button pressed dude");
 
-				leftDebugView = leftDebugView - (leftDebugView % 2 );
-				leftDebugView = max((leftDebugView + 2) % 16, 2);
-				rightDebugView = leftDebugView + 1;
+				activeView = (activeView + 1) % NUM_VIEWS;
 				break;
 			}
 		}
 		return false;
 	};
 
-	enum DebugView{
-		UVW_FRONT,
-		UVW_BACK,
-		FIRST_HIT,
-		OCCLUSION,
-		CURRENT,
-		FRONT,
-		WARPED
-	};
-	auto setDebugView = [&](DebugView view)
+	auto setDebugView = [&](int view)
 	{
 		switch (view)
 		{
+			// regular textures -> show directly
+			default:	
 			case UVW_FRONT:
 			case UVW_BACK:
-			case CURRENT:
+			case CURRENT_:
 			case FRONT:
 			case WARPED:
-
+				leftDebugView = view * 2 + 2;
+				leftDebugView = max((leftDebugView) % 16, 2);
+				rightDebugView = leftDebugView + 1;
 				break;
-			case FIRST_HIT:
+			case FIRST_HIT_:
 			case OCCLUSION:
-
+				leftDebugView = 16;
+				rightDebugView = leftDebugView + 1;
+				// convert left
+				depthToTextureShader.update("depth_texture", view * 2);
+				depthToTextureShader.update("uProjection", s_perspective);
+				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
+				depthToTexture.setFrameBufferObject(&FBO_debug_depth);
+				depthToTexture.render();
+				// convert right
+				depthToTextureShader.update("depth_texture", view * 2 + 1);
+				depthToTextureShader.update("uProjection", s_perspective_r);
+				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
+				depthToTexture.setFrameBufferObject(&FBO_debug_depth_r);
+				depthToTexture.render();
 				break;
 		}
-	}
+	};
 
 	std::string window_header = "Volume Renderer - OpenVR";
 	SDL_SetWindowTitle(window, window_header.c_str() );
@@ -879,6 +901,7 @@ int main(int argc, char *argv[])
 		m_pWarpingThread->render();
 
 		//%%%%%%%%%%%% Submit/Display images
+		setDebugView(activeView);
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{
 			if ( chunkedRenderPass.isFinished() )

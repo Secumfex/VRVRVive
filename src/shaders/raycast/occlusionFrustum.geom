@@ -95,7 +95,7 @@ void main()
 	{
 		for (int j = 0; j < uOcclusionBlockSize; j++)
 		{
-			if ( any( greaterThanEqual(texCoord + ivec2(j,i), texSize) ) ) { continue; }
+			if ( any( greaterThanEqual(texCoord + ivec2(j,i), texSize) ) ) { continue; } // outside texture
 			vec4 texel = texelFetch(first_hit_map, texCoord + ivec2(j,i), 0);
 			if ( texel.x < minDepth ) // valid (aka not 1.0) and nearer
 			{
