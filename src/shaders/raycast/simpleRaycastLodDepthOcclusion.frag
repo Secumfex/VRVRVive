@@ -154,21 +154,24 @@ vec4 getViewCoord( vec3 screenPos )
 void main()
 {
 	// define ray start and end points in volume
-	vec4 uvwStart = texelFetch( front_uvw_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
-	vec4 uvwEnd   = texelFetch( back_uvw_map,  ivec2(passUV * vec2(textureSize(back_uvw_map,0))),0);
+	//vec4 uvwStart = texelFetch( front_uvw_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
+	//vec4 uvwEnd   = texelFetch( back_uvw_map,  ivec2(passUV * vec2(textureSize(back_uvw_map,0))),0);
+	vec4 uvwStart = texture( front_uvw_map, passUV );
+	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
 
-	if (uvwStart.a == 0.0 && uvwEnd.a == 0.0) { 
+	if (uvwEnd.a == 0.0) { 
 		discard; 
 	} //invalid pixel
 	
-	if( uvwStart.a == 0.0 && uvwEnd.a != 0.0) // only back-uvws visible (camera inside volume)
+	if( uvwStart.a == 0.0 ) // only back-uvws visible (camera inside volume)
 	{
 		uvwStart = uScreenToTexture * vec4(passUV,0,1); // clamp to near plane
 		uvwStart.a = 1.0;
 	}
 
 	// check uvw coords against occlusion map
-	vec4 uvwOcclusion = texelFetch(occlusion_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
+	//vec4 uvwOcclusion = texelFetch(occlusion_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
+	vec4 uvwOcclusion = texture(occlusion_map, passUV);
 	if (uvwOcclusion.x != 1.0 && uvwOcclusion.x < uvwEnd.a && uvwOcclusion.x > uvwStart.a) // found starting point in front of back face but in back of front face
 	{
 		// compute uvw from depth value
