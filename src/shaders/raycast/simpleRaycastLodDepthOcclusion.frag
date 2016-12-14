@@ -16,7 +16,7 @@ uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform sampler2D occlusion_map;   // uvw coordinates map of occlusion map
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
-//uniform isampler3D volume_texture; // volume 3D integer texture sampler
+uniform sampler2D scene_depth_map;   // depth map of scene
 
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
 // color mapping related uniforms 
@@ -105,7 +105,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		
-		float curDepth = mix( startDepth, endDepth, t); // stupid approx
+		float curDepth = mix( startDepth, endDepth, t);
 		float curLod = max(0.0, uLodDepthScale * (curDepth - uLodBias)); // bad approximation, but idc for now
 		float curStepSize = stepSize * pow(2.0, curLod);
 		parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
@@ -154,8 +154,6 @@ vec4 getViewCoord( vec3 screenPos )
 void main()
 {
 	// define ray start and end points in volume
-	//vec4 uvwStart = texelFetch( front_uvw_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
-	//vec4 uvwEnd   = texelFetch( back_uvw_map,  ivec2(passUV * vec2(textureSize(back_uvw_map,0))),0);
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
 
@@ -165,40 +163,58 @@ void main()
 	
 	if( uvwStart.a == 0.0 ) // only back-uvws visible (camera inside volume)
 	{
-		uvwStart = uScreenToTexture * vec4(passUV,0,1); // clamp to near plane
-		uvwStart.a = 1.0;
+		uvwStart = uScreenToTexture * vec4(passUV, 0, 1); // clamp to near plane
+		uvwStart.a = 0.0;
 	}
 
 	// check uvw coords against occlusion map
-	//vec4 uvwOcclusion = texelFetch(occlusion_map, ivec2(passUV * vec2(textureSize(front_uvw_map,0))),0);
 	vec4 uvwOcclusion = texture(occlusion_map, passUV);
-	if (uvwOcclusion.x != 1.0 && uvwOcclusion.x < uvwEnd.a && uvwOcclusion.x > uvwStart.a) // found starting point in front of back face but in back of front face
+	if (uvwOcclusion.x < 1.0 && uvwOcclusion.x < uvwEnd.a && uvwOcclusion.x > uvwStart.a) // found starting point in front of back face but in back of front face
 	{
 		// compute uvw from depth value
-		uvwStart = uViewToTexture * getViewCoord( vec3(passUV, uvwOcclusion.x) );
+		uvwStart.xyz = (uViewToTexture * getViewCoord( vec3(passUV, uvwOcclusion.x) ) ).xyz;
+		uvwStart.a = uvwOcclusion.x;
 	}
 
-	// linearize depth
-	uvwStart.a = abs( getViewCoord( vec3( 0.5,0.5,uvwStart.a ) ).a );
-	uvwEnd.a   = abs( getViewCoord( vec3( 0.5,0.5,uvwEnd.a ) ).a );
+	// check uvw coords against scene depth map, 
+	float scene_depth = texture(scene_depth_map, passUV).x;
+	if (scene_depth < uvwStart.a) 
+	{
+		gl_FragDepth = uvwStart.a;
+		return;
+	}
+	if (scene_depth < uvwEnd.a)
+	{
+		float endDepth = max(scene_depth, uvwStart.a);
+		uvwEnd = uViewToTexture * getViewCoord( vec3(passUV, endDepth ) );
+		uvwEnd.a = endDepth;
+	}
+
+	// linearize depth //?
+	//float startDistance = abs(getViewCoord(vec3(passUV,uvwStart.a)).z);
+	//float endDistance   = abs(getViewCoord(vec3(passUV,uvwEnd.a)).z);
+	float startDistance = uvwStart.a;
+	float endDistance   = uvwEnd.a;
 
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize    			// sampling step size
-		, uvwStart.a
-		, uvwEnd.a
+		, startDistance
+		, endDistance
 		);
 
 	// final color
-	fragColor = raycastResult.color;// * 0.8 + 0.2 * uvwStart; //debug
+	fragColor = raycastResult.color;
+	//fragColor = vec4(startDistance); //debug
 
 	if (raycastResult.firstHit.a > 0.0)
 	{
 		fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords
 		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4( raycastResult.firstHit.xyz, 1.0);
 		fragFirstHit.a = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
+		
 		gl_FragDepth = fragFirstHit.a;
 	}
 	else

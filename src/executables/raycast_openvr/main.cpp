@@ -276,10 +276,12 @@ int main(int argc, char *argv[])
 	uvwShaderProgram.update("projection", s_perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject uvwFBO(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
 	FrameBufferObject uvwFBO_r(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
+	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
@@ -426,6 +428,15 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE16, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE17, GL_TEXTURE_2D);
 
+	///////////////////////   Scene Depth FBO //////////////////////////
+	FrameBufferObject FBO_scene_depth(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
+	FrameBufferObject FBO_scene_depth_r(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
+	FBO_scene_depth.bind();
+	glClear(GL_DEPTH_BUFFER_BIT);
+	FBO_scene_depth_r.bind();
+	glClear(GL_DEPTH_BUFFER_BIT);
+	OPENGLCONTEXT->bindTextureToUnit(FBO_scene_depth.getDepthTextureHandle(), GL_TEXTURE18, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(FBO_scene_depth_r.getDepthTextureHandle(), GL_TEXTURE19, GL_TEXTURE_2D);
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
@@ -437,6 +448,8 @@ int main(int argc, char *argv[])
 	Turntable turntable;
 	double old_x;
     double old_y;
+	
+	int activeView = WARPED;
 
 	//handles all the sdl events
 	auto sdlEventHandler = [&](SDL_Event *event)
@@ -460,6 +473,9 @@ int main(int argc, char *argv[])
 						break;
 					case SDLK_d:
 						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
+						break;
+					case SDLK_SPACE:
+						activeView = (activeView + 1) % NUM_VIEWS;
 						break;
 					default:
 						break;
@@ -518,7 +534,6 @@ int main(int argc, char *argv[])
 	static int rightDebugView = 11;
 	static bool predictPose = false;
 	
-	int activeView = WARPED;
 	
 	auto vrEventHandler = [&](const vr::VREvent_t & event)
 	{
@@ -527,7 +542,7 @@ int main(int argc, char *argv[])
 			case vr::VREvent_ButtonPress:
 			{
 				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				DEBUGLOG->log("button pressed dude");
+				DEBUGLOG->log("button press: ", event.data.controller.button);
 
 				activeView = (activeView + 1) % NUM_VIEWS;
 				break;
@@ -730,7 +745,6 @@ int main(int argc, char *argv[])
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_DEPTH_BUFFER_BIT);
 		}
-
 		//%%%%%%%%%%%% render left image
 		if (chunkedRenderPass.isFinished())
 		{
@@ -772,6 +786,14 @@ int main(int argc, char *argv[])
 					}
 				}
 			}
+
+			// quickly do a depth pass of the models
+			if ( ovr.m_pHMD )
+			{
+				FBO_scene_depth.bind();
+				glClear(GL_DEPTH_BUFFER_BIT);
+				ovr.renderModels(vr::Eye_Left);
+			}
 			//++++++++++++++++++++++++++++++++//
 
 			MatrixSet& firstHit = matrices[LEFT][FIRST_HIT]; /// convenient access
@@ -803,6 +825,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "uProjection", matrices[LEFT][CURRENT].perspective);
 		shaderProgram.update( "back_uvw_map",  2 );
 		shaderProgram.update( "front_uvw_map", 4 );
+		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
 
 		chunkedRenderPass.render(); 
@@ -850,6 +873,15 @@ int main(int argc, char *argv[])
 					}
 				}
 			}
+
+			// quickly do a depth pass of the models
+			if ( ovr.m_pHMD )
+			{
+				FBO_scene_depth_r.bind();
+				glClear(GL_DEPTH_BUFFER_BIT);
+				ovr.renderModels(vr::Eye_Left);
+			}
+
 			//++++++++++++++++++++++++++++++++//
 
 			MatrixSet& firstHit = matrices[RIGHT][FIRST_HIT]; /// convenient access
@@ -880,6 +912,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uProjection", matrices[RIGHT][CURRENT].perspective);
 		shaderProgram.update("back_uvw_map",  3);
 		shaderProgram.update("front_uvw_map", 5);
+		shaderProgram.update("scene_depth_map", 19 );
 		shaderProgram.update("occlusion_map", (useOcclusionMap) ? 9 : 5);
 
 		//renderPass_r.render();
