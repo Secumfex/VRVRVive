@@ -551,18 +551,18 @@ int main(int argc, char *argv[])
 				leftDebugView = max((leftDebugView) % 16, 2);
 				rightDebugView = leftDebugView + 1;
 				break;
-			case FIRST_HIT_:
 			case OCCLUSION:
+			case FIRST_HIT_:
 				leftDebugView = 16;
 				rightDebugView = leftDebugView + 1;
 				// convert left
-				depthToTextureShader.update("depth_texture", view * 2);
+				depthToTextureShader.update("depth_texture", view * 2 + 2);
 				depthToTextureShader.update("uProjection", s_perspective);
 				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
 				depthToTexture.setFrameBufferObject(&FBO_debug_depth);
 				depthToTexture.render();
 				// convert right
-				depthToTextureShader.update("depth_texture", view * 2 + 1);
+				depthToTextureShader.update("depth_texture", view * 2 + 3);
 				depthToTextureShader.update("uProjection", s_perspective_r);
 				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
 				depthToTexture.setFrameBufferObject(&FBO_debug_depth_r);

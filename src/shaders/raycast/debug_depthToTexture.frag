@@ -34,5 +34,5 @@ void main()
 	}
 
 	vec4 posView = getViewCoord( vec3(passUV, depth) );
-	fragColor = uViewToTexture(posView);
+	fragColor = uViewToTexture * (posView);
 }
