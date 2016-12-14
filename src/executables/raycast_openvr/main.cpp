@@ -276,12 +276,10 @@ int main(int argc, char *argv[])
 	uvwShaderProgram.update("projection", s_perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject uvwFBO(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
 	FrameBufferObject uvwFBO_r(getResolution(window).x/2, getResolution(window).y);
 	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
-	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
@@ -296,19 +294,16 @@ int main(int argc, char *argv[])
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
 	shaderProgram.update("uResolution", glm::vec4(getResolution(window).x/2, getResolution(window).y,0,0));
-	shaderProgram.update("uScreenToView", s_screenToView);
 
 	// DEBUG
 	generateTransferFunction();
 	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
-	//FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_front_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 
 	// bind volume texture, back uvw textures, front uvws
@@ -320,9 +315,6 @@ int main(int argc, char *argv[])
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE3, GL_TEXTURE_2D); // right uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
-
-	//OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
-	//OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT1), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO.getDepthTextureHandle(), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
 	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getDepthTextureHandle(), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
@@ -378,10 +370,8 @@ int main(int argc, char *argv[])
 	int vertexGridHeight = (int) getResolution(window).y   / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
 	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", s_shaderDefines);
-	//FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
 	FrameBufferObject occlusionFrustumFBO_r( occlusionFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
-	FrameBufferObject::s_internalFormat = GL_RGBA;
 	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);
 	occlusionFrustum.addRenderable(&vertexGrid);
 	occlusionFrustum.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -389,10 +379,7 @@ int main(int argc, char *argv[])
 	occlusionFrustum.addDisable(GL_BLEND);
 	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
 	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
-	occlusionFrustumShader.update("uScreenToView", s_screenToView);
 
-	//OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
-	//OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getColorAttachmentTextureHandle(	  GL_COLOR_ATTACHMENT0), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
 	

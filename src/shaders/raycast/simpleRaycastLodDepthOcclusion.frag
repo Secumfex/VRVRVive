@@ -29,7 +29,6 @@ uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD 
 uniform float uLodBias;        // depth at which lod begins to degrade
 
 uniform mat4 uViewToTexture;
-uniform mat4 uScreenToView;
 uniform mat4 uScreenToTexture;
 uniform mat4 uProjection;
 ///////////////////////////////////////////////////////////////////////////////////
