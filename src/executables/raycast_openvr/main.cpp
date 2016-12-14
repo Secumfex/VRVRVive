@@ -723,10 +723,12 @@ int main(int argc, char *argv[])
 		if (chunkedRenderPass.isFinished())
 		{
 			copyFBOContent(&FBO, &FBO_front, GL_COLOR_BUFFER_BIT);
+			copyFBOContent(&FBO, &FBO_front, GL_DEPTH_BUFFER_BIT);
 		}
 		if (chunkedRenderPass_r.isFinished())
 		{
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
+			copyFBOContent(&FBO_r, &FBO_front_r, GL_DEPTH_BUFFER_BIT);
 		}
 
 		//%%%%%%%%%%%% render left image
@@ -904,19 +906,17 @@ int main(int argc, char *argv[])
 		setDebugView(activeView);
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{
-			if ( chunkedRenderPass.isFinished() )
-			{
-				FBO_front.bind();
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				//ovr.renderModels(vr::Eye_Left); //TODO find out what dirty states are caused
-			}
+			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 
-			if ( chunkedRenderPass_r.isFinished() )
-			{
-				FBO_front_r.bind();
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				//ovr.renderModels(vr::Eye_Right);
-			}
+			copyFBOContent(&FBO_front, &FBO_warp, GL_DEPTH_BUFFER_BIT);
+			copyFBOContent(&FBO_front_r, &FBO_warp_r, GL_DEPTH_BUFFER_BIT);
+
+			FBO_warp.bind();
+			ovr.renderModels(vr::Eye_Left);
+
+			FBO_warp_r.bind();
+			ovr.renderModels(vr::Eye_Right);
+
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 
 			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + leftDebugView], vr::Eye_Left);

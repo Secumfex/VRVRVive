@@ -76,6 +76,7 @@ public:
 	SDL_GLContext m_pContext;
 	GLuint m_unRenderModelProgramID;
 	GLint m_nRenderModelMatrixLocation;
+	GLint m_nRenderModelDiffuseTextureLocation;
 
 	std::vector< CGLRenderModel * > m_vecRenderModels;
 	CGLRenderModel *m_rTrackedDeviceToRenderModel[ vr::k_unMaxTrackedDeviceCount ];

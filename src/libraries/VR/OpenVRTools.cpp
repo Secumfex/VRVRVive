@@ -29,6 +29,7 @@ OpenVRSystem::OpenVRSystem(float near, float far)
 	, m_pContext(NULL)
 	, m_unRenderModelProgramID( 0 )
 	, m_nRenderModelMatrixLocation( -1 )
+	, m_nRenderModelDiffuseTextureLocation(-1)
 {
 	memset(m_rDevClassChar, 0, sizeof(m_rDevClassChar));
 }
@@ -394,6 +395,12 @@ bool OpenVRSystem::CreateShaders()
 		DEBUGLOG->log( "ERROR: Unable to find matrix uniform in render model shader" );
 		return false;
 	}
+	m_nRenderModelDiffuseTextureLocation = glGetUniformLocation(m_unRenderModelProgramID, "diffuse");
+	if (m_nRenderModelDiffuseTextureLocation == -1)
+	{
+		DEBUGLOG->log("ERROR: Unable to find diffuse uniform in render model shader");
+		return false;
+	}
 
 	return (m_unRenderModelProgramID != 0);
 }
@@ -531,6 +538,7 @@ void OpenVRSystem::renderModels( vr::Hmd_Eye nEye )
 		const glm::mat4& matDeviceToTracking = m_rmat4DevicePose[ unTrackedDevice ];
 		glm::mat4 matMVP = GetCurrentViewProjectionMatrix( nEye ) * matDeviceToTracking;
 		glUniformMatrix4fv( m_nRenderModelMatrixLocation, 1, GL_FALSE, glm::value_ptr(matMVP) );
+		glUniform1i(m_nRenderModelDiffuseTextureLocation, 21);
 
 		m_rTrackedDeviceToRenderModel[ unTrackedDevice ]->Draw();
 	}
@@ -670,12 +678,15 @@ void CGLRenderModel::Cleanup()
 //-----------------------------------------------------------------------------
 void CGLRenderModel::Draw()
 {
-	glBindVertexArray( m_glVertArray );
+	OPENGLCONTEXT->bindVAO(m_glVertArray);
+	//glBindVertexArray( m_glVertArray );
 
-	glActiveTexture( GL_TEXTURE0 );
-	glBindTexture( GL_TEXTURE_2D, m_glTexture );
+	OPENGLCONTEXT->bindTextureToUnit(m_glTexture, GL_TEXTURE21);
+
+	//glActiveTexture( GL_TEXTURE0 );
+	//glBindTexture( GL_TEXTURE_2D, m_glTexture );
 
 	glDrawElements( GL_TRIANGLES, m_unVertexCount, GL_UNSIGNED_SHORT, 0 );
 
-	glBindVertexArray( 0 );
+	OPENGLCONTEXT->bindVAO(0);
 }
