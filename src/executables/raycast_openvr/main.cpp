@@ -517,8 +517,8 @@ int main(int argc, char *argv[])
 		return true;
 	};
 
-	static int  leftDebugView = 20;
-	static int rightDebugView = 21;
+	static int  leftDebugView = 14;
+	static int rightDebugView = 15;
 	static bool predictPose = false;
 	
 	
@@ -563,6 +563,7 @@ int main(int argc, char *argv[])
 				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
 				depthToTexture.setFrameBufferObject(&FBO_debug_depth);
 				depthToTexture.render();
+
 				// convert right
 				depthToTextureShader.update("depth_texture", view * 2 + 3);
 				depthToTextureShader.update("uProjection", s_perspective_r);
@@ -928,22 +929,32 @@ int main(int argc, char *argv[])
 
 		//%%%%%%%%%%%% Submit/Display images
 		setDebugView(activeView);
+
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-
-			//copyFBOContent(&FBO_front, &FBO_warp, GL_DEPTH_BUFFER_BIT);
-			//copyFBOContent(&FBO_front_r, &FBO_warp_r, GL_DEPTH_BUFFER_BIT);
-
 			FBO_warp.bind();
-			//ovr.renderModels(vr::Eye_Left);
+			ovr.renderModels(vr::Eye_Left);
 
 			FBO_warp_r.bind();
-			//ovr.renderModels(vr::Eye_Right);
-
+			ovr.renderModels(vr::Eye_Right);
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 
-			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + leftDebugView], vr::Eye_Left);
+			OPENGLCONTEXT->setEnabled(GL_BLEND, true);
+			showTexShader.update("tex", 14);
+			showTex.setFrameBufferObject(&FBO_warp);
+			showTex.setViewport(0, 0, FBO_warp.getWidth(), FBO_warp.getHeight());
+			showTex.render();
+
+			showTexShader.update("tex", 15);
+			showTex.setFrameBufferObject(&FBO_warp_r);
+			showTex.setViewport(0, 0, FBO_warp_r.getWidth(), FBO_warp_r.getHeight());
+			showTex.render();
+			OPENGLCONTEXT->setEnabled(GL_BLEND, false);
+
+			showTex.setFrameBufferObject(0);
+
+			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + leftDebugView ], vr::Eye_Left);
 			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + rightDebugView], vr::Eye_Right);
 		}
 		
