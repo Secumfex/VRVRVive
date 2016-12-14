@@ -108,8 +108,11 @@ ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, gl
 	: ChunkedRenderPass(pRenderPass, viewportSize, chunkSize),
 	m_timingsBufferSize(timingsBufferSize),
 	m_totalRenderTimesBuffer(timingsBufferSize),
+	m_lastTotalRenderTime(16.0f),
 	m_currentChunkIdx(0),
 	m_currentFrameIdx(0),
+	m_lastNumFramesElapsed(1),
+	m_lastCompletedFrameIdx(0),
 	m_currentBackQuery(0),
 	m_currentFrontQuery(1),
 	m_renderTimeBias(bias),
@@ -280,6 +283,10 @@ void ChunkedAdaptiveRenderPass::profileTimings(){
 	}
 
 	m_totalRenderTimesBuffer[m_currentFrameIdx] = totalRenderTime;
+	m_lastTotalRenderTime = totalRenderTime;
+
+	m_lastNumFramesElapsed = ((m_currentFrameIdx + m_timingsBufferSize) - m_lastCompletedFrameIdx) % m_timingsBufferSize;
+	m_lastCompletedFrameIdx = m_currentFrameIdx;
 	m_currentFrameIdx = (m_currentFrameIdx + 1) % m_timingsBufferSize;
 	swapQueryBuffers();
 }

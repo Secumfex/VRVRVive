@@ -60,7 +60,9 @@ protected:
 	std::vector< float >m_numChunksBuffer; 
 	int m_currentIterationIdx;
 	std::vector< float >m_totalRenderTimesBuffer; 
-	float m_lastTotalRenderTime; // time for one complete render-iteration
+	float m_lastTotalRenderTime; // time for one complete render-iteration (in ms)
+	int m_lastNumFramesElapsed;
+	int m_lastCompletedFrameIdx;
 
 public:
 	/** @brief Constructor, a suitable RenderPass must have a vertex Shade wich uses the vec4 uniforms 'uViewport' and 'uResolution'
@@ -89,6 +91,7 @@ public:
 	inline void setAutoAdjustRenderTime(bool enabled) {m_autoAdjustRenderTime = enabled;}
 	inline bool& getAutoAdjustRenderTime() {return m_autoAdjustRenderTime;}
 	inline float& getLastTotalRenderTime() {return m_lastTotalRenderTime;}
+	inline int& getLastNumFramesElapsed() { return m_lastNumFramesElapsed; }
 
 	//++ ImGui++//
 	void imguiInterface(bool* open = NULL);

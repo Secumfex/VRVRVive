@@ -502,6 +502,7 @@ int main(int argc, char *argv[])
 
 	static int  leftDebugView = 10;
 	static int rightDebugView = 11;
+	static bool predictPose = false;
 
 	auto vrEventHandler = [&](const vr::VREvent_t & event)
 	{
@@ -509,7 +510,9 @@ int main(int argc, char *argv[])
 		{
 			case vr::VREvent_ButtonPress:
 			{
+				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
 				DEBUGLOG->log("button pressed dude");
+
 				leftDebugView = leftDebugView - (leftDebugView % 2 );
 				leftDebugView = max((leftDebugView + 2) % 16, 2);
 				rightDebugView = leftDebugView + 1;
@@ -644,6 +647,8 @@ int main(int argc, char *argv[])
 			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 		}
+
+		ImGui::Checkbox("Predict HMD Pose", &predictPose);
 		//++++++++++++++ DEBUG
 
 		//////////////////////////////////////////////////////////////////////////////
@@ -685,22 +690,35 @@ int main(int argc, char *argv[])
 			matrices[LEFT][CURRENT].perspective = s_perspective; 
 
 			//++++++++++++++ DEBUG +++++++++++//
-			if (ovr.m_pHMD)
+			if (predictPose)
 			{
 				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-				float predictSecondsAhead = chunkedRenderPass.getLastTotalRenderTime();
+				//float predictSecondsAhead = ((float)chunkedRenderPass.getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
+				float predictSecondsAhead = (chunkedRenderPass.getLastTotalRenderTime() + chunkedRenderPass_r.getLastTotalRenderTime()) / 1000.0f;
 
-				ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
-					vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
-					predictSecondsAhead,
-					predictedDevicePose,
-					vr::k_unMaxTrackedDeviceCount
-					);
-				
-				if ( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
+				if (ovr.m_pHMD)
 				{
-					glm::mat4 predictedHMDPose = glm::inverse( ovr.ConvertSteamVRMatrixToGLMMat4( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking ) );
-					matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosLeft * predictedHMDPose;
+					ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
+						vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
+						predictSecondsAhead,
+						predictedDevicePose,
+						vr::k_unMaxTrackedDeviceCount
+						);
+
+					if (predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
+					{
+						glm::mat4 predictedHMDPose = glm::inverse(ovr.ConvertSteamVRMatrixToGLMMat4(predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
+						matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosLeft * predictedHMDPose;
+					}
+				}
+				else
+				{
+					if (animateView)
+					{
+						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						glm::vec4 warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						matrices[LEFT][CURRENT].view = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
+					}
 				}
 			}
 			//++++++++++++++++++++++++++++++++//
@@ -752,22 +770,33 @@ int main(int argc, char *argv[])
 			matrices[RIGHT][CURRENT].perspective = s_perspective_r; 
 
 			//++++++++++++++ DEBUG +++++++++++//
-			if (ovr.m_pHMD)
+			if (predictPose)
 			{
 				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-				float predictSecondsAhead = chunkedRenderPass.getLastTotalRenderTime();
-
-				ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
-					vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
-					predictSecondsAhead,
-					predictedDevicePose,
-					vr::k_unMaxTrackedDeviceCount
-					);
-				
-				if ( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
+				//float predictSecondsAhead = ((float)chunkedRenderPass_r.getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
+				float predictSecondsAhead = (chunkedRenderPass.getLastTotalRenderTime() + chunkedRenderPass_r.getLastTotalRenderTime() )/ 1000.0f;
+				if (ovr.m_pHMD)
+				{ 
+					ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
+						vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
+						predictSecondsAhead,
+						predictedDevicePose,
+						vr::k_unMaxTrackedDeviceCount
+						);
+					if (predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
+					{
+						glm::mat4 predictedHMDPose = glm::inverse(ovr.ConvertSteamVRMatrixToGLMMat4(predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
+						matrices[RIGHT][CURRENT].view = ovr.m_mat4eyePosRight * predictedHMDPose;
+					}
+				}
+				else
 				{
-					glm::mat4 predictedHMDPose = glm::inverse( ovr.ConvertSteamVRMatrixToGLMMat4( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking ) );
-					matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosRight * predictedHMDPose;
+					if (animateView)
+					{
+						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						glm::vec4 warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						matrices[RIGHT][CURRENT].view = glm::lookAt(glm::vec3(warpEye) + glm::vec3(0.15, 0.0, 0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
+					}
 				}
 			}
 			//++++++++++++++++++++++++++++++++//
