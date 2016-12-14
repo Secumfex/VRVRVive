@@ -405,6 +405,13 @@ int main(int argc, char *argv[])
 	RenderPass showTex(&showTexShader,0);
 	showTex.addRenderable(&quad);
 
+	///////////////////////   Depth To TextureCoords Renderpass    //////////////////////////
+	ShaderProgram depthToTextureShader("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
+	RenderPass depthToTexture(&depthToTextureShader, 0);
+	depthToTexture.addClearBit(GL_COLOR_BUFFER_BIT);
+	depthToTexture.addDisable(GL_DEPTH_TEST);
+	depthToTexture.addRenderable(&quad);
+
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
@@ -471,12 +478,12 @@ int main(int argc, char *argv[])
 				}
 				if (event->button.button == SDL_BUTTON_RIGHT)
 				{
-					unsigned char pick_col[15];
-					glReadPixels(old_x-2, getResolution(window).y-old_y, 5, 1, GL_RGB, GL_UNSIGNED_BYTE, pick_col);
+					unsigned char pick_col[20];
+					glReadPixels(old_x-2, getResolution(window).y-old_y, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
 
-					for (int i = 0; i < 15; i += 3)
+					for (int i = 0; i < 20; i += 4)
 					{
-						DEBUGLOG->log("color: ", glm::vec3(pick_col[i + 0], pick_col[i + 1], pick_col[i+2]));
+						DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i+2], pick_col[i+3]));
 					}
 				}
 				break;
