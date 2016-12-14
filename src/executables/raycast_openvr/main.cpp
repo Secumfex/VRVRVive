@@ -387,6 +387,7 @@ int main(int argc, char *argv[])
 	auto m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
 	m_pWarpingShader->update( "blendColor", 1.0f );
 
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	FrameBufferObject FBO_warp(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_warp_r(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 
@@ -405,6 +406,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Depth To TextureCoords Renderpass    //////////////////////////
 	ShaderProgram depthToTextureShader("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	FrameBufferObject FBO_debug_depth(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	FrameBufferObject FBO_debug_depth_r(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
 	RenderPass depthToTexture(&depthToTextureShader, &FBO_debug_depth);
@@ -416,6 +418,7 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE17, GL_TEXTURE_2D);
 
 	///////////////////////   Scene Depth FBO //////////////////////////
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	FrameBufferObject FBO_scene_depth(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
 	FrameBufferObject FBO_scene_depth_r(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
 	FBO_scene_depth.bind();
@@ -581,7 +584,6 @@ int main(int argc, char *argv[])
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	float elapsedTime = 0.0;
 	float mirrorScreenTimer = 0.0f;
 	while (!shouldClose(window))
