@@ -522,6 +522,33 @@ int main(int argc, char *argv[])
 		return false;
 	};
 
+	enum DebugView{
+		UVW_FRONT,
+		UVW_BACK,
+		FIRST_HIT,
+		OCCLUSION,
+		CURRENT,
+		FRONT,
+		WARPED
+	};
+	auto setDebugView = [&](DebugView view)
+	{
+		switch (view)
+		{
+			case UVW_FRONT:
+			case UVW_BACK:
+			case CURRENT:
+			case FRONT:
+			case WARPED:
+
+				break;
+			case FIRST_HIT:
+			case OCCLUSION:
+
+				break;
+		}
+	}
+
 	std::string window_header = "Volume Renderer - OpenVR";
 	SDL_SetWindowTitle(window, window_header.c_str() );
 
