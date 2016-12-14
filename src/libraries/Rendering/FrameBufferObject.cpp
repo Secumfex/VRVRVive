@@ -222,13 +222,18 @@ FrameBufferObject::FrameBufferObject(std::unordered_map<std::string, ShaderProgr
 		}
 	}
 
-    std::vector<GLuint> drawBufferHandles(size, GL_NONE);
+    m_drawBuffers.resize(size, GL_NONE);
 
 	
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
 	int i = 0;
     for (auto e : *outputMap) 
     {	
+		if (e.first == "gl_FragDepth")
+		{
+			continue;
+		}
+
 		GLuint handle = createFramebufferTexture();
 
 		GLuint currentAttachment = GL_COLOR_ATTACHMENT0 + static_cast<unsigned int>(e.second.location); //e.second;
@@ -250,9 +255,9 @@ FrameBufferObject::FrameBufferObject(std::unordered_map<std::string, ShaderProgr
 		* The draw buffer used for user defined outputs assigned to locations greater than 
 		* or equal to n is implicitly set to GL_NONE and any data written to such an output is discarded
 		*/
-		if ( e.second.location < drawBufferHandles.size() )
+		if ( e.second.location < m_drawBuffers.size() )
 		{
-			drawBufferHandles[ e.second.location ] = currentAttachment;
+			m_drawBuffers[ e.second.location ] = currentAttachment;
 		}
 		else
 		{
@@ -263,10 +268,11 @@ FrameBufferObject::FrameBufferObject(std::unordered_map<std::string, ShaderProgr
 	    m_colorAttachments[currentAttachment] = handle;
 	    i++;
     }
+	m_numColorAttachments = m_colorAttachments.size();
 
-	if (!drawBufferHandles.empty() )
+	if (!m_drawBuffers.empty() )
     {
-		glDrawBuffers(size, &drawBufferHandles[0]);
+		glDrawBuffers(size, &m_drawBuffers[0]);
 	}
 
 	//glGenTextures( 1, &m_depthTextureHandle);
