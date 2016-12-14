@@ -672,9 +672,31 @@ int main(int argc, char *argv[])
 		if (chunkedRenderPass.isFinished())
 		{
 			matrices[LEFT][FIRST_HIT] = matrices[LEFT][CURRENT]; // first hit map was rendered with last "current" matrices
+			
 			matrices[LEFT][CURRENT].model = model; // overwrite with current  matrices
 			matrices[LEFT][CURRENT].view = s_view;
 			matrices[LEFT][CURRENT].perspective = s_perspective; 
+
+			//++++++++++++++ DEBUG +++++++++++//
+			if (ovr.m_pHMD)
+			{
+				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
+				float predictSecondsAhead = chunkedRenderPass.getLastTotalRenderTime();
+
+				ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
+					vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
+					predictSecondsAhead,
+					predictedDevicePose,
+					vr::k_unMaxTrackedDeviceCount
+					);
+				
+				if ( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
+				{
+					glm::mat4 predictedHMDPose = glm::inverse( ovr.ConvertSteamVRMatrixToGLMMat4( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking ) );
+					matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosLeft * predictedHMDPose;
+				}
+			}
+			//++++++++++++++++++++++++++++++++//
 
 			MatrixSet& firstHit = matrices[LEFT][FIRST_HIT]; /// convenient access
 			MatrixSet& current = matrices[LEFT][CURRENT];
@@ -717,9 +739,31 @@ int main(int argc, char *argv[])
 		if (chunkedRenderPass_r.isFinished())
 		{
 			matrices[RIGHT][FIRST_HIT] = matrices[RIGHT][CURRENT]; // first hit map was rendered with last "current" matrices
+			
 			matrices[RIGHT][CURRENT].model = model; // overwrite with current  matrices
 			matrices[RIGHT][CURRENT].view = s_view_r;
 			matrices[RIGHT][CURRENT].perspective = s_perspective_r; 
+
+			//++++++++++++++ DEBUG +++++++++++//
+			if (ovr.m_pHMD)
+			{
+				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
+				float predictSecondsAhead = chunkedRenderPass.getLastTotalRenderTime();
+
+				ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
+					vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
+					predictSecondsAhead,
+					predictedDevicePose,
+					vr::k_unMaxTrackedDeviceCount
+					);
+				
+				if ( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid )
+				{
+					glm::mat4 predictedHMDPose = glm::inverse( ovr.ConvertSteamVRMatrixToGLMMat4( predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking ) );
+					matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosRight * predictedHMDPose;
+				}
+			}
+			//++++++++++++++++++++++++++++++++//
 
 			MatrixSet& firstHit = matrices[RIGHT][FIRST_HIT]; /// convenient access
 			MatrixSet& current = matrices[RIGHT][CURRENT];
@@ -795,13 +839,11 @@ int main(int argc, char *argv[])
 		
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
-			//if (chunkedRenderPass.isFinished())
 			{
 				showTexShader.update("tex", leftDebugView);
 				showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
 				showTex.render();
 			}
-			//if (chunkedRenderPass_r.isFinished())
 			{
 				showTexShader.update("tex", rightDebugView);
 				showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);

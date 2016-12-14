@@ -88,6 +88,7 @@ public:
 	inline float& getTargetRenderTime() {return m_targetRenderTime;}
 	inline void setAutoAdjustRenderTime(bool enabled) {m_autoAdjustRenderTime = enabled;}
 	inline bool& getAutoAdjustRenderTime() {return m_autoAdjustRenderTime;}
+	inline float& getLastTotalRenderTime() {return m_lastTotalRenderTime;}
 
 	//++ ImGui++//
 	void imguiInterface(bool* open = NULL);
