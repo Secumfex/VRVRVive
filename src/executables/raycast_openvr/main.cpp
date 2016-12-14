@@ -530,8 +530,8 @@ int main(int argc, char *argv[])
 		return true;
 	};
 
-	static int  leftDebugView = 10;
-	static int rightDebugView = 11;
+	static int  leftDebugView = 20;
+	static int rightDebugView = 21;
 	static bool predictPose = false;
 	
 	
@@ -792,7 +792,9 @@ int main(int argc, char *argv[])
 			{
 				FBO_scene_depth.bind();
 				glClear(GL_DEPTH_BUFFER_BIT);
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 				ovr.renderModels(vr::Eye_Left);
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 			}
 			//++++++++++++++++++++++++++++++++//
 
@@ -879,7 +881,9 @@ int main(int argc, char *argv[])
 			{
 				FBO_scene_depth_r.bind();
 				glClear(GL_DEPTH_BUFFER_BIT);
-				ovr.renderModels(vr::Eye_Left);
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+				ovr.renderModels(vr::Eye_Right);
+				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 			}
 
 			//++++++++++++++++++++++++++++++++//
@@ -941,14 +945,14 @@ int main(int argc, char *argv[])
 		{
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 
-			copyFBOContent(&FBO_front, &FBO_warp, GL_DEPTH_BUFFER_BIT);
-			copyFBOContent(&FBO_front_r, &FBO_warp_r, GL_DEPTH_BUFFER_BIT);
+			//copyFBOContent(&FBO_front, &FBO_warp, GL_DEPTH_BUFFER_BIT);
+			//copyFBOContent(&FBO_front_r, &FBO_warp_r, GL_DEPTH_BUFFER_BIT);
 
 			FBO_warp.bind();
-			ovr.renderModels(vr::Eye_Left);
+			//ovr.renderModels(vr::Eye_Left);
 
 			FBO_warp_r.bind();
-			ovr.renderModels(vr::Eye_Right);
+			//ovr.renderModels(vr::Eye_Right);
 
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 

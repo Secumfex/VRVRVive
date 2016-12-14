@@ -207,7 +207,6 @@ void main()
 
 	// final color
 	fragColor = raycastResult.color;
-	//fragColor = vec4(startDistance); //debug
 
 	if (raycastResult.firstHit.a > 0.0)
 	{
