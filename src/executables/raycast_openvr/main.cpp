@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 
 	auto m_pWarpingThread = new RenderPass(m_pWarpingShader, &FBO_warp);
 	m_pWarpingThread->addRenderable(&quad);
-	m_pWarpingThread->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//m_pWarpingThread->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	DEBUGLOG->outdent();
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO_warp.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
@@ -913,6 +913,20 @@ int main(int argc, char *argv[])
 		chunkedRenderPass_r.render();
 
 		//%%%%%%%%%%%% Image Warping
+		if (ovr.m_pHMD) // submit images only when finished
+		{
+			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+			FBO_warp.bind();
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			ovr.renderModels(vr::Eye_Left);
+
+			FBO_warp_r.bind();
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			ovr.renderModels(vr::Eye_Right);
+			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+		}
+
+		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
 		// warp left
 		m_pWarpingThread->setFrameBufferObject( &FBO_warp );
 		m_pWarpingShader->update( "tex", 12 ); // last result left
@@ -928,30 +942,30 @@ int main(int argc, char *argv[])
 		m_pWarpingShader->update( "newView", s_view_r); // most current view
 		m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
 		m_pWarpingThread->render();
-
+		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		//%%%%%%%%%%%% Submit/Display images
 		setDebugView(activeView);
 
 		if ( ovr.m_pHMD ) // submit images only when finished
 		{
-			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-			FBO_warp.bind();
-			ovr.renderModels(vr::Eye_Left);
+			//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+			//FBO_warp.bind();
+			//ovr.renderModels(vr::Eye_Left);
 
-			FBO_warp_r.bind();
-			ovr.renderModels(vr::Eye_Right);
-			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+			//FBO_warp_r.bind();
+			//ovr.renderModels(vr::Eye_Right);
+			//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 
-			OPENGLCONTEXT->setEnabled(GL_BLEND, true);
-			showTexShader.update("tex", 14);
-			showTex.setFrameBufferObject(&FBO_warp);
-			showTex.setViewport(0, 0, FBO_warp.getWidth(), FBO_warp.getHeight());
-			showTex.render();
+			//OPENGLCONTEXT->setEnabled(GL_BLEND, true);
+			//showTexShader.update("tex", 14);
+			//showTex.setFrameBufferObject(&FBO_warp);
+			//showTex.setViewport(0, 0, FBO_warp.getWidth(), FBO_warp.getHeight());
+			//showTex.render();
 
-			showTexShader.update("tex", 15);
-			showTex.setFrameBufferObject(&FBO_warp_r);
-			showTex.setViewport(0, 0, FBO_warp_r.getWidth(), FBO_warp_r.getHeight());
-			showTex.render();
+			//showTexShader.update("tex", 15);
+			//showTex.setFrameBufferObject(&FBO_warp_r);
+			//showTex.setViewport(0, 0, FBO_warp_r.getWidth(), FBO_warp_r.getHeight());
+			//showTex.render();
 			OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 
 			showTex.setFrameBufferObject(0);
