@@ -16,6 +16,15 @@ static const int TEXTURE_SIZE = 512;
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
 
+const std::string QUERY_SUFFIX[2] = {".", ","};
+int FRONT = 1;
+int BACK = 0;
+void swapQueryBuffers()
+{
+	int tmp = BACK;
+	BACK = FRONT;
+	FRONT = tmp;
+}
 
 
 class CMainApplication
@@ -59,7 +68,8 @@ public:
 		//m_profiler.addColumn(0.25f);
 		//m_profiler.addColumn(0.45f);
 		//++++++ DEBUG ++++
-
+		float lastFrameBegin = 0.0f;
+		float lastFrameEnd = 17.0f;
 		while ( !shouldClose(m_pWindow) )
 		{
 			//++++++ DEBUG ++++
@@ -68,22 +78,25 @@ public:
 			m_timings.updateReadyTimings();
 			m_profiler.clear();
 
-			if (m_timings.m_timers.find("Frame") != m_timings.m_timers.end())
+			if (m_timings.m_timers.find("Frame" + QUERY_SUFFIX[FRONT] ) != m_timings.m_timers.end())
 			{
-				auto f = m_timings.m_timers.at("Frame");
-				m_profiler.addMarkerTime(f.startTime / 1000000.0, "Frame Start");
-				m_profiler.addMarkerTime(f.stopTime / 1000000.0, "Frame End");
+				auto f = m_timings.m_timers.at("Frame" + QUERY_SUFFIX[FRONT] );
+				lastFrameBegin = f.startTime / 1000000.0;
+				lastFrameEnd = f.stopTime / 1000000.0;
+				m_profiler.addMarkerTime(lastFrameBegin, "Frame Start" + QUERY_SUFFIX[FRONT] );
+				m_profiler.addMarkerTime(lastFrameEnd,   "Frame End"   + QUERY_SUFFIX[FRONT] );
 			}
 
-			if (m_timings.m_timers.find("ImGui") != m_timings.m_timers.end())
+			if (m_timings.m_timersElapsed.find("ImGui" + QUERY_SUFFIX[FRONT] ) != m_timings.m_timersElapsed.end())
 			{
-				auto i = m_timings.m_timers.at("ImGui");
-				m_profiler.addMarkerTime(i.startTime / 1000000.0, "ImGui Start");
-				m_profiler.addMarkerTime(i.stopTime / 1000000.0, "ImGui End");
-				m_profiler.addRangeTime(i.startTime / 1000000.0, i.stopTime / 1000000.0, "ImGui");
+				auto i = m_timings.m_timersElapsed.at("ImGui" + QUERY_SUFFIX[FRONT] );
+				m_profiler.addMarkerTime(i.lastTime, "ImGui Start" + QUERY_SUFFIX[FRONT]);
+				m_profiler.addMarkerTime(i.lastTime + i.lastTiming, "ImGui End" + QUERY_SUFFIX[FRONT]);
+				m_profiler.addRangeTime(i.lastTime, i.lastTime + i.lastTiming, "ImGui" + QUERY_SUFFIX[FRONT] );
 			}
+
 			//++++++ DEBUG ++++
-			m_timings.beginTimer("Frame");
+			m_timings.beginTimer("Frame" + QUERY_SUFFIX[BACK] );
 
 			glClear(GL_COLOR_BUFFER_BIT);
 			ImGui_ImplSdlGL3_NewFrame(m_pWindow);
@@ -136,19 +149,19 @@ public:
 			static bool profiler_visible = false;
 			ImGui::Checkbox("Profiler", &profiler_visible);
 
-			if (profiler_visible && m_timings.m_timers.find("Frame") != m_timings.m_timers.end()) 
+			if (profiler_visible) 
 			{ 
-				auto f = m_timings.m_timers.at("Frame");
-				m_profiler.imguiInterface(f.startTime / 1000000.0f, f.stopTime / 1000000.0f, &profiler_visible); 
+				m_profiler.imguiInterface(lastFrameBegin, lastFrameEnd, &profiler_visible); 
 			}
 		
-			m_timings.beginTimer("ImGui");
+			m_timings.beginTimerElapsed("ImGui" + QUERY_SUFFIX[BACK] );
 			ImGui::Render();
-			m_timings.stopTimer("ImGui");
+			m_timings.stopTimerElapsed();
 
+			m_timings.stopTimer("Frame" + QUERY_SUFFIX[BACK] );
 			
-			m_timings.stopTimer("Frame");
 			SDL_GL_SwapWindow( m_pWindow );
+			swapQueryBuffers();
 		}
 
 		ImGui_ImplSdlGL3_Shutdown();

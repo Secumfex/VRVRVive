@@ -79,14 +79,33 @@ class OpenGLTimings
 		unsigned long long stopTime;
 		double lastTiming;
 	};
+	
+	struct Timestamp {
+		unsigned int queryID;
+		unsigned long long timestamp;
+		double lastTime;
+	};
+
+	struct TimerElapsed {
+		unsigned int queryID[2];
+		unsigned long long startTime;
+		unsigned long long elapsedTime;
+		double lastTime; // start time
+		double lastTiming; // elapsed time
+	};
 
 	bool m_enabled;
 
 public:
 	OpenGLTimings() : m_enabled(true){}
+	std::unordered_map<std::string, Timestamp> m_timestamps;
 	std::unordered_map<std::string, Timer> m_timers;
+	std::unordered_map<std::string, TimerElapsed> m_timersElapsed;
+	void timestamp(const std::string& timestamp);
 	void beginTimer(const std::string& timer);
 	void stopTimer(const std::string& timer);
+	void beginTimerElapsed(const std::string& timer); //!< caution: Do not use if other TIME_ELAPSED queries are issued in between!!!
+	void stopTimerElapsed(); //!< caution: Do not use if other TIME_ELAPSED queries are issued in between!!!
 	void resetTimer(const std::string& timer){}
 	void updateReadyTimings();
 	inline void setEnabled(bool enabled){m_enabled = enabled;};

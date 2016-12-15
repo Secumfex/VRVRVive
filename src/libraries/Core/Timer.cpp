@@ -201,6 +201,32 @@ double OpenGLTimer::getTime()
 }
 
 #include <Core/DebugLog.h>
+void OpenGLTimings::timestamp(const std::string& timestamp)
+{
+	if (!m_enabled) return;
+	if (!glIsQuery(m_timestamps[timestamp].queryID)) 
+	{
+		glGenQueries(1, &(m_timestamps[timestamp].queryID) );
+	}
+	glQueryCounter(m_timestamps[timestamp].queryID, GL_TIMESTAMP);
+}
+
+void OpenGLTimings::beginTimerElapsed(const std::string& timer)
+{
+	if (!m_enabled) return;
+	if (!glIsQuery(m_timersElapsed[timer].queryID[0]) || !glIsQuery(m_timersElapsed[timer].queryID[1])) 
+	{
+		glGenQueries(2, &(m_timersElapsed[timer].queryID[0]) );
+	}
+	glQueryCounter(m_timersElapsed[timer].queryID[0], GL_TIMESTAMP);
+	glBeginQuery(GL_TIME_ELAPSED, m_timersElapsed[timer].queryID[1]);
+}
+void OpenGLTimings::stopTimerElapsed()
+{
+	if (!m_enabled) return;
+	glEndQuery(GL_TIME_ELAPSED);
+}
+
 void OpenGLTimings::beginTimer(const std::string& timer)
 {
 	if (!m_enabled) return;
@@ -218,20 +244,29 @@ void OpenGLTimings::stopTimer(const std::string& timer)
 void OpenGLTimings::updateReadyTimings()
 {
 	if (!m_enabled) return;
+	
+	// timestamps
+	for ( auto kv = m_timestamps.begin(); kv != m_timestamps.end(); ++kv)
+	{
+		glGetQueryObjectui64v((*kv).second.queryID, GL_QUERY_RESULT_NO_WAIT, &(*kv).second.timestamp);
+		(*kv).second.lastTime = (*kv).second.timestamp / 1000000.0;
+	}
+
+	// timestamps + time elapsed
+	for ( auto kv = m_timersElapsed.begin(); kv != m_timersElapsed.end(); ++kv)
+	{
+		glGetQueryObjectui64v((*kv).second.queryID[0], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.startTime);
+		glGetQueryObjectui64v((*kv).second.queryID[1], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.elapsedTime);
+		(*kv).second.lastTime = (*kv).second.startTime / 1000000.0;
+		(*kv).second.lastTiming = (*kv).second.elapsedTime/ 1000000.0;
+	}
+
+	// time elapsed (using timestamps)
 	for ( auto kv = m_timers.begin(); kv != m_timers.end(); ++kv)
 	{
 		glGetQueryObjectui64v((*kv).second.queryID[0], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.startTime);
 		glGetQueryObjectui64v((*kv).second.queryID[1], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.stopTime);
 		(*kv).second.lastTiming = ((*kv).second.stopTime - (*kv).second.startTime) / 1000000.0;
-		//if (abs((*kv).second.lastTiming) > 100.0)
-		//{
-		//	DEBUGLOG->log("timing: " + (*kv).first);
-		//	DEBUGLOG->indent();
-		//	DEBUGLOG->log("start: ", (double)(*kv).second.startTime);
-		//	DEBUGLOG->log("stop: ", (double)(*kv).second.stopTime);
-		//	DEBUGLOG->outdent();
-		//}
-
 	}
 }
 
