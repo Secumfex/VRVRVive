@@ -38,6 +38,8 @@ public:
 	inline const std::vector<std::string>& getRangeTags(){ return m_rangeTags; }
 	inline const std::vector<float>& getColumns(){ return m_columns; }
 
+	void clear();
+
 	void imguiInterface(float startTime, float endTime, bool* open = NULL);
 };
 

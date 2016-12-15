@@ -204,7 +204,10 @@ double OpenGLTimer::getTime()
 void OpenGLTimings::beginTimer(const std::string& timer)
 {
 	if (!m_enabled) return;
-	glGenQueries(2, &(m_timers[timer].queryID[0]) );
+	if (!glIsQuery(m_timers[timer].queryID[0]) || !glIsQuery(m_timers[timer].queryID[1])) 
+	{
+		glGenQueries(2, &(m_timers[timer].queryID[0]) );
+	}
 	glQueryCounter(m_timers[timer].queryID[0], GL_TIMESTAMP);
 }
 void OpenGLTimings::stopTimer(const std::string& timer)
@@ -219,7 +222,7 @@ void OpenGLTimings::updateReadyTimings()
 	{
 		glGetQueryObjectui64v((*kv).second.queryID[0], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.startTime);
 		glGetQueryObjectui64v((*kv).second.queryID[1], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.stopTime);
-		(*kv).second.lastTiming = ((*kv).second.stopTime - (*kv).second.startTime)/ 1000000.0;
+		(*kv).second.lastTiming = ((*kv).second.stopTime - (*kv).second.startTime) / 1000000.0;
 		//if (abs((*kv).second.lastTiming) > 100.0)
 		//{
 		//	DEBUGLOG->log("timing: " + (*kv).first);

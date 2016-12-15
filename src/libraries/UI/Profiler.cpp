@@ -24,7 +24,8 @@ ImVec4 Profiler::randColor()
 
 Profiler::Profiler()
 	: m_columns(1),
-	m_columnColors(1, ImVec4(0.0f,0.0f,0.0f,0.0f))
+	m_columnColors(1, ImVec4(0.0f,0.0f,0.0f,0.0f)),
+	m_columnDescs(1, "")
 {
 
 }
@@ -45,21 +46,23 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	};
 
 	//COLUMNS
-	m_columns[0] = startTime; //overwrite start value
-	ImGui::Columns(m_columns.size());
-	ImGui::Separator();
-	for (int i = 0; i < m_columns.size();i++)
-	{
-		ImGui::SetColumnOffset(i, winX(m_columns[i]));
-	}
+	//m_columns[0] = startTime; //overwrite start value
+	//m_columns.back() = endTime; //overwrite end value
+	//ImGui::Columns(m_columns.size());
+	//ImGui::Separator();
+	//for (int i = 0; i < m_columns.size();i++)
+	//{
+	//	ImGui::SetColumnOffset(i, winX(m_columns[i]));
+	//}
 	
 	// TIME INFO
 	ImGui::Value("start", startTime);
-	while ( ImGui::GetColumnIndex() != ImGui::GetColumnsCount()-1)
-	{
-		ImGui::NextColumn(); //go to last column
-	}
-	ImGui::SameLine( ImGui::GetColumnWidth() - 70 );
+	//while ( ImGui::GetColumnIndex() != ImGui::GetColumnsCount()-1)
+	//{
+	//	ImGui::NextColumn(); //go to last column
+	//}
+	//ImGui::SameLine( ImGui::GetColumnWidth() - 70 );
+	ImGui::SameLine( ImGui::GetWindowContentRegionWidth() - 70 );
 	ImGui::Value("end", endTime);
 	ImGui::NextColumn(); //go to first column
 	ImGui::Separator();
@@ -68,11 +71,11 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	for (int i = 0; i < m_markerTimes.size(); i++)
 	{
 		int x = winX(m_markerTimes[i]); // where we want to place it
-		while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= x)
-		{
-			ImGui::NextColumn();
-		}
-		x -= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
+		//while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= x)
+		//{
+		//	ImGui::NextColumn();
+		//}
+		//x -= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
 
 		if ( x < 0 || x > wWidth ) { continue; }
 		ImGui::SameLine(x);
@@ -91,11 +94,11 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 			ImGui::EndTooltip();
 		}
 	}
-	while ( ImGui::GetColumnIndex() != ImGui::GetColumnsCount()-1)
-	{
-		ImGui::NextColumn(); //go to last column
-	}
-	ImGui::NextColumn(); //go to first column
+	//while ( ImGui::GetColumnIndex() != ImGui::GetColumnsCount()-1)
+	//{
+	//	ImGui::NextColumn(); //go to last column
+	//}
+	//ImGui::NextColumn(); //go to first column
 	ImGui::Separator();
 
 	// RANGES
@@ -117,12 +120,12 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 			xEnd = wWidth;
 		}
 
-		while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= xStart)
-		{
-			ImGui::NextColumn();
-		}
-		xStart -= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
-		xEnd-= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
+		//while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= xStart)
+		//{
+		//	ImGui::NextColumn();
+		//}
+		//xStart -= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
+		//xEnd-= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
 			
 		ImGui::SameLine(xStart);
 		ImGui::BeginGroup();
@@ -142,7 +145,7 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 		}
 	}
 	
-	ImGui::Columns(1);
+	//ImGui::Columns(1);
 	ImGui::Separator();
 
 	ImGui::End();
@@ -170,4 +173,20 @@ int Profiler::addColumn(float time, std::string desc) {
 	m_columnColors.push_back(randColor());
 	m_columnDescs.push_back(desc); 
 	return m_columns.size()-1; 
+}
+
+void Profiler::clear()
+{
+	m_columnColors.resize(1);
+	m_columnDescs.resize(1);
+	m_columns.resize(1);
+	m_startTimes.clear();
+	m_rangeTags.clear();
+	m_rangeDescs.clear();
+	m_endTimes.clear();
+	m_rangeColors.clear();
+	m_markerTimes.clear();
+	m_markerTags.clear();
+	m_markerColors.clear();
+	m_markerDescs.clear();
 }

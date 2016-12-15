@@ -10,6 +10,7 @@
 #include <UI/imgui_impl_glfw_gl3.h>
 #include <UI/imgui_impl_sdl_gl3.h>
 #include <UI/Profiler.h>
+#include <Core/Timer.h>
 
 static const int TEXTURE_SIZE = 512;
 const int SCREEN_WIDTH = 800;
@@ -25,6 +26,7 @@ private: // SDL bookkeeping
 	GLFWwindow *m_pGLFWwindow;
 
 	Profiler m_profiler;
+	OpenGLTimings m_timings;
 public:
 	CMainApplication( int argc, char *argv[] ){
 		DEBUGLOG->setAutoPrint(true);
@@ -46,24 +48,46 @@ public:
 
 		//++++++ DEBUG ++++
 		// add some dummy data
-		m_profiler.addMarkerTime(0.1f, "one", "Something happened!");
-		m_profiler.addMarkerTime(0.4f, "two");
-		m_profiler.addMarkerTime(0.6f, "three");
-		
-		m_profiler.addRangeTime(0.1f, 0.2f, "one");
-		m_profiler.addRangeTime(0.55f, 0.8f, "two");
-		m_profiler.addRangeTime(0.75f, 0.9f, "three", "Something time");
-		
-		m_profiler.addColumn(0.25f);
-		m_profiler.addColumn(0.45f);
+		//m_profiler.addMarkerTime(0.1f, "one", "Something happened!");
+		//m_profiler.addMarkerTime(0.4f, "two");
+		//m_profiler.addMarkerTime(0.6f, "three");
+		//
+		//m_profiler.addRangeTime(0.1f, 0.2f, "one");
+		//m_profiler.addRangeTime(0.55f, 0.8f, "two");
+		//m_profiler.addRangeTime(0.75f, 0.9f, "three", "Something time");
+		//
+		//m_profiler.addColumn(0.25f);
+		//m_profiler.addColumn(0.45f);
 		//++++++ DEBUG ++++
 
 		while ( !shouldClose(m_pWindow) )
 		{
+			//++++++ DEBUG ++++
+			// retrieve timings from last frame
+
+			m_timings.updateReadyTimings();
+			m_profiler.clear();
+
+			if (m_timings.m_timers.find("Frame") != m_timings.m_timers.end())
+			{
+				auto f = m_timings.m_timers.at("Frame");
+				m_profiler.addMarkerTime(f.startTime / 1000000.0, "Frame Start");
+				m_profiler.addMarkerTime(f.stopTime / 1000000.0, "Frame End");
+			}
+
+			if (m_timings.m_timers.find("ImGui") != m_timings.m_timers.end())
+			{
+				auto i = m_timings.m_timers.at("ImGui");
+				m_profiler.addMarkerTime(i.startTime / 1000000.0, "ImGui Start");
+				m_profiler.addMarkerTime(i.stopTime / 1000000.0, "ImGui End");
+				m_profiler.addRangeTime(i.startTime / 1000000.0, i.stopTime / 1000000.0, "ImGui");
+			}
+			//++++++ DEBUG ++++
+			m_timings.beginTimer("Frame");
+
 			glClear(GL_COLOR_BUFFER_BIT);
 			ImGui_ImplSdlGL3_NewFrame(m_pWindow);
 			pollSDLEvents(m_pWindow, ImGui_ImplSdlGL3_ProcessEvent);
-
 			{
 				static float f = 30.0f;
 				static float pos_x = 30.0f;
@@ -112,9 +136,18 @@ public:
 			static bool profiler_visible = false;
 			ImGui::Checkbox("Profiler", &profiler_visible);
 
-			if (profiler_visible) { m_profiler.imguiInterface(0.0f, 1.0f, &profiler_visible); };
-
+			if (profiler_visible && m_timings.m_timers.find("Frame") != m_timings.m_timers.end()) 
+			{ 
+				auto f = m_timings.m_timers.at("Frame");
+				m_profiler.imguiInterface(f.startTime / 1000000.0f, f.stopTime / 1000000.0f, &profiler_visible); 
+			}
+		
+			m_timings.beginTimer("ImGui");
 			ImGui::Render();
+			m_timings.stopTimer("ImGui");
+
+			
+			m_timings.stopTimer("Frame");
 			SDL_GL_SwapWindow( m_pWindow );
 		}
 
