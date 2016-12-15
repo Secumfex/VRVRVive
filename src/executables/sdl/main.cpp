@@ -70,33 +70,35 @@ public:
 		//++++++ DEBUG ++++
 		float lastFrameBegin = 0.0f;
 		float lastFrameEnd = 17.0f;
+		float lastFrameDuration = 17.0f;
 		while ( !shouldClose(m_pWindow) )
 		{
 			//++++++ DEBUG ++++
 			// retrieve timings from last frame
 
 			m_timings.updateReadyTimings();
-			m_profiler.clear();
+			//m_profiler.clear();
 
 			if (m_timings.m_timers.find("Frame" + QUERY_SUFFIX[FRONT] ) != m_timings.m_timers.end())
 			{
 				auto f = m_timings.m_timers.at("Frame" + QUERY_SUFFIX[FRONT] );
-				lastFrameBegin = f.startTime / 1000000.0;
-				lastFrameEnd = f.stopTime / 1000000.0;
-				m_profiler.addMarkerTime(lastFrameBegin, "Frame Start" + QUERY_SUFFIX[FRONT] );
-				m_profiler.addMarkerTime(lastFrameEnd,   "Frame End"   + QUERY_SUFFIX[FRONT] );
+				lastFrameDuration = (f.startTime/1000000.0f) - lastFrameBegin;
+				lastFrameBegin = f.lastTime;
+				lastFrameEnd = f.lastTime + f.lastTiming;
+				m_profiler.setMarkerByTag("Frame Start",0.0 );
+				m_profiler.setMarkerByTag("Frame End", lastFrameEnd - lastFrameBegin);
 			}
 
 			if (m_timings.m_timersElapsed.find("ImGui" + QUERY_SUFFIX[FRONT] ) != m_timings.m_timersElapsed.end())
 			{
 				auto i = m_timings.m_timersElapsed.at("ImGui" + QUERY_SUFFIX[FRONT] );
-				m_profiler.addMarkerTime(i.lastTime, "ImGui Start" + QUERY_SUFFIX[FRONT]);
-				m_profiler.addMarkerTime(i.lastTime + i.lastTiming, "ImGui End" + QUERY_SUFFIX[FRONT]);
-				m_profiler.addRangeTime(i.lastTime, i.lastTime + i.lastTiming, "ImGui" + QUERY_SUFFIX[FRONT] );
+				//m_profiler.setMarkerByTag("ImGui Start", i.lastTime - lastFrameBegin);
+				m_profiler.setMarkerByTag("ImGui End", i.lastTime + i.lastTiming - lastFrameBegin);
+				m_profiler.setRangeByTag("ImGui", i.lastTime- lastFrameBegin, i.lastTime + i.lastTiming- lastFrameBegin);
 			}
 
 			//++++++ DEBUG ++++
-			m_timings.beginTimer("Frame" + QUERY_SUFFIX[BACK] );
+			m_timings.beginTimer("Frame" + QUERY_SUFFIX[FRONT] );
 
 			glClear(GL_COLOR_BUFFER_BIT);
 			ImGui_ImplSdlGL3_NewFrame(m_pWindow);
@@ -151,15 +153,14 @@ public:
 
 			if (profiler_visible) 
 			{ 
-				m_profiler.imguiInterface(lastFrameBegin, lastFrameEnd, &profiler_visible); 
+				m_profiler.imguiInterface(0.0, 1.0f, &profiler_visible); 
 			}
-		
-			m_timings.beginTimerElapsed("ImGui" + QUERY_SUFFIX[BACK] );
+
+			m_timings.beginTimerElapsed("ImGui" + QUERY_SUFFIX[FRONT] );
 			ImGui::Render();
 			m_timings.stopTimerElapsed();
 
-			m_timings.stopTimer("Frame" + QUERY_SUFFIX[BACK] );
-			
+			m_timings.stopTimer("Frame" + QUERY_SUFFIX[FRONT] );
 			SDL_GL_SwapWindow( m_pWindow );
 			swapQueryBuffers();
 		}

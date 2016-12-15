@@ -77,13 +77,16 @@ class OpenGLTimings
 		unsigned int queryID[2];
 		unsigned long long startTime;
 		unsigned long long stopTime;
+		double lastTime; // start time
 		double lastTiming;
+		Timer(){queryID[0] = -1;queryID[1] = -1;}
 	};
 	
 	struct Timestamp {
 		unsigned int queryID;
 		unsigned long long timestamp;
 		double lastTime;
+		Timestamp(){queryID = -1;}
 	};
 
 	struct TimerElapsed {
@@ -92,6 +95,7 @@ class OpenGLTimings
 		unsigned long long elapsedTime;
 		double lastTime; // start time
 		double lastTiming; // elapsed time
+		TimerElapsed(){queryID[0] = -1;queryID[1] = -1;}
 	};
 
 	bool m_enabled;

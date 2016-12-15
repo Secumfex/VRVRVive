@@ -1,6 +1,5 @@
 #include "Profiler.h"
 
-#include <UI/imgui/imgui.h>
 #include <time.h>
 
 static bool g_initRand = false;
@@ -23,9 +22,6 @@ ImVec4 Profiler::randColor()
 
 
 Profiler::Profiler()
-	: m_columns(1),
-	m_columnColors(1, ImVec4(0.0f,0.0f,0.0f,0.0f)),
-	m_columnDescs(1, "")
 {
 
 }
@@ -68,9 +64,9 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::Separator();
 
 	// MARKERS
-	for (int i = 0; i < m_markerTimes.size(); i++)
+	for (auto m : m_markers)
 	{
-		int x = winX(m_markerTimes[i]); // where we want to place it
+		float x = winX(m.times[0]); // where we want to place it
 		//while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= x)
 		//{
 		//	ImGui::NextColumn();
@@ -78,19 +74,21 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 		//x -= ImGui::GetColumnOffset(ImGui::GetColumnIndex()); // place relative to current column
 
 		if ( x < 0 || x > wWidth ) { continue; }
+		x = std::max(4.0f, x);
 		ImGui::SameLine(x);
 		ImGui::BeginGroup();
-			ImGui::PushStyleColor(ImGuiCol_Button, m_markerColors[ i ]);
-			ImGui::PushStyleColor(ImGuiCol_Text, m_markerColors[ i ]);
+			ImGui::PushStyleColor(ImGuiCol_Button, m.color);
+			ImGui::PushStyleColor(ImGuiCol_Text, m.color);
 			ImGui::Button("", ImVec2(4,0));
-			ImGui::Text(m_markerTags[i].c_str());
+			ImGui::Text(m.tag.c_str());
 			ImGui::PopStyleColor(2);
 		ImGui::EndGroup();
 		if ( ImGui::IsItemHovered() )
 		{
 			ImGui::BeginTooltip();
-			ImGui::Value("t", m_markerTimes[i]);
-			if (m_markerDescs[i].compare("") != 0) ImGui::Text(m_markerDescs[i].c_str());
+			ImGui::Text(m.tag.c_str());
+			ImGui::Value("t", m.times[0]);
+			if (m.desc.compare("") != 0) ImGui::Text(m.desc.c_str());
 			ImGui::EndTooltip();
 		}
 	}
@@ -102,10 +100,10 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::Separator();
 
 	// RANGES
-	for (int i = 0; i < m_startTimes.size(); i++)
+	for (auto r : m_ranges)
 	{
-		int xStart = winX(m_startTimes[i]);
-		int xEnd =   winX(m_endTimes[i]);
+		float xStart = winX(r.times[0]);
+		float xEnd =   winX(r.times[1]);
 
 		if ( xEnd < 0 || xStart > wWidth )
 		{
@@ -119,6 +117,8 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 		{
 			xEnd = wWidth;
 		}
+		xStart = std::max(4.0f, xStart);
+		xEnd = std::max(xStart+4.0f, xEnd);
 
 		//while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= xStart)
 		//{
@@ -129,18 +129,19 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 			
 		ImGui::SameLine(xStart);
 		ImGui::BeginGroup();
-			ImGui::PushStyleColor(ImGuiCol_Button, m_rangeColors[ i ]);
-			ImGui::Button(m_rangeTags[i].c_str(), ImVec2(xEnd-xStart,0));
+			ImGui::PushStyleColor(ImGuiCol_Button, r.color);
+			ImGui::Button(r.tag.c_str(), ImVec2(xEnd-xStart,0));
 			ImGui::PopStyleColor(1);
 		ImGui::EndGroup();
 
 		if ( ImGui::IsItemHovered() )
 		{
 			ImGui::BeginTooltip();
-			ImGui::Value("tStart", m_startTimes[i]);
-			ImGui::Value("tEnd  ", m_endTimes[i]);
-			ImGui::Value("t     ", m_endTimes[i] - m_startTimes[i]);
-			if (m_rangeDescs[i].compare("") != 0) ImGui::Text(m_rangeDescs[i].c_str());
+			ImGui::Text(r.tag.c_str());
+			ImGui::Value("tStart", r.times[0]);
+			ImGui::Value("tEnd  ", r.times[1]);
+			ImGui::Value("t     ", r.times[1] - r.times[0]);
+			if (r.desc.compare("") != 0) ImGui::Text(r.desc.c_str());
 			ImGui::EndTooltip();
 		}
 	}
@@ -151,42 +152,77 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::End();
 }
 
-int Profiler::addMarkerTime(float time, std::string tag, std::string desc) { 
-	m_markerTimes.push_back(time);  
-	m_markerTags.push_back(tag); 
-	m_markerColors.push_back(randColor()); 
-	m_markerDescs.push_back(desc); 
-	return m_markerTimes.size()-1;	
+std::set<Profiler::Entry>::iterator Profiler::addMarkerTime(float time, std::string tag, std::string desc) { 
+	Profiler::Entry e;
+	e.color=randColor();
+	e.tag = tag;
+	e.desc = desc;
+	e.times[0] = time;
+
+	return m_markers.insert(e).first;
 }
 	
-int Profiler::addRangeTime(float start, float end, std::string tag, std::string desc) { 
-	m_startTimes.push_back(start);  
-	m_rangeTags.push_back(tag);   
-	m_rangeDescs.push_back(desc);  
-	m_endTimes.push_back(end);
-	m_rangeColors.push_back(randColor()); 
-	return m_endTimes.size()-1; 
+std::set<Profiler::Entry>::iterator Profiler::addRangeTime(float start, float end, std::string tag, std::string desc) { 
+	Profiler::Entry e;
+	e.color=randColor();
+	e.tag = tag;
+	e.desc = desc;
+	e.times[0] = start;	
+	e.times[1] = end;	
+
+	return 	m_ranges.insert(e).first; 
 }
 
-int Profiler::addColumn(float time, std::string desc) { 
-	m_columns.push_back(time); 
-	m_columnColors.push_back(randColor());
-	m_columnDescs.push_back(desc); 
-	return m_columns.size()-1; 
+std::set<Profiler::Entry>::iterator Profiler::addColumn(float time, std::string desc) { 
+	Profiler::Entry e;
+	e.color=randColor();
+	e.tag = "";
+	e.desc = desc;
+	e.times[0] = time;
+
+	return 	m_columns.insert(e).first; 
 }
 
 void Profiler::clear()
 {
-	m_columnColors.resize(1);
-	m_columnDescs.resize(1);
-	m_columns.resize(1);
-	m_startTimes.clear();
-	m_rangeTags.clear();
-	m_rangeDescs.clear();
-	m_endTimes.clear();
-	m_rangeColors.clear();
-	m_markerTimes.clear();
-	m_markerTags.clear();
-	m_markerColors.clear();
-	m_markerDescs.clear();
+	m_columns.clear();
+	m_ranges.clear();
+	m_markers.clear();
+}
+
+std::set<Profiler::Entry>::iterator Profiler::setRangeByTag(std::string tag, float start, float end, std::string desc)
+{
+	for (auto e = m_ranges.begin(); e != m_ranges.end(); ++e)
+	{
+		if ((*e).tag.compare(tag) == 0)
+		{
+			auto b = (*e);
+			b.times[0] = start;
+			b.times[1] = end;
+			b.desc = desc;
+
+			m_ranges.erase(e); // remove old entry
+			return m_ranges.insert(b).first; 
+		}
+	}
+
+	return addRangeTime(start, end, tag, desc);
+}
+
+std::set<Profiler::Entry>::iterator Profiler::setMarkerByTag(std::string tag, float time, std::string desc)
+{
+	for (auto e = m_markers.begin(); e != m_markers.end(); ++e)
+	{
+		if ((*e).tag.compare(tag) == 0)
+		{
+			auto b = (*e);
+			b.times[0] = time;
+			b.desc = desc;
+
+			m_markers.erase(e); // remove old entry
+			return m_markers.insert(b).first; 
+		}
+	}
+
+	return addMarkerTime(time, tag, desc);
 }

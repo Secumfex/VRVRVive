@@ -266,6 +266,7 @@ void OpenGLTimings::updateReadyTimings()
 	{
 		glGetQueryObjectui64v((*kv).second.queryID[0], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.startTime);
 		glGetQueryObjectui64v((*kv).second.queryID[1], GL_QUERY_RESULT_NO_WAIT, &(*kv).second.stopTime);
+		(*kv).second.lastTime = (*kv).second.startTime / 1000000.0;
 		(*kv).second.lastTiming = ((*kv).second.stopTime - (*kv).second.startTime) / 1000000.0;
 	}
 }
