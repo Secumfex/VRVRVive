@@ -3,6 +3,8 @@
  ****************************************/
 #include <iostream>
 
+#include <Core/Timer.h>
+
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
 #include <Rendering/RenderPass.h>
@@ -11,6 +13,7 @@
 #include <UI/imgui/imgui.h>
 #include <UI/imgui_impl_sdl_gl3.h>
 #include <UI/Turntable.h>
+#include <UI/Profiler.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -51,6 +54,14 @@ static TransferFunction s_transferFunction;
 
 static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
+
+namespace Frame{
+	static Profiler FrameProfiler;
+	static OpenGLTimings Timings[2];
+	int FRONT_FRAME_IDX = 0;
+	int BACK_FRAME_IDX= 0;
+	void SwapFrameIdx() { int tmp = FRONT_FRAME_IDX; FRONT_FRAME_IDX = BACK_FRAME_IDX;  BACK_FRAME_IDX = tmp; }
+}
 
 float s_near = 0.1f;
 float s_far = 30.0f;
@@ -596,7 +607,7 @@ int main(int argc, char *argv[])
         ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 		ImGui_ImplSdlGL3_NewFrame(window);
-	
+
 		ImGui::Value("FPS", io.Framerate);
 		mirrorScreenTimer += io.DeltaTime;
 		elapsedTime += io.DeltaTime;
@@ -665,8 +676,49 @@ int main(int argc, char *argv[])
 		//ImGui::Checkbox("Pause First Hit Updated", &pauseFirstHitUpdates);
 		ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
 		
+		static bool frame_profiler_visible = false;
+		static bool pause_frame_profiler = false;
+		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
+		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
+		Frame::Timings[Frame::FRONT_FRAME_IDX].setEnabled(!pause_frame_profiler);
+		Frame::Timings[Frame::BACK_FRAME_IDX].setEnabled(!pause_frame_profiler);
+		
 
-        //////////////////////////////////////////////////////////////////////////////
+		// update whatever is finished
+		Frame::Timings[Frame::FRONT_FRAME_IDX].updateReadyTimings();
+		Frame::Timings[Frame::BACK_FRAME_IDX].updateReadyTimings();
+
+		float frame_begin = 0.0;
+		float frame_end = 17.0;
+		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame Begin") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		{
+			frame_begin = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame Begin").lastTime;
+		}
+		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame End") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		{
+			frame_end = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame End").lastTime;
+		}
+
+		if (frame_profiler_visible) 
+		{ 
+			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timers)
+			{
+				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
+			}
+			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timersElapsed)
+			{
+				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
+			}
+			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps)
+			{
+				Frame::FrameProfiler.setMarkerByTag(e.first, e.second.lastTime);
+			}
+
+			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
+		}
+		Frame::SwapFrameIdx();
+		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
+		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		if (s_isRotating) // update s_view matrix
@@ -721,7 +773,7 @@ int main(int argc, char *argv[])
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// /////////////////////////////
-		glDisable(GL_BLEND);
+		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
 		// check for finished left/right images, copy to Front FBOs
@@ -780,11 +832,13 @@ int main(int argc, char *argv[])
 			// quickly do a depth pass of the models
 			if ( ovr.m_pHMD )
 			{
+				Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Depth Models");
 				FBO_scene_depth.bind();
 				glClear(GL_DEPTH_BUFFER_BIT);
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 				ovr.renderModels(vr::Eye_Left);
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+				Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 			}
 			//++++++++++++++++++++++++++++++++//
 
@@ -802,13 +856,15 @@ int main(int argc, char *argv[])
 			uvwShaderProgram.update("projection", current.perspective);
 			uvwRenderPass.render();
 
-			// occlusion maps 
+			// occlusion maps
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum");
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
 			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
 			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		}
 
 		// raycasting (chunked)
@@ -820,7 +876,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
 
+		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast");
 		chunkedRenderPass.render(); 
+		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast");
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -913,15 +971,17 @@ int main(int argc, char *argv[])
 		chunkedRenderPass_r.render();
 
 		//%%%%%%%%%%%% Image Warping
+		FBO_warp.bind();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		FBO_warp_r.bind();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		if (ovr.m_pHMD) // submit images only when finished
 		{
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 			FBO_warp.bind();
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			ovr.renderModels(vr::Eye_Left);
 
 			FBO_warp_r.bind();
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			ovr.renderModels(vr::Eye_Right);
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 		}
@@ -966,7 +1026,7 @@ int main(int argc, char *argv[])
 			//showTex.setFrameBufferObject(&FBO_warp_r);
 			//showTex.setViewport(0, 0, FBO_warp_r.getWidth(), FBO_warp_r.getHeight());
 			//showTex.render();
-			OPENGLCONTEXT->setEnabled(GL_BLEND, false);
+			//OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 
 			showTex.setFrameBufferObject(0);
 
@@ -988,12 +1048,14 @@ int main(int argc, char *argv[])
 			}
 			//////////////////////////////////////////////////////////////////////////////
 			ImGui::Render();
+			Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
 			SDL_GL_SwapWindow( window ); // swap buffers
 
 			mirrorScreenTimer = 0.0f;
 		}
 		else
 		{
+			Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
 			glFlush(); // just Flush
 		}
 	}
