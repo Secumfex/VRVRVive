@@ -1,7 +1,7 @@
 #version 430
 
 #ifdef RANDOM_OFFSET 
-float rand(vec2 co){
+float rand(vec2 co){ //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 #endif
