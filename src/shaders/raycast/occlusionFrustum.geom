@@ -30,10 +30,13 @@ uniform mat4 uFirstHitViewToTexture; // from old view to texture space
 #define DEPTH_SCALE 5.0 
 #endif
 #ifndef DEPTH_BIAS 
-#define DEPTH_BIAS 0.01 // something
+#define DEPTH_BIAS 0.00 // something
 #endif
 #ifndef DEPTH_BIAS_VIEW 
-#define DEPTH_BIAS_VIEW 0.1 // 10 cm
+#define DEPTH_BIAS_VIEW 0.03 // 3 cm
+#endif
+#ifndef NEAR_PLANE
+#define NEAR_PLANE 0.1 // 10 cm
 #endif
 #define MAX_DEPTH 1.0
 
@@ -62,10 +65,8 @@ vec4 getViewCoord( vec3 screenPos )
 VertexData getVertexData(vec3 screenPos)
 {
 	vec4 posView = getViewCoord(screenPos); // position in first hit view space
-	posView.xyz = posView.xyz - (DEPTH_BIAS_VIEW * 0.5 * normalize(posView.xyz));	// move towards Camera
 	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
-	posNewView.xyz = posNewView.xyz - (DEPTH_BIAS_VIEW * 0.5 * normalize(posNewView.xyz));	// move towards Camera
-	
+	posNewView.z = min( -NEAR_PLANE, posNewView.z + DEPTH_BIAS_VIEW);
 	vec4 posNewProj = uProjection * posNewView; // new view space position projected
 
 	posNewProj.z = max( min( posNewProj.z / posNewProj.w, 1.0), -1.0 ) * posNewProj.w; // clamp to near/far plane to force fragment generation
