@@ -41,7 +41,7 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
-static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.02f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
+static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
 static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
 
