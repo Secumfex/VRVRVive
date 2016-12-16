@@ -1,6 +1,7 @@
 #include "Profiler.h"
 
 #include <time.h>
+#include <algorithm>
 
 static bool g_initRand = false;
 float randFloat(float min, float max) //!< returns a random number between min and max

@@ -41,7 +41,7 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
-static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.1f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
+static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.02f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
 static const std::vector<std::string> s_shaderDefines;
 
@@ -703,18 +703,18 @@ int main(int argc, char *argv[])
 		{ 
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timers)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
+				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime - frame_begin, e.second.lastTime - frame_begin + e.second.lastTiming);
 			}
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timersElapsed)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
+				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime - frame_begin, e.second.lastTime - frame_begin + e.second.lastTiming);
 			}
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps)
 			{
-				Frame::FrameProfiler.setMarkerByTag(e.first, e.second.lastTime);
+				Frame::FrameProfiler.setMarkerByTag(e.first, e.second.lastTime - frame_begin);
 			}
 
-			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
+			Frame::FrameProfiler.imguiInterface(0.0f, frame_end-frame_begin, &frame_profiler_visible);
 		}
 		Frame::SwapFrameIdx();
 		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
@@ -876,9 +876,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast");
+		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast LEFT");
 		chunkedRenderPass.render(); 
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast");
+		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast LEFT");
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -968,7 +968,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update("occlusion_map", (useOcclusionMap) ? 9 : 5);
 
 		//renderPass_r.render();
+		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast RIGHT");
 		chunkedRenderPass_r.render();
+		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast RIGHT");
 
 		//%%%%%%%%%%%% Image Warping
 		FBO_warp.bind();
@@ -987,6 +989,7 @@ int main(int argc, char *argv[])
 		}
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
+		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Warping");
 		// warp left
 		m_pWarpingThread->setFrameBufferObject( &FBO_warp );
 		m_pWarpingShader->update( "tex", 12 ); // last result left
@@ -1003,6 +1006,8 @@ int main(int argc, char *argv[])
 		m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
 		m_pWarpingThread->render();
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
+		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+
 		//%%%%%%%%%%%% Submit/Display images
 		setDebugView(activeView);
 
@@ -1034,6 +1039,7 @@ int main(int argc, char *argv[])
 			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + rightDebugView], vr::Eye_Right);
 		}
 		
+		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
 			{
@@ -1048,15 +1054,13 @@ int main(int argc, char *argv[])
 			}
 			//////////////////////////////////////////////////////////////////////////////
 			ImGui::Render();
-			Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
 			SDL_GL_SwapWindow( window ); // swap buffers
 
 			mirrorScreenTimer = 0.0f;
 		}
 		else
 		{
-			Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
-			glFlush(); // just Flush
+			glFinish(); // just Flush
 		}
 	}
 	
