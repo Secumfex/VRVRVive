@@ -1087,10 +1087,10 @@ Grid::Grid(unsigned int fieldsX, unsigned  int fieldsY, float sizeX, float sizeY
     m_mode = GL_TRIANGLE_STRIP;
     
 
-    std::vector<float> positions( ((fieldsX+1) * (fieldsY+1))*3, 0.0f );
-    std::vector<float> normals( ((fieldsX+1) * (fieldsY+1))*3, 0.0f );
-    std::vector<float> tangents( ((fieldsX+1) * (fieldsY+1))*3, 0.0f );
-    std::vector<float> uv( ((fieldsX+1) * (fieldsY+1))*2, 0.0f );
+    std::vector<float> positions( ((fieldsX) * (fieldsY) )*3 * 6, 0.0f );
+    std::vector<float> normals( ((fieldsX) * (fieldsY))*3 * 6, 0.0f );
+    std::vector<float> tangents( ((fieldsX) * (fieldsY))*3 * 6, 0.0f );
+    std::vector<float> uv( ((fieldsX) * (fieldsY))*2 * 6, 0.0f );
 
     int posIdx = 0;
     int uvIdx = 0;
@@ -1114,29 +1114,81 @@ Grid::Grid(unsigned int fieldsX, unsigned  int fieldsY, float sizeX, float sizeY
         centerOffsetY = - ( (float) fieldsY / 2.0f) * dy;
     }
 
-    for (int iY = 0; iY <= fieldsY; iY++)
+    for (int iY = 0; iY < fieldsY; iY++)
     {
         x = 0.0f;
         u = 0.0f;
-        for (int iX = 0; iX <= fieldsX; iX++)
+        for (int iX = 0; iX < fieldsX; iX++)
         {
+			glm::vec2 v00(x + centerOffsetX,y + centerOffsetY);
+			glm::vec2 v10(x + dx + centerOffsetX,y + centerOffsetY);
+			glm::vec2 v11(x + dx + centerOffsetX,y + dy + centerOffsetY);
+			glm::vec2 v01(x + centerOffsetX,y + dy + centerOffsetY);
 
-            positions[posIdx + 0] = x + centerOffsetX;
-            positions[posIdx + 1] = y + centerOffsetY;
+			glm::vec2 u00(u,v);
+			glm::vec2 u10(u + du, v);
+			glm::vec2 u11(u + du, v + dv);
+			glm::vec2 u01(u, v + dv);
 
-            // DEBUGLOG->log("idx : ", posIdx);
+			// first
+			positions[posIdx + 0] = v00.x;
+            positions[posIdx + 1] = v00.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+ 			posIdx += 3;
+			uv[uvIdx + 0] = u00.x;
+            uv[uvIdx + 1] = u00.y;
+            uvIdx += 2;
+
+			positions[posIdx + 0] = v10.x;
+            positions[posIdx + 1] = v10.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+			posIdx += 3;
+			uv[uvIdx + 0] = u10.x;
+            uv[uvIdx + 1] = u10.y;
+            uvIdx += 2;
+
+			positions[posIdx + 0] = v11.x;
+            positions[posIdx + 1] = v11.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+			posIdx += 3;
+			uv[uvIdx + 0] = u11.x;
+            uv[uvIdx + 1] = u11.y;
+            uvIdx += 2;
+
+			// second
+            positions[posIdx + 0] = v11.x;
+            positions[posIdx + 1] = v11.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+			posIdx += 3;
+			uv[uvIdx + 0] = u11.x;
+            uv[uvIdx + 1] = u11.y;
+            uvIdx += 2;
+			
+			positions[posIdx + 0] = v01.x;
+            positions[posIdx + 1] = v01.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+			posIdx += 3;
+			uv[uvIdx + 0] = u01.x;
+            uv[uvIdx + 1] = u01.y;
+            uvIdx += 2;
+
+			positions[posIdx + 0] = v00.x;
+            positions[posIdx + 1] = v00.y;
+            normals[posIdx + 2] = 1.0f;
+			tangents[posIdx + 0] = -1.0f;
+			posIdx += 3;
+			uv[uvIdx + 0] = u00.x;
+            uv[uvIdx + 1] = u00.y;
+            uvIdx += 2;
+
+			// DEBUGLOG->log("idx : ", posIdx);
             // DEBUGLOG->log("posX: ", x);
             // DEBUGLOG->log("posY: ", y);
-
-            normals[posIdx + 2] = 1.0f;
-            tangents[posIdx + 0] = -1.0f;
-
-            posIdx += 3;
-
-
-            uv[uvIdx + 0] = u;
-            uv[uvIdx + 1] = v;
-            uvIdx += 2;
                         
             x += dx;
             u += du;
@@ -1172,10 +1224,10 @@ Grid::Grid(unsigned int fieldsX, unsigned  int fieldsY, float sizeX, float sizeY
     glEnableVertexAttribArray(3);
 
     // Index Buffer / Element Array Buffer
-    std::vector<unsigned int> indices(((fieldsX+1)*2)*(fieldsY),0);
+    //std::vector<unsigned int> indices(((fieldsX+1)*2)*(fieldsY),0);
 
-    int top = 0;
-    int bottom = fieldsX+1;
+    //int top = 0;
+    //int bottom = fieldsX+1;
 
 	//indices[1] = 0;
 	//indices[2] = fieldsY+1;
@@ -1191,23 +1243,22 @@ Grid::Grid(unsigned int fieldsX, unsigned  int fieldsY, float sizeX, float sizeY
 	//indices[11] = fieldsX+4;
 
 
-    for (int i = 0; i < indices.size(); i++)
-    {
+    //for (int i = 0; i < indices.size(); i++)
+    //{
 		//indices[i] = top;
 		//indices[i+1] = top-1;
 		//indices[i+2] = top-2;
+	
 		
-		
-		
-		if (i%2 == 0) // even index: top vertex
-        {
-            indices[i] = top;
-            top++;
-        } 
-        else{   //odd index: bottom vertex
-            indices[i] = bottom;
-            bottom++;
-        }
+		//if (i%2 == 0) // even index: top vertex
+  //      {
+  //          indices[i] = top;
+  //          top++;
+  //      } 
+  //      else{   //odd index: bottom vertex
+  //          indices[i] = bottom;
+  //          bottom++;
+  //      }
 
         // DEBUGLOG->log("index: ", indices[i]);
         // DEBUGLOG->indent();        
@@ -1215,12 +1266,12 @@ Grid::Grid(unsigned int fieldsX, unsigned  int fieldsY, float sizeX, float sizeY
         // DEBUGLOG->log("y: ", positions[indices[i]*3+1]);
         // DEBUGLOG->log("z: ", positions[indices[i]*3+2]);
         // DEBUGLOG->outdent();
-    }
+    //}
     // DEBUGLOG->log("indices: ", indices.size());
 
-    m_indices.m_size = indices.size();
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)*indices.size(), &indices[0], GL_STATIC_DRAW);
+    //m_indices.m_size = indices.size();
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+    //glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)*indices.size(), &indices[0], GL_STATIC_DRAW);
 }
 
 Grid::~Grid()
@@ -1234,9 +1285,9 @@ Grid::~Grid()
 void Grid::draw()
 {
     OPENGLCONTEXT->bindVAO(m_vao);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indices.m_vboHandle);
-    glDrawElements(GL_TRIANGLE_STRIP, m_indices.m_size, GL_UNSIGNED_INT, 0);
-    // glDrawArrays(GL_POINTS,  0, m_positions.m_size);
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_indices.m_vboHandle);
+    //glDrawElements(GL_TRIANGLE_STRIP, m_indices.m_size, GL_UNSIGNED_INT, 0);
+    glDrawArrays(GL_TRIANGLES,  0, m_positions.m_size);
 }
 
 VertexGrid::VertexGrid(int width, int height, bool doScaleCoords, VertexOrder order, glm::ivec2 groupSize)

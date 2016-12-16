@@ -341,6 +341,10 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(FBO_front.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D); // left  raycasting result (for display)
 	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE13, GL_TEXTURE_2D);// right raycasting result (for display)
 
+	OPENGLCONTEXT->bindTextureToUnit(FBO_front.getDepthTextureHandle(), GL_TEXTURE24, GL_TEXTURE_2D); // left  raycasting first hit map  (for display)
+	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getDepthTextureHandle(), GL_TEXTURE25, GL_TEXTURE_2D);// right  raycasting first hit map (for display)
+
+
 	shaderProgram.update("volume_texture", 0); // volume texture
 	shaderProgram.update("transferFunctionTex", 1);
 
@@ -399,6 +403,7 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
 	
+	///////////////////////   Simple Warp Renderpass    //////////////////////////
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
 	auto m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
 	m_pWarpingShader->update( "blendColor", 1.0f );
@@ -414,7 +419,13 @@ int main(int argc, char *argv[])
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO_warp.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
 	OPENGLCONTEXT->bindTextureToUnit(FBO_warp_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE15, GL_TEXTURE_2D);// right raycasting result (for display)
-
+	
+	///////////////////////   Grid Warp Renderpass    //////////////////////////
+	Grid grid(400, 400, 0.0025f, 0.0025f, false);
+	ShaderProgram gridWarpShader("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", s_shaderDefines);
+	RenderPass gridWarp(&gridWarpShader, &FBO_warp);
+	gridWarp.addRenderable(&grid);
+	
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -1009,20 +1020,41 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
 		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Warping");
 		// warp left
-		m_pWarpingThread->setFrameBufferObject( &FBO_warp );
-		m_pWarpingShader->update( "tex", 12 ); // last result left
-		m_pWarpingShader->update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-		m_pWarpingShader->update( "newView", s_view ); // most current view
-		m_pWarpingShader->update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
-		m_pWarpingThread->render();
+		//m_pWarpingThread->setFrameBufferObject( &FBO_warp );
+		//m_pWarpingShader->update( "tex", 12 ); // last result left
+		//m_pWarpingShader->update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
+		//m_pWarpingShader->update( "newView", s_view ); // most current view
+		//m_pWarpingShader->update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
+		//m_pWarpingThread->render();
 		
+		//++++++++ DEBUG +++++++++
+		gridWarp.setFrameBufferObject(&FBO_warp);
+		gridWarpShader.update( "tex", 12 ); // last result left
+		gridWarpShader.update( "depth_map", 24); // last first hit map
+		gridWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
+		gridWarpShader.update( "newView", s_view ); // most current view
+		gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
+		gridWarp.render();
+		//++++++++ DEBUG +++++++++
+
 		// warp right
-		m_pWarpingThread->setFrameBufferObject( &FBO_warp_r );
-		m_pWarpingShader->update( "tex", 13 ); // last result right
-		m_pWarpingShader->update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-		m_pWarpingShader->update( "newView", s_view_r); // most current view
-		m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
-		m_pWarpingThread->render();
+		//m_pWarpingThread->setFrameBufferObject( &FBO_warp_r );
+		//m_pWarpingShader->update( "tex", 13 ); // last result right
+		//m_pWarpingShader->update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+		//m_pWarpingShader->update( "newView", s_view_r); // most current view
+		//m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
+		//m_pWarpingThread->render();
+
+		//++++++++ DEBUG +++++++++
+		gridWarp.setFrameBufferObject(&FBO_warp_r);
+		gridWarpShader.update( "tex", 13 ); // last result left
+		gridWarpShader.update( "depth_map", 25); // last first hit map
+		gridWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+		gridWarpShader.update( "newView", s_view_r ); // most current view
+		gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
+		gridWarp.render();
+		//++++++++ DEBUG +++++++++
+
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 
