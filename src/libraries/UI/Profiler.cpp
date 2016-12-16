@@ -65,8 +65,12 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::Separator();
 
 	// MARKERS
+	int level;
+	level = 0;
 	for (auto m : m_markers)
 	{
+		if (m.level > level) {ImGui::NewLine(); level++;}
+
 		float x = winX(m.times[0]); // where we want to place it
 		//while (ImGui::GetColumnIndex() < (m_columns.size()-1) && ImGui::GetColumnOffset(ImGui::GetColumnIndex()+1) <= x)
 		//{
@@ -101,8 +105,11 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::Separator();
 
 	// RANGES
+	level = 0;
 	for (auto r : m_ranges)
 	{
+		if (r.level > level) {ImGui::NewLine(); level++;}
+
 		float xStart = winX(r.times[0]);
 		float xEnd =   winX(r.times[1]);
 
@@ -153,33 +160,36 @@ void Profiler::imguiInterface(float startTime, float endTime, bool* open)
 	ImGui::End();
 }
 
-std::set<Profiler::Entry>::iterator Profiler::addMarkerTime(float time, std::string tag, std::string desc) { 
+std::set<Profiler::Entry>::iterator Profiler::addMarkerTime(float time, std::string tag, std::string desc, int level) { 
 	Profiler::Entry e;
 	e.color=randColor();
 	e.tag = tag;
 	e.desc = desc;
 	e.times[0] = time;
+	e.level = level;
 
 	return m_markers.insert(e).first;
 }
 	
-std::set<Profiler::Entry>::iterator Profiler::addRangeTime(float start, float end, std::string tag, std::string desc) { 
+std::set<Profiler::Entry>::iterator Profiler::addRangeTime(float start, float end, std::string tag, std::string desc, int level) { 
 	Profiler::Entry e;
 	e.color=randColor();
 	e.tag = tag;
 	e.desc = desc;
 	e.times[0] = start;	
-	e.times[1] = end;	
+	e.times[1] = end;
+	e.level = level;	
 
 	return 	m_ranges.insert(e).first; 
 }
 
-std::set<Profiler::Entry>::iterator Profiler::addColumn(float time, std::string desc) { 
+std::set<Profiler::Entry>::iterator Profiler::addColumn(float time, std::string desc, int level) { 
 	Profiler::Entry e;
 	e.color=randColor();
 	e.tag = "";
 	e.desc = desc;
 	e.times[0] = time;
+	e.level = level;
 
 	return 	m_columns.insert(e).first; 
 }
@@ -191,11 +201,11 @@ void Profiler::clear()
 	m_markers.clear();
 }
 
-std::set<Profiler::Entry>::iterator Profiler::setRangeByTag(std::string tag, float start, float end, std::string desc)
+std::set<Profiler::Entry>::iterator Profiler::setRangeByTag(std::string tag, float start, float end, std::string desc, int level)
 {
 	for (auto e = m_ranges.begin(); e != m_ranges.end(); ++e)
 	{
-		if ((*e).tag.compare(tag) == 0)
+		if ((*e).level == level && (*e).tag.compare(tag) == 0)
 		{
 			auto b = (*e);
 			b.times[0] = start;
@@ -207,14 +217,14 @@ std::set<Profiler::Entry>::iterator Profiler::setRangeByTag(std::string tag, flo
 		}
 	}
 
-	return addRangeTime(start, end, tag, desc);
+	return addRangeTime(start, end, tag, desc, level);
 }
 
-std::set<Profiler::Entry>::iterator Profiler::setMarkerByTag(std::string tag, float time, std::string desc)
+std::set<Profiler::Entry>::iterator Profiler::setMarkerByTag(std::string tag, float time, std::string desc, int level)
 {
 	for (auto e = m_markers.begin(); e != m_markers.end(); ++e)
 	{
-		if ((*e).tag.compare(tag) == 0)
+		if ((*e).level == level && (*e).tag.compare(tag) == 0)
 		{
 			auto b = (*e);
 			b.times[0] = time;
@@ -225,5 +235,5 @@ std::set<Profiler::Entry>::iterator Profiler::setMarkerByTag(std::string tag, fl
 		}
 	}
 
-	return addMarkerTime(time, tag, desc);
+	return addMarkerTime(time, tag, desc, level);
 }

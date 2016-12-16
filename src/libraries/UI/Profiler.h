@@ -8,11 +8,12 @@ class Profiler
 {
 public:
 	struct Entry {
+		int level;
 		ImVec4 color;
 		std::string tag;
 		std::string desc;
 		float times[2]; // 2nd entry might be unused
-		inline bool operator<(const Profiler::Entry &other) { return times[0] < other.times[0]; }
+		inline bool operator<(const Profiler::Entry &other) { return (level == other.level) ? times[0] < other.times[0] : level < other.level; }
 	};
 
 
@@ -28,16 +29,16 @@ public:
 	
 	ImVec4 randColor();
 
-	std::set<Entry>::iterator addMarkerTime(float time, std::string tag, std::string desc = "");
-	std::set<Entry>::iterator addRangeTime(float start, float end, std::string tag, std::string desc = "");
-	std::set<Entry>::iterator addColumn(float time, std::string desc = "");
+	std::set<Entry>::iterator addMarkerTime(float time, std::string tag, std::string desc = "", int level = 0);
+	std::set<Entry>::iterator addRangeTime(float start, float end, std::string tag, std::string desc = "", int level = 0);
+	std::set<Entry>::iterator addColumn(float time, std::string desc = "", int level = 0);
 
 	inline const std::set<Entry>& getRanges(){ return m_ranges; }
 	inline const std::set<Entry>& getMarkers(){ return m_markers; }
 	inline const std::set<Entry>& getColumns(){ return m_columns; }
 	
-	std::set<Entry>::iterator setRangeByTag(std::string tag, float start, float end, std::string desc = ""); // reuses color if found
-	std::set<Entry>::iterator setMarkerByTag(std::string tag, float time, std::string desc = ""); // reuses color if found
+	std::set<Entry>::iterator setRangeByTag(std::string tag, float start, float end, std::string desc = "", int level = 0); // reuses color if found
+	std::set<Entry>::iterator setMarkerByTag(std::string tag, float time, std::string desc = "", int level = 0); // reuses color if found
 
 	void clear();
 
