@@ -352,14 +352,14 @@ int main(int argc, char *argv[])
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	//renderPass.setClearColor(0.1f,0.12f,0.15f,0.0f);
 	renderPass.addRenderable(&quad);
-	renderPass.addEnable(GL_DEPTH_TEST);
+	renderPass.addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
 	renderPass.addDisable(GL_BLEND);
 
 	RenderPass renderPass_r(&shaderProgram, &FBO_r);
 	renderPass_r.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	//renderPass_r.setClearColor(0.1f,0.12f,0.15f,0.0f);
 	renderPass_r.addRenderable(&quad);
-	renderPass_r.addEnable(GL_DEPTH_TEST);
+	renderPass_r.addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
 	renderPass_r.addDisable(GL_BLEND);
 	
 	///////////////////////   Chunked RenderPasses    //////////////////////////
@@ -606,6 +606,7 @@ int main(int argc, char *argv[])
 
 	std::string window_header = "Volume Renderer - OpenVR";
 	SDL_SetWindowTitle(window, window_header.c_str() );
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	//////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
@@ -668,7 +669,7 @@ int main(int argc, char *argv[])
 		static float lodRange  = 4.0f;
 		ImGui::DragFloat("Lod Max Level",   &lodMaxLevel,   0.1f, 0.0f, 8.0f);
 		ImGui::DragFloat("Lod Begin", &lodBegin, 0.01f,0.0f, s_far);
-		ImGui::DragFloat("Lod Range", &lodRange, 0.01f,0.0f,std::min(lodBegin + lodRange, s_far) );
+		ImGui::DragFloat("Lod Range", &lodRange, 0.01f,0.0f, std::max(0.1f, s_far-lodBegin) );
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
@@ -701,11 +702,9 @@ int main(int argc, char *argv[])
 		Frame::Timings[Frame::FRONT_FRAME_IDX].setEnabled(!pause_frame_profiler);
 		Frame::Timings[Frame::BACK_FRAME_IDX].setEnabled(!pause_frame_profiler);
 		
-
 		// update whatever is finished
 		Frame::Timings[Frame::FRONT_FRAME_IDX].updateReadyTimings();
 		Frame::Timings[Frame::BACK_FRAME_IDX].updateReadyTimings();
-		Frame::SwapFrameIdx();
 
 		float frame_begin = 0.0;
 		float frame_end = 17.0;
@@ -735,6 +734,7 @@ int main(int argc, char *argv[])
 
 			Frame::FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
 		}
+		Frame::SwapFrameIdx();
 		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
 		//////////////////////////////////////////////////////////////////////////////
 
@@ -1008,6 +1008,7 @@ int main(int argc, char *argv[])
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		if (ovr.m_pHMD) // submit images only when finished
 		{
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Render Models");
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 			FBO_warp.bind();
 			ovr.renderModels(vr::Eye_Left);
@@ -1015,6 +1016,7 @@ int main(int argc, char *argv[])
 			FBO_warp_r.bind();
 			ovr.renderModels(vr::Eye_Right);
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		}
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
@@ -1110,7 +1112,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
-			glFinish(); // just Flush
+			glFlush(); // just Flush
 		}
 
 	}
