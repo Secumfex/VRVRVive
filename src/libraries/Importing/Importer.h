@@ -72,7 +72,7 @@ namespace Importer {
 			if (file.is_open()) {
 				// get length of file:
 				file.seekg (0, file.end);
-				int length = file.tellg();
+				int length = (int) file.tellg();
 				file.seekg (0, file.beg);
 
 				// allocate memory:
@@ -95,7 +95,7 @@ namespace Importer {
 					val = (val << 8) + input[ num_bytes_per_entry*j + k];
 				}
 	    		
-				slice[j] = val;
+				slice[j] = (T) val;
 				
 				//if ( i == num_files / 2)
 				//{
@@ -105,8 +105,8 @@ namespace Importer {
 				//	//DEBUGLOG->log("MidSlice: ", val);
 				//}
 
-				min = std::min<short>(val, min);
-				max = std::max<short>(val, max);
+				min = std::min<T>((T) val, min);
+				max = std::max<T>((T) val, max);
 			}
 
 			// push slice to data vector

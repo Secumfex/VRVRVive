@@ -26,8 +26,8 @@
 #include <VR/OpenVRTools.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static float s_minValue = INT_MIN; // minimal value in data set; to be overwitten after import
-static float s_maxValue = INT_MAX;  // maximal value in data set; to be overwitten after import
+static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
+static float s_maxValue = (float) INT_MAX;  // maximal value in data set; to be overwitten after import
 
 static bool  s_isRotating = false; 	// initial state for rotating animation
 static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten after volume data import
@@ -42,6 +42,8 @@ static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.02f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
+
+static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
 
 const char* SHADER_DEFINES[] = {"RANDOM_OFFSET"};
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
@@ -129,7 +131,7 @@ void generateTransferFunction()
 
 void updateTransferFunctionTex()
 {
-	s_transferFunction.updateTex(s_minValue, s_maxValue);
+	s_transferFunction.updateTex((int) s_minValue,(int) s_maxValue);
 }
 
 template <class T>
@@ -246,8 +248,8 @@ int main(int argc, char *argv[])
 	s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 	if (!ovr.m_pHMD)
 	{
-		s_perspective = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
-		s_perspective_r = glm::perspective(glm::radians(45.f), getResolution(window).x / (2.0f * getResolution(window).y), s_near, 10.f);
+		s_perspective = glm::perspective(glm::radians(45.f), WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y), s_near, 10.f);
+		s_perspective_r = glm::perspective(glm::radians(45.f), WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y), s_near, 10.f);
 	}
 	else
 	{
@@ -258,7 +260,7 @@ int main(int argc, char *argv[])
 	}
 	
 	s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
-	s_nearW = s_nearH * getResolution(window).x / (2.0f * getResolution(window).y);
+	s_nearW = s_nearH * WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y);
 
 	// constant
 	s_screenToView = glm::scale(glm::vec3(s_nearW, s_nearH, s_near)) * 
@@ -288,9 +290,9 @@ int main(int argc, char *argv[])
 	uvwShaderProgram.update("projection", s_perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
-	FrameBufferObject uvwFBO(getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject uvwFBO((int) WINDOW_RESOLUTION.x/2,(int) WINDOW_RESOLUTION.y);
 	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
-	FrameBufferObject uvwFBO_r(getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject uvwFBO_r((int) WINDOW_RESOLUTION.x/2,(int)  WINDOW_RESOLUTION.y);
 	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
 	DEBUGLOG->outdent();
 	
@@ -304,18 +306,18 @@ int main(int argc, char *argv[])
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
 	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepthOcclusion.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
-	shaderProgram.update("uViewport", glm::vec4(0,0,getResolution(window).x/2, getResolution(window).y));	
-	shaderProgram.update("uResolution", glm::vec4(getResolution(window).x/2, getResolution(window).y,0,0));
+	shaderProgram.update("uViewport", glm::vec4(0,0,WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y));	
+	shaderProgram.update("uResolution", glm::vec4(WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y,0,0));
 
 	// DEBUG
 	generateTransferFunction();
 	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
-	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject FBO_front_r(shaderProgram.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_front_r(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 	DEBUGLOG->outdent();
 
 	// bind volume texture, back uvw textures, front uvws
@@ -355,7 +357,7 @@ int main(int argc, char *argv[])
 	renderPass_r.addDisable(GL_BLEND);
 	
 	///////////////////////   Chunked RenderPasses    //////////////////////////
-	glm::ivec2 viewportSize = glm::ivec2(getResolution(window).x / 2, getResolution(window).y);
+	glm::ivec2 viewportSize = glm::ivec2((int) WINDOW_RESOLUTION.x / 2, (int) WINDOW_RESOLUTION.y);
 	glm::ivec2 chunkSize = glm::ivec2(96,96);
 	ChunkedAdaptiveRenderPass chunkedRenderPass(
 		&renderPass,
@@ -378,8 +380,8 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
 	int occlusionBlockSize = 6;
-	int vertexGridWidth  = (int) getResolution(window).x/2 / occlusionBlockSize;
-	int vertexGridHeight = (int) getResolution(window).y   / occlusionBlockSize;
+	int vertexGridWidth  = (int) WINDOW_RESOLUTION.x/2 / occlusionBlockSize;
+	int vertexGridHeight = (int) WINDOW_RESOLUTION.y   / occlusionBlockSize;
 	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
 	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", s_shaderDefines);
 	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
@@ -400,8 +402,8 @@ int main(int argc, char *argv[])
 	m_pWarpingShader->update( "blendColor", 1.0f );
 
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_warp(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject FBO_warp_r(m_pWarpingShader->getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_warp(m_pWarpingShader->getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_warp_r(m_pWarpingShader->getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 
 	auto m_pWarpingThread = new RenderPass(m_pWarpingShader, &FBO_warp);
 	m_pWarpingThread->addRenderable(&quad);
@@ -419,8 +421,8 @@ int main(int argc, char *argv[])
 	///////////////////////   Depth To TextureCoords Renderpass    //////////////////////////
 	ShaderProgram depthToTextureShader("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_debug_depth(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
-	FrameBufferObject FBO_debug_depth_r(depthToTextureShader.getOutputInfoMap(), getResolution(window).x/2, getResolution(window).y);
+	FrameBufferObject FBO_debug_depth(depthToTextureShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_debug_depth_r(depthToTextureShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 	RenderPass depthToTexture(&depthToTextureShader, &FBO_debug_depth);
 	depthToTexture.addClearBit(GL_COLOR_BUFFER_BIT);
 	depthToTexture.addDisable(GL_DEPTH_TEST);
@@ -431,8 +433,8 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Scene Depth FBO //////////////////////////
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_scene_depth(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
-	FrameBufferObject FBO_scene_depth_r(getResolution(window).x/2, getResolution(window).y); // has only a depth buffer, no color attachments
+	FrameBufferObject FBO_scene_depth((int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y); // has only a depth buffer, no color attachments
+	FrameBufferObject FBO_scene_depth_r((int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y); // has only a depth buffer, no color attachments
 	FBO_scene_depth.bind();
 	glClear(GL_DEPTH_BUFFER_BIT);
 	FBO_scene_depth_r.bind();
@@ -448,8 +450,8 @@ int main(int argc, char *argv[])
     bool show_test_window = true;
 
 	Turntable turntable;
-	double old_x;
-    double old_y;
+	float old_x;
+    float old_y;
 	
 	int activeView = WARPED;
 
@@ -490,16 +492,16 @@ int main(int argc, char *argv[])
 				if ( io.WantCaptureMouse )
 				{ break; } // ImGUI is handling this
 
-				double d_x = event->motion.x - old_x;
-				double d_y = event->motion.y - old_y;
+				float d_x = event->motion.x - old_x;
+				float d_y = event->motion.y - old_y;
 
 				if ( turntable.getDragActive() )
 				{
 					turntable.dragBy(d_x, d_y, s_view);
 				}
 
-				old_x = event->motion.x;
-				old_y = event->motion.y;
+				old_x = (float) event->motion.x;
+				old_y = (float) event->motion.y;
 				break;
 			}
 			case SDL_MOUSEBUTTONDOWN:
@@ -511,7 +513,7 @@ int main(int argc, char *argv[])
 				if (event->button.button == SDL_BUTTON_RIGHT)
 				{
 					unsigned char pick_col[20];
-					glReadPixels(old_x-2, getResolution(window).y-old_y, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+					glReadPixels((int) old_x - 2, (int) WINDOW_RESOLUTION.y - (int) old_y, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
 
 					for (int i = 0; i < 20; i += 4)
 					{
@@ -613,7 +615,7 @@ int main(int argc, char *argv[])
 		mirrorScreenTimer += io.DeltaTime;
 		elapsedTime += io.DeltaTime;
 
-		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
+		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 	
@@ -622,7 +624,7 @@ int main(int argc, char *argv[])
 		bool changed = false;
 		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
         {
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0, s_minValue, s_maxValue);
+			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
 			ImGui::NextColumn();
 			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
             ImGui::NextColumn();
@@ -693,26 +695,26 @@ int main(int argc, char *argv[])
 		float frame_end = 17.0;
 		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame Begin") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
 		{
-			frame_begin = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame Begin").lastTime;
+			frame_begin = (float) Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame Begin").lastTime;
 		}
 		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame End") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
 		{
-			frame_end = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame End").lastTime;
+			frame_end = (float) Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame End").lastTime;
 		}
 
 		if (frame_profiler_visible) 
 		{ 
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timers)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime - frame_begin, e.second.lastTime - frame_begin + e.second.lastTiming);
+				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timersElapsed)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime - frame_begin, e.second.lastTime - frame_begin + e.second.lastTiming);
+				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
 			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps)
 			{
-				Frame::FrameProfiler.setMarkerByTag(e.first, e.second.lastTime - frame_begin);
+				Frame::FrameProfiler.setMarkerByTag(e.first, (float) e.second.lastTime - frame_begin);
 			}
 
 			Frame::FrameProfiler.imguiInterface(0.0f, frame_end-frame_begin, &frame_profiler_visible);
@@ -1045,12 +1047,12 @@ int main(int argc, char *argv[])
 		{
 			{
 				showTexShader.update("tex", leftDebugView);
-				showTex.setViewport(0,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+				showTex.setViewport(0,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 				showTex.render();
 			}
 			{
 				showTexShader.update("tex", rightDebugView);
-				showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+				showTex.setViewport((int) WINDOW_RESOLUTION.x/2,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 				showTex.render();
 			}
 			//////////////////////////////////////////////////////////////////////////////

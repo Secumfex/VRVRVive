@@ -8,7 +8,7 @@ float randFloat(float min, float max) //!< returns a random number between min a
 {
 	if (!g_initRand)
 	{
-		srand(time(NULL));
+		srand((unsigned int) time(NULL));
 		g_initRand = true;
 	}
 
