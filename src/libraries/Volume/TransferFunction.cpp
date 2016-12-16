@@ -72,6 +72,9 @@ void TransferFunction::updateTex(int minValue, int maxValue)
 		OPENGLCONTEXT->bindTexture(0, GL_TEXTURE_1D);
 	}
 
+	// see whether texture is already bound somewhere
+	for (auto t : OPENGLCONTEXT->cacheTextures){ if (t.second == m_textureHandle) { OPENGLCONTEXT->activeTexture(t.first); } }
+	
 	// submit data // TODO use PBO instead
 	OPENGLCONTEXT->bindTexture(m_textureHandle, GL_TEXTURE_1D);
 	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, m_transferFunctionTexData.size() / 4, GL_RGBA, GL_FLOAT, &m_transferFunctionTexData[0]);
