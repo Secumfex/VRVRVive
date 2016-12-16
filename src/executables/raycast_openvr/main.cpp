@@ -43,7 +43,8 @@ static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.02f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static const std::vector<std::string> s_shaderDefines;
+const char* SHADER_DEFINES[] = {"RANDOM_OFFSET"};
+static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
 struct TFPoint{
 	int v; // value 

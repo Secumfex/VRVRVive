@@ -1,10 +1,9 @@
 #version 430
 
-#ifndef DEPTH_SCALE 
-#define DEPTH_SCALE 5.0 
-#endif
-#ifndef DEPTH_BIAS 
-#define DEPTH_BIAS 0.05 
+#ifdef RANDOM_OFFSET 
+float rand(vec2 co){
+    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
 #endif
 
 // in-variables
@@ -100,6 +99,9 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 
 	// traverse ray front to back rendering
 	float t = 0.01;
+	#ifdef RANDOM_OFFSET 
+		t = t * 2.0 * rand(passUV);
+	#endif
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
