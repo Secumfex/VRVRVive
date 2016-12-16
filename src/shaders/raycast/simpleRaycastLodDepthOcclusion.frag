@@ -193,7 +193,7 @@ void main()
 		uvwEnd.a = endDepth;
 	}
 
-	// linearize depth //?
+	// linearize depth
 	float startDistance = abs(getViewCoord(vec3(passUV,uvwStart.a)).z);
 	float endDistance   = abs(getViewCoord(vec3(passUV,uvwEnd.a)).z);
 	//float startDistance = uvwStart.a;

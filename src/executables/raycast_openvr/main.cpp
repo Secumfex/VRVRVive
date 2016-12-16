@@ -679,9 +679,9 @@ int main(int argc, char *argv[])
 		ImGui::Columns(1);
 		ImGui::Separator();
 		//static bool pauseFirstHitUpdates = false;
-		static bool useOcclusionMap = true;
+		//static bool useOcclusionMap = true;
 		//ImGui::Checkbox("Pause First Hit Updated", &pauseFirstHitUpdates);
-		ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
+		//ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
 		
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
@@ -694,6 +694,7 @@ int main(int argc, char *argv[])
 		// update whatever is finished
 		Frame::Timings[Frame::FRONT_FRAME_IDX].updateReadyTimings();
 		Frame::Timings[Frame::BACK_FRAME_IDX].updateReadyTimings();
+		Frame::SwapFrameIdx();
 
 		float frame_begin = 0.0;
 		float frame_end = 17.0;
@@ -721,9 +722,8 @@ int main(int argc, char *argv[])
 				Frame::FrameProfiler.setMarkerByTag(e.first, (float) e.second.lastTime - frame_begin);
 			}
 
-			Frame::FrameProfiler.imguiInterface(0.0f, frame_end-frame_begin, &frame_profiler_visible);
+			Frame::FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
 		}
-		Frame::SwapFrameIdx();
 		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
 		//////////////////////////////////////////////////////////////////////////////
 
@@ -862,11 +862,13 @@ int main(int argc, char *argv[])
 			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
 			
 			// uvw maps
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW LEFT");
 			uvwRenderPass.setFrameBufferObject( &uvwFBO );
 			uvwShaderProgram.update("view", current.view);
 			uvwShaderProgram.update("model", current.model);
 			uvwShaderProgram.update("projection", current.perspective);
 			uvwRenderPass.render();
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 
 			// occlusion maps
 			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum LEFT");
@@ -886,7 +888,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "back_uvw_map",  2 );
 		shaderProgram.update( "front_uvw_map", 4 );
 		shaderProgram.update( "scene_depth_map", 18 );
-		shaderProgram.update( "occlusion_map", (useOcclusionMap) ? 8 : 2 );
+		shaderProgram.update( "occlusion_map", 8 );
 
 		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast LEFT");
 		chunkedRenderPass.render(); 
@@ -981,7 +983,7 @@ int main(int argc, char *argv[])
 		shaderProgram.update("back_uvw_map",  3);
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("scene_depth_map", 19 );
-		shaderProgram.update("occlusion_map", (useOcclusionMap) ? 9 : 5);
+		shaderProgram.update("occlusion_map", 9);
 
 		//renderPass_r.render();
 		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast RIGHT");
@@ -1078,6 +1080,7 @@ int main(int argc, char *argv[])
 		{
 			glFinish(); // just Flush
 		}
+
 	}
 	
 	ImGui_ImplSdlGL3_Shutdown();
