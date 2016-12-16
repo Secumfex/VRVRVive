@@ -24,8 +24,9 @@ uniform float uWindowingMinVal; // windowing lower bound
 
 // ray traversal related uniforms
 uniform float uStepSize;		// ray sampling step size
-uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD and step size 
-uniform float uLodBias;        // depth at which lod begins to degrade
+uniform float uLodMaxLevel;  // factor with wich depth influences sampled LoD and step size 
+uniform float uLodBegin;        // depth at which lod begins to degrade
+uniform float uLodRange;        // depth at which lod begins to degrade
 
 uniform mat4 uViewToTexture;
 uniform mat4 uScreenToTexture;
@@ -107,7 +108,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		
 		float curDepth = mix( startDepth, endDepth, t);
-		float curLod = max(0.0, uLodDepthScale * (curDepth - uLodBias)); // bad approximation, but idc for now
+		float curLod = max(0.0, min(1.0, ((curDepth - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
 		float curStepSize = stepSize * pow(2.0, curLod);
 		parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 
@@ -129,7 +130,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		// first hit?
 		if (result.firstHit.a == 0.0 && sampleColor.a > 0.001)
 		{
-			result.firstHit.rgb = mix( startUVW, endUVW, t - (3.0 * parameterStepSize)); // move towards camera a little bit
+			//result.firstHit.rgb = mix( startUVW, endUVW, t - (3.0 * parameterStepSize)); // move towards camera a little bit
+			result.firstHit.rgb = curUVW;
 			result.firstHit.a = curDepth;
 		} 
 
@@ -192,10 +194,10 @@ void main()
 	}
 
 	// linearize depth //?
-	//float startDistance = abs(getViewCoord(vec3(passUV,uvwStart.a)).z);
-	//float endDistance   = abs(getViewCoord(vec3(passUV,uvwEnd.a)).z);
-	float startDistance = uvwStart.a;
-	float endDistance   = uvwEnd.a;
+	float startDistance = abs(getViewCoord(vec3(passUV,uvwStart.a)).z);
+	float endDistance   = abs(getViewCoord(vec3(passUV,uvwEnd.a)).z);
+	//float startDistance = uvwStart.a;
+	//float endDistance   = uvwEnd.a;
 
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 

@@ -45,7 +45,9 @@ static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.02f; // interval time (secon
 
 static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
 
-const char* SHADER_DEFINES[] = {"RANDOM_OFFSET"};
+const char* SHADER_DEFINES[] = {
+	"RANDOM_OFFSET"
+};
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
 struct TFPoint{
@@ -650,10 +652,12 @@ int main(int argc, char *argv[])
 		
 		ImGui::Separator();
 
-		static float lodScale = 2.0f;
-		static float lodBias  = 0.25f;
-		ImGui::DragFloat("Lod Scale", &lodScale, 0.1f,0.0f,20.0f);
-		ImGui::DragFloat("Lod Bias", &lodBias, 0.01f,0.0f,1.2f);
+		static float lodMaxLevel = 4.0f;
+		static float lodBegin  = 0.3f;
+		static float lodRange  = 4.0f;
+		ImGui::DragFloat("Lod Max Level",   &lodMaxLevel,   0.1f, 0.0f, 8.0f);
+		ImGui::DragFloat("Lod Begin", &lodBegin, 0.01f,0.0f, s_far);
+		ImGui::DragFloat("Lod Range", &lodRange, 0.01f,0.0f,std::min(lodBegin + lodRange, s_far) );
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
@@ -767,8 +771,9 @@ int main(int argc, char *argv[])
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
 		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
-		shaderProgram.update("uLodBias", lodBias);
-		shaderProgram.update("uLodDepthScale", lodScale);  
+		shaderProgram.update("uLodMaxLevel", lodMaxLevel);
+		shaderProgram.update("uLodBegin", lodBegin);
+		shaderProgram.update("uLodRange", lodRange);  
 
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
@@ -782,13 +787,17 @@ int main(int argc, char *argv[])
 		// check for finished left/right images, copy to Front FBOs
 		if (chunkedRenderPass.isFinished())
 		{
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Copy Result LEFT");
 			copyFBOContent(&FBO, &FBO_front, GL_COLOR_BUFFER_BIT);
 			copyFBOContent(&FBO, &FBO_front, GL_DEPTH_BUFFER_BIT);
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		}
 		if (chunkedRenderPass_r.isFinished())
 		{
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Copy Result RIGHT");
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_DEPTH_BUFFER_BIT);
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		}
 		//%%%%%%%%%%%% render left image
 		if (chunkedRenderPass.isFinished())
@@ -860,7 +869,7 @@ int main(int argc, char *argv[])
 			uvwRenderPass.render();
 
 			// occlusion maps
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum");
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum LEFT");
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
 			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
 			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
@@ -945,20 +954,24 @@ int main(int argc, char *argv[])
 			//update raycasting matrices for next iteration	// for occlusion frustum
 			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
 			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
-
+			
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW RIGHT");
 			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
 			uvwShaderProgram.update( "view", current.view );
 			uvwShaderProgram.update( "model", current.model );
 			uvwShaderProgram.update( "projection", current.perspective );
 			uvwRenderPass.render();
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		
 			// occlusion maps 
+			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum RIGHT");
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
 			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
 			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 		}
 
 		// raycasting (chunked)
