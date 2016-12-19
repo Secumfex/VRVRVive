@@ -25,7 +25,7 @@ void main()
 	for (int i = textureSize(tex, lod).z - 1; i >= 0; i--)
 	{
 		float sampleLayerIdx = float( (initialLayerIdx + i) % uBlockWidth);
-		vec4 texColor = texture(tex, vec3(passPosition.xy, float(i) ) ); // blend
+		vec4 texColor = texture(tex, vec3(passPosition.xy, sampleLayerIdx) ); // blend
 		fragColor.rgb = texColor.rgb + (1.0 - texColor.a) * fragColor.rgb;
 		fragColor.a   = texColor.a   + (1.0 - texColor.a) * fragColor.a;
 	}
