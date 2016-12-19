@@ -551,8 +551,9 @@ int main(int argc, char *argv[])
 	static int rightDebugView = 15;
 	static bool predictPose = false;
 	
-	
 	// coordinates of the touch pad
+	static bool  is_touchpad_touched = false;
+	static int   touchpad_tracked_device_index = -1;
 	float old_touch_x = 0.5f;
 	float old_touch_y = 0.5f;
 
@@ -581,30 +582,53 @@ int main(int argc, char *argv[])
 				DEBUGLOG->log("button press: ", event.data.controller.button);
 				break;
 			}
-			case vr::VREvent_ButtonTouch:
+			case vr::VREvent_ButtonTouch: // generated for touchpad
 				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
 				{ 
-					old_touch_x = 0.5f; 
-					old_touch_y = 0.5f; 
+					touchpad_tracked_device_index = event.trackedDeviceIndex;
+					is_touchpad_touched = true;
+					turntable.setDragActive(is_touchpad_touched);
+
+					vr::VRControllerState_t state_;
+					if (ovr.m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
+
+					old_touch_x = state_.rAxis[0].x;
+					old_touch_y = state_.rAxis[0].y;
 				}
 				break;
-			case vr::VREvent_TouchPadMove:
-
-				DEBUGLOG->log("touchpad move: ", glm::vec2(event.data.mouse.x, event.data.mouse.y) );
-
-				float d_x = event.data.mouse.x - old_touch_x;
-				float d_y = event.data.mouse.y - old_touch_y;
-				
-				if ( turntable.getDragActive() )
+			case vr::VREvent_ButtonUntouch:
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
 				{
-					turntable.dragBy(d_x, d_y, s_view);
-				}	
-
-				old_touch_x = event.data.mouse.x;
-				old_touch_y = event.data.mouse.y;
+					touchpad_tracked_device_index = -1;
+					is_touchpad_touched = false;
+					turntable.setDragActive(is_touchpad_touched);
+				}
 				break;
+			//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
+			//	break;
 		}
 		return false;
+	};
+
+	// seperate handler for touchpad, since no event will be generated for touch-movement
+	auto handleTrackpad = [&](bool isTouched, int deviceIdx)
+	{
+		if (isTouched && deviceIdx != -1)
+		{
+			vr::VRControllerState_t state;
+			ovr.m_pHMD->GetControllerState(deviceIdx, &state);
+
+			float d_x = state.rAxis[0].x - old_touch_x;
+			float d_y = state.rAxis[0].y - old_touch_y;
+
+			if (turntable.getDragActive())
+			{
+				turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
+			}
+
+			old_touch_x = state.rAxis[0].x;
+			old_touch_y = state.rAxis[0].y;
+		}
 	};
 
 	auto setDebugView = [&](int view)
@@ -658,7 +682,8 @@ int main(int argc, char *argv[])
 		////////////////////////////////    EVENTS    ////////////////////////////////
 		pollSDLEvents(window, sdlEventHandler);
 		ovr.PollVREvents(vrEventHandler);
-
+		handleTrackpad(is_touchpad_touched, touchpad_tracked_device_index); // handle trackpad touch seperately
+		
 		////////////////////////////////     GUI      ////////////////////////////////
         ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
