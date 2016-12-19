@@ -67,6 +67,7 @@ void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, gl
 
 
 GLuint createTexture(int width, int height, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);
+GLuint createTextureArray(int width, int height, int length, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);
 
 template <class T>
 void uploadTextureData(GLuint texture, const std::vector<T>& content, GLenum format = GL_RGB, GLenum type = GL_FLOAT, int width = -1, int height = -1, int x = 0, int y = 0, int level=0){

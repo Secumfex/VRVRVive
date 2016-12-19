@@ -12,10 +12,8 @@ uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
 
-uniform float uLod;
-
 // images
-layout(binding = 0, rgba16f) restrict uniform image2D output_image;
+layout(binding = 0, rgba16f) restrict uniform image2DArray output_image;
 
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
 // color mapping related uniforms 
@@ -24,6 +22,8 @@ uniform float uWindowingMinVal; // windowing lower bound
 
 // ray traversal related uniforms
 uniform float uStepSize;		// ray sampling step size
+uniform bool uWriteStereo;		// ray sampling step size
+uniform int uBlockWidth;
 
 // for reprojection
 uniform mat4 viewprojection_r; // viewprojection of right view
@@ -70,10 +70,10 @@ vec4 transferFunction(int value)
  * @param curPosition to reproject into right view
  * @param sampleColor to accumulate into right view
  */
-void reproject(vec4 sampleColor, ivec2 texelCoord_r)
+void reproject(vec4 sampleColor, ivec2 texelCoord_r, int layerIdx)
 {
 	//read old value
-	vec4 curColor = imageLoad( output_image, texelCoord_r );
+	vec4 curColor = imageLoad( output_image, ivec3(texelCoord_r, layerIdx) );
 
 	//TODO compute segment length from ray angle to view vector (multiply with uStepSize)
 
@@ -82,10 +82,10 @@ void reproject(vec4 sampleColor, ivec2 texelCoord_r)
 	curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 	vec4 result_color = curColor;
 
-	// vec4 result_color = curColor + vec4(0.01, 0.01, 0.01, 0.01); // DEBUG
+	//result_color = curColor + vec4( float(layerIdx)/64.0 ); // DEBUG
 
 	// write into texture
-	imageStore( output_image, texelCoord_r, result_color );
+	imageStore( output_image, ivec3(texelCoord_r, layerIdx), result_color );
 }
 
 vec2 reprojectCoords(vec3 curPos)
@@ -109,7 +109,7 @@ vec2 reprojectCoords(vec3 curPos)
  * 
  * @return sample point in volume, holding value and uvw coordinates
  */
-vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 endPos)
+vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 endPos, int layerIdx)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
 
@@ -137,9 +137,13 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 		if ( curTexelCoord_r != texelCoord_r ) //changed
 		{
 			// reproject color, then reset segment color
-			if (segmentColor_r.a > 0.005) // don't bother if nearly invisible
+
+			if (
+			 uWriteStereo
+			 //&& segmentColor_r.a > 0.005
+			 ) // don't bother if nearly invisible
 			{
-				reproject( segmentColor_r, texelCoord_r );
+				reproject( segmentColor_r, texelCoord_r, layerIdx );
 			}
 			texelCoord_r = curTexelCoord_r;
 			segmentColor_r = vec4(0); // reset for next segment
@@ -157,8 +161,11 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 	}
 
 	// make sure to reproject the last state of segmentColor
-	reproject( segmentColor_r, ivec2( texelCoord_r ) );
-
+	if(uWriteStereo)
+	{
+		reproject( segmentColor_r, ivec2( texelCoord_r ), layerIdx);
+	}
+	
 	// return emission absorbtion result
 	return curColor;
 }
@@ -175,17 +182,21 @@ void main()
 
 	if (uvwStart.a == 0.0) { discard; } //invalid pixel
 
+	float textureWidth = float( textureSize( front_uvw_map, 0 ).x );
+	int layerIdx = (uBlockWidth - ( int(passUV.x * textureWidth) % uBlockWidth ) - 1 );
+
 	// EA-raycasting
 	vec4 color = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize,    			// sampling step size
 		posStart.xyz,
-		posEnd.xyz
+		posEnd.xyz,
+		layerIdx
 		);
 
 	// final color
-	fragColor = color;// * 0.8 + 0.2 * posStart; //debug
+	fragColor = color;// * 0.5 + 0.5 * vec4(uBlockWidth); //debug
 
 	// DEBUG reproject
 	// reproject(fragColor, posStart.xyz);

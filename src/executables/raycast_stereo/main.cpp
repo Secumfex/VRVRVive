@@ -16,6 +16,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/transform.hpp>
 
+#include <algorithm>
+
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
 static float s_maxValue = (float) INT_MAX;  // maximal value in data set; to be overwitten after import
@@ -47,9 +49,37 @@ GLuint s_transferFunctionTex = -1;
 static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
+const char* SHADER_DEFINES[] = {
+	"ARRAY_TEXTURE"
+};
+static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
+
+static const int NUM_LAYERS = 32;
+const glm::vec2 TEXTURE_RESOLUTION = glm::vec2( 800, 800);
+
+static std::vector<float> s_texData((int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, 0.0f);
+static GLuint s_pboHandle = -1; // PBO 
+
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
+
+void clearOutputTexture(GLuint texture)
+{
+	if(s_pboHandle == -1)
+	{
+		glGenBuffers(1,&s_pboHandle);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, &s_texData[0], GL_STATIC_DRAW);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	}
+	
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE6);
+	OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D_ARRAY);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, s_pboHandle);
+		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, (int) TEXTURE_RESOLUTION.x, (int) TEXTURE_RESOLUTION.y, NUM_LAYERS, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
 
 void generateTransferFunction()
 {
@@ -184,15 +214,18 @@ int main(int argc, char *argv[])
 	glm::mat4 model = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0,1,0));
-	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) , glm::vec3(0,1,0));
+	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) , glm::vec3(0.0f, 1.0f, 0.0f));
 	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
 
 	// create Volume and VertexGrid
 	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
 	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
+	VertexGrid vertexGrid_coarse(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
 	Quad quad;
+	Grid grid(100, 100, 0.1f, 0.1f);
 
 	//int w = getResolution(window).x/2;
 	//int h = getResolution(window).y;
@@ -230,7 +263,6 @@ int main(int argc, char *argv[])
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
 	ShaderProgram shaderProgram("/screenSpace/volumeStereo.vert", "/screenSpace/volumeStereo.frag"); DEBUGLOG->outdent();
-	shaderProgram.update("projection", perspective);
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
 	// DEBUG
@@ -247,13 +279,16 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
 
 	// generate and bind right view image texture
-	GLuint outputTexture = createTexture((int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA16F);
-	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture,  0, GL_RGBA16F, GL_READ_WRITE);
-	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE6, GL_TEXTURE_2D); // for display
+	GLuint outputTexture = createTextureArray((int) getResolution(window).x/2, (int)getResolution(window).y, NUM_LAYERS, GL_RGBA16F);
+	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture,  0, GL_RGBA16F, GL_READ_WRITE, 0, GL_TRUE); // layer will be ignored, entire array will be bound
+	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE6, GL_TEXTURE_2D_ARRAY); // for display
 
 	// DEBUG
-	std::vector<float> texData(((int) getResolution(window).x/2) * (int)getResolution(window).y*4, 0.0f);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA, GL_FLOAT, &texData[0]);
+	clearOutputTexture( outputTexture );
+
+	// atomic counters
+	GLuint atomicsBuffer = bufferData<GLuint>(std::vector<GLuint>(3,0), GL_ATOMIC_COUNTER_BUFFER, GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicsBuffer); // important
 
 	shaderProgram.update("volume_texture", 0); // volume texture
 	shaderProgram.update("back_uvw_map",  1);
@@ -261,16 +296,25 @@ int main(int argc, char *argv[])
 	shaderProgram.update("transferFunctionTex", 3);
 	shaderProgram.update("back_pos_map",  4);
 	shaderProgram.update("front_pos_map", 5);
+	shaderProgram.update( "uBlockWidth", NUM_LAYERS); // output texture
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	renderPass.addRenderable(&vertexGrid);
+	renderPass.addRenderable(&grid);
 	renderPass.addEnable(GL_DEPTH_TEST);
 	renderPass.addDisable(GL_BLEND);
 
+	///////////////////////   Back-To-Front Compose Texture Array Renderpass    //////////////////////////
+	ShaderProgram composeTexArrayShader("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", s_shaderDefines);
+	RenderPass composeTexArray(&composeTexArrayShader,0);
+	composeTexArray.addRenderable(&quad);
+	composeTexArray.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
+	composeTexArrayShader.update( "tex", 6); // output texture
+	composeTexArrayShader.update( "uBlockWidth", NUM_LAYERS ); // output texture
+	
 	///////////////////////   Show Texture Renderpass    //////////////////////////
-	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
+	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", s_shaderDefines);
 	RenderPass showTex(&showTexShader,0);
 	showTex.addRenderable(&quad);
 	showTex.setViewport((int) getResolution(window).x/2,0,(int) getResolution(window).x/2, (int) getResolution(window).y);
@@ -345,18 +389,28 @@ int main(int argc, char *argv[])
 			default:
 				break;
 			case GLFW_KEY_R:
-			static bool swap = true;
-			if (swap){
+				static int activeRenderable = 3;
 				renderPass.clearRenderables();
-				renderPass.addRenderable(&quad);
-				DEBUGLOG->log("renderable: Quad");
-				swap = false;
-			} else {
-				renderPass.clearRenderables();
-				renderPass.addRenderable(&vertexGrid);
-				DEBUGLOG->log("renderable: Vertex Grid");
-				swap = true;
-			}
+				activeRenderable = (activeRenderable + 1) % 4;
+				switch(activeRenderable)
+				{
+				case 0: // Quad
+					renderPass.addRenderable(&quad);
+					DEBUGLOG->log("renderable: Quad");
+					break;
+				case 1: // Vertex Grid
+					renderPass.addRenderable(&vertexGrid);
+					DEBUGLOG->log("renderable: Vertex Grid");
+					break;
+				case 2: // Vertex Grid (Coarse)
+					renderPass.addRenderable(&vertexGrid_coarse);
+					DEBUGLOG->log("renderable: Vertex Grid (Coarse)");
+					break;
+				case 3: // grid
+					renderPass.addRenderable(&grid);
+					DEBUGLOG->log("renderable: Grid");
+					break;
+				}
 			break;
 		}
 		ImGui_ImplGlfwGL3_KeyCallback(window,k,s,a,m);
@@ -426,7 +480,7 @@ int main(int argc, char *argv[])
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 
-		ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.01f, 2.0f); // grayscale ramp boundaries
+		ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.0f, 2.0f);
 	
 		ImGui::Columns(2, "mycolumns2", true);
         ImGui::Separator();
@@ -455,6 +509,15 @@ int main(int argc, char *argv[])
         }
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
+
+		static bool s_writeStereo = true;
+		ImGui::Checkbox("write stereo", &s_writeStereo); // enable/disable single pass stereo
+	
+		static bool s_showSingleLayer = false;
+		ImGui::Checkbox("Show Single Layer", &s_showSingleLayer);
+		static float s_displayedLayer = 0.0f;
+		ImGui::SliderFloat("Displayed Layer", &s_displayedLayer, 0.0f, NUM_LAYERS-1);
+		
 		ImGui::PopItemWidth();
         //////////////////////////////////////////////////////////////////////////////
 
@@ -464,8 +527,8 @@ int main(int argc, char *argv[])
 			model = glm::rotate(glm::mat4(1.0f), (float) dt, glm::vec3(0.0f, 1.0f, 0.0f) ) * model;
 		}
 
-		view = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(center) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(0.0f, 1.0f, 0.0f));
-		view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		view = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+		view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
 		viewprojection_r = perspective * view_r;
 		//////////////////////////////////////////////////////////////////////////////
 				
@@ -485,16 +548,21 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 
 		/************* update experimental  parameters ******************/
+		shaderProgram.update("uWriteStereo", s_writeStereo); 	  // lower grayscale ramp boundary
+
+		showTexShader.update("layer", s_displayedLayer);
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// /////////////////////////////
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
-		// clear output image (very slow!)
-		OPENGLCONTEXT->activeTexture(GL_TEXTURE6);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (int) getResolution(window).x/2, (int)getResolution(window).y, GL_RGBA, GL_FLOAT, &texData[0]);
-		OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+		// clear output texture
+		clearOutputTexture( outputTexture );
+
+		// reset atomic buffers
+		GLuint a[3] = {0,0,0};
+		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0 , sizeof(GLuint) * 3, a);
 
 		// render left image
 		uvwRenderPass.render();
@@ -505,8 +573,17 @@ int main(int argc, char *argv[])
 		renderPass.render();
 
 		// display right image
-		showTex.render();
+		if(s_showSingleLayer)
+		{
+			showTex.render();
+		}
+		else
+		{
+			composeTexArray.render();
+		}
 
+
+		
 		ImGui::Render();
 		//////////////////////////////////////////////////////////////////////////////
 	});

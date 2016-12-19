@@ -523,3 +523,20 @@ GLuint createTexture(int width, int height, GLenum internalFormat, GLsizei level
 
 	return texHandle;
 }
+
+GLuint createTextureArray(int width, int height, int length, GLenum internalFormat, GLsizei levels)
+{
+	GLuint texHandle;
+	glGenTextures(1, &texHandle);
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+	OPENGLCONTEXT->bindTexture(texHandle, GL_TEXTURE_2D_ARRAY);
+	glTexStorage3D(GL_TEXTURE_2D_ARRAY, levels, internalFormat, width, height, length);	
+	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	OPENGLCONTEXT->bindTexture(0);
+
+	return texHandle;
+}
