@@ -552,6 +552,10 @@ int main(int argc, char *argv[])
 	static bool predictPose = false;
 	
 	
+	// coordinates of the touch pad
+	float old_touch_x = 0.5f;
+	float old_touch_y = 0.5f;
+
 	auto vrEventHandler = [&](const vr::VREvent_t & event)
 	{
 		switch( event.eventType )
@@ -559,11 +563,46 @@ int main(int argc, char *argv[])
 			case vr::VREvent_ButtonPress:
 			{
 				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				DEBUGLOG->log("button press: ", event.data.controller.button);
+				
+				switch(event.data.controller.button)
+				{
+				case vr::k_EButton_Axis0: // touchpad
+						activeView = (activeView + 1) % NUM_VIEWS;
+					break;
+				case vr::k_EButton_Axis1: // trigger
+						activeView = (activeView <= 0) ? NUM_VIEWS - 1 : activeView - 1;
+					break;
+				case vr::k_EButton_Grip: // grip
+					//TODO do something with the model matrix
+					predictPose = !predictPose; // DEBUG
+					break;
+				}
 
-				activeView = (activeView + 1) % NUM_VIEWS;
+				DEBUGLOG->log("button press: ", event.data.controller.button);
 				break;
 			}
+			case vr::VREvent_ButtonTouch:
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+				{ 
+					old_touch_x = 0.5f; 
+					old_touch_y = 0.5f; 
+				}
+				break;
+			case vr::VREvent_TouchPadMove:
+
+				DEBUGLOG->log("touchpad move: ", glm::vec2(event.data.mouse.x, event.data.mouse.y) );
+
+				float d_x = event.data.mouse.x - old_touch_x;
+				float d_y = event.data.mouse.y - old_touch_y;
+				
+				if ( turntable.getDragActive() )
+				{
+					turntable.dragBy(d_x, d_y, s_view);
+				}	
+
+				old_touch_x = event.data.mouse.x;
+				old_touch_y = event.data.mouse.y;
+				break;
 		}
 		return false;
 	};
