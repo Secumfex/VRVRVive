@@ -425,7 +425,8 @@ int main(int argc, char *argv[])
 	ShaderProgram gridWarpShader("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", s_shaderDefines);
 	RenderPass gridWarp(&gridWarpShader, &FBO_warp);
 	gridWarp.addRenderable(&grid);
-	
+	static bool useGridWarp = false;
+
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	RenderPass showTex(&showTexShader,0);
@@ -549,7 +550,7 @@ int main(int argc, char *argv[])
 
 	static int  leftDebugView = 14;
 	static int rightDebugView = 15;
-	static bool predictPose = false;
+	static bool predictPose = true;
 	
 	// coordinates of the touch pad
 	static bool  is_touchpad_touched = false;
@@ -575,7 +576,7 @@ int main(int argc, char *argv[])
 					break;
 				case vr::k_EButton_Grip: // grip
 					//TODO do something with the model matrix
-					predictPose = !predictPose; // DEBUG
+					useGridWarp = !useGridWarp; // DEBUG
 					break;
 				}
 
@@ -840,7 +841,6 @@ int main(int argc, char *argv[])
 		//++++++++++++++ DEBUG
 
 		//++++++++++++++ DEBUG
-		static bool useGridWarp = false;
 		ImGui::Checkbox("Use Grid Warp", &useGridWarp);
 		//++++++++++++++ DEBUG
 
