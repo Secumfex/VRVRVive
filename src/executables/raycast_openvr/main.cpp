@@ -405,16 +405,16 @@ int main(int argc, char *argv[])
 	
 	///////////////////////   Simple Warp Renderpass    //////////////////////////
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
-	auto m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
-	m_pWarpingShader->update( "blendColor", 1.0f );
+	ShaderProgram quadWarpShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
+	quadWarpShader.update( "blendColor", 1.0f );
 
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_warp(m_pWarpingShader->getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_warp_r(m_pWarpingShader->getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_warp(quadWarpShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+	FrameBufferObject FBO_warp_r(quadWarpShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
 
-	auto m_pWarpingThread = new RenderPass(m_pWarpingShader, &FBO_warp);
-	m_pWarpingThread->addRenderable(&quad);
-	//m_pWarpingThread->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	RenderPass quadWarp(&quadWarpShader, &FBO_warp);
+	quadWarp.addRenderable(&quad);
+	//quadWarp.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	DEBUGLOG->outdent();
 
 	OPENGLCONTEXT->bindTextureToUnit(FBO_warp.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
@@ -839,6 +839,11 @@ int main(int argc, char *argv[])
 		ImGui::Checkbox("Predict HMD Pose", &predictPose);
 		//++++++++++++++ DEBUG
 
+		//++++++++++++++ DEBUG
+		static bool useGridWarp = false;
+		ImGui::Checkbox("Use Grid Warp", &useGridWarp);
+		//++++++++++++++ DEBUG
+
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
@@ -915,7 +920,9 @@ int main(int argc, char *argv[])
 					}
 				}
 			}
+			//++++++++++++++++++++++++++++++++//
 
+			//++++++++++++++ DEBUG +++++++++++//
 			// quickly do a depth pass of the models
 			if ( ovr.m_pHMD )
 			{
@@ -1070,7 +1077,7 @@ int main(int argc, char *argv[])
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		FBO_warp_r.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		if (ovr.m_pHMD) // submit images only when finished
+		if (ovr.m_pHMD) // render controller models if possible
 		{
 			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Render Models");
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
@@ -1085,42 +1092,45 @@ int main(int argc, char *argv[])
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
 		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Warping");
-		// warp left
-		//m_pWarpingThread->setFrameBufferObject( &FBO_warp );
-		//m_pWarpingShader->update( "tex", 12 ); // last result left
-		//m_pWarpingShader->update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-		//m_pWarpingShader->update( "newView", s_view ); // most current view
-		//m_pWarpingShader->update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
-		//m_pWarpingThread->render();
+
 		
-		//++++++++ DEBUG +++++++++
-		gridWarp.setFrameBufferObject(&FBO_warp);
-		gridWarpShader.update( "tex", 12 ); // last result left
-		gridWarpShader.update( "depth_map", 24); // last first hit map
-		gridWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-		gridWarpShader.update( "newView", s_view ); // most current view
-		gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
-		gridWarp.render();
-		//++++++++ DEBUG +++++++++
+		if (!useGridWarp)
+		{
+			// warp left
+			quadWarp.setFrameBufferObject( &FBO_warp );
+			quadWarpShader.update( "tex", 12 ); // last result left
+			quadWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
+			quadWarpShader.update( "newView", s_view ); // most current view
+			quadWarpShader.update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
+			quadWarp.render();
 
-		// warp right
-		//m_pWarpingThread->setFrameBufferObject( &FBO_warp_r );
-		//m_pWarpingShader->update( "tex", 13 ); // last result right
-		//m_pWarpingShader->update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-		//m_pWarpingShader->update( "newView", s_view_r); // most current view
-		//m_pWarpingShader->update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
-		//m_pWarpingThread->render();
+			// warp right
+			quadWarp.setFrameBufferObject( &FBO_warp_r );
+			quadWarpShader.update( "tex", 13 ); // last result right
+			quadWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+			quadWarpShader.update( "newView", s_view_r); // most current view
+			quadWarpShader.update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
+			quadWarp.render();
+		}
+		else
+		{
+			gridWarp.setFrameBufferObject(&FBO_warp);
+			gridWarpShader.update( "tex", 12 ); // last result left
+			gridWarpShader.update( "depth_map", 24); // last first hit map
+			gridWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "newView", s_view ); // most current view
+			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
+			gridWarp.render();
 
-		//++++++++ DEBUG +++++++++
-		gridWarp.setFrameBufferObject(&FBO_warp_r);
-		gridWarpShader.update( "tex", 13 ); // last result left
-		gridWarpShader.update( "depth_map", 25); // last first hit map
-		gridWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-		gridWarpShader.update( "newView", s_view_r ); // most current view
-		gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
-		gridWarp.render();
-		//++++++++ DEBUG +++++++++
 
+			gridWarp.setFrameBufferObject(&FBO_warp_r);
+			gridWarpShader.update( "tex", 13 ); // last result left
+			gridWarpShader.update( "depth_map", 25); // last first hit map
+			gridWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "newView", s_view_r ); // most current view
+			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
+			gridWarp.render();
+		}
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
 
