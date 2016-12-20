@@ -13,7 +13,7 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
 
 // images
-layout(binding = 0, rgba16f) restrict uniform image2DArray output_image;
+layout(binding = 0, rgba16f) writeonly uniform image2DArray output_image;
 
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
 // color mapping related uniforms 
@@ -73,19 +73,21 @@ vec4 transferFunction(int value)
 void reproject(vec4 sampleColor, ivec2 texelCoord_r, int layerIdx)
 {
 	//read old value
-	vec4 curColor = imageLoad( output_image, ivec3(texelCoord_r, layerIdx) );
+	//vec4 curColor = imageLoad( output_image, ivec3(texelCoord_r, layerIdx) );
 
 	//TODO compute segment length from ray angle to view vector (multiply with uStepSize)
 
 	//compute accumulated value
-	curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
-	curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
-	vec4 result_color = curColor;
+	//curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
+	//curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
+	//vec4 result_color = curColor;
 
 	//result_color = curColor + vec4( float(layerIdx)/64.0 ); // DEBUG
 
 	// write into texture
-	imageStore( output_image, ivec3(texelCoord_r, layerIdx), result_color );
+	//imageStore( output_image, ivec3(texelCoord_r, layerIdx), result_color );
+	imageStore( output_image, ivec3(texelCoord_r, layerIdx), sampleColor );
+	//imageStore(output_image, ivec3(texelCoord_r, layerIdx), vec4( float(layerIdx) / 16.0));
 }
 
 vec2 reprojectCoords(vec3 curPos)

@@ -19,12 +19,15 @@ layout(location = 0) out vec4 fragColor;
 void main() 
 {
 	float textureWidth = float( textureSize( tex, 0 ).x );
-	int initialLayerIdx = (uBlockWidth - ( int(passPosition.xy * textureWidth) % uBlockWidth ) - 1 ); // this defines the "entry" layer for this pixel
+	//int initialLayerIdx = (uBlockWidth - ( int(passPosition.x * textureWidth) % uBlockWidth ) - 1 ); // this defines the "entry" layer for this pixel
+	int initialLayerIdx = 0; // this defines the "entry" layer for this pixel
 
 	fragColor = vec4(0,0,0,0);
 	for (int i = textureSize(tex, lod).z - 1; i >= 0; i--)
+	//for (int i = 0; i < textureSize(tex, lod).z; i++)
 	{
 		float sampleLayerIdx = float( (initialLayerIdx + i) % uBlockWidth);
+		//float sampleLayerIdx = float(i);
 		vec4 texColor = texture(tex, vec3(passPosition.xy, sampleLayerIdx) ); // blend
 		fragColor.rgb = texColor.rgb + (1.0 - texColor.a) * fragColor.rgb;
 		fragColor.a   = texColor.a   + (1.0 - texColor.a) * fragColor.a;

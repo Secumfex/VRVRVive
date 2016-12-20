@@ -54,7 +54,7 @@ const char* SHADER_DEFINES[] = {
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-static const int NUM_LAYERS = 32;
+static const int NUM_LAYERS = 16;
 const glm::vec2 TEXTURE_RESOLUTION = glm::vec2( 800, 800);
 
 static std::vector<float> s_texData((int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, 0.0f);
@@ -214,8 +214,8 @@ int main(int argc, char *argv[])
 	glm::mat4 model = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) , glm::vec3(0,1,0));
-	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) , glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0,1,0));
+	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
 	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 
 	// generate and bind right view image texture
 	GLuint outputTexture = createTextureArray((int) getResolution(window).x/2, (int)getResolution(window).y, NUM_LAYERS, GL_RGBA16F);
-	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture,  0, GL_RGBA16F, GL_READ_WRITE, 0, GL_TRUE); // layer will be ignored, entire array will be bound
+	OPENGLCONTEXT->bindImageTextureToUnit(outputTexture,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
 	OPENGLCONTEXT->bindTextureToUnit(outputTexture, GL_TEXTURE6, GL_TEXTURE_2D_ARRAY); // for display
 
 	// DEBUG
@@ -527,8 +527,8 @@ int main(int argc, char *argv[])
 			model = glm::rotate(glm::mat4(1.0f), (float) dt, glm::vec3(0.0f, 1.0f, 0.0f) ) * model;
 		}
 
-		view = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-		view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+		view = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0,0.0,0.0), glm::vec3(center) - glm::vec3(s_eyeDistance / 2.0, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance / 2.0, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		viewprojection_r = perspective * view_r;
 		//////////////////////////////////////////////////////////////////////////////
 				
@@ -581,8 +581,6 @@ int main(int argc, char *argv[])
 		{
 			composeTexArray.render();
 		}
-
-
 		
 		ImGui::Render();
 		//////////////////////////////////////////////////////////////////////////////
