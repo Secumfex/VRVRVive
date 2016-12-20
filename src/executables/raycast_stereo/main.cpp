@@ -28,7 +28,7 @@ static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten
 static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
-static float s_eyeDistance = 0.15f;
+static float s_eyeDistance = 0.065f;
 
 static const char* s_models[] = {"CT Head"};
 
@@ -211,14 +211,21 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 	
 	/////////////////////     Scene / View Settings     //////////////////////////
+	static float s_zNear = 0.1f;
+	static float s_zFar = 10.0f;
+	static float s_fovY = glm::radians(45.0f);
+
 	glm::mat4 model = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
 	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0,1,0));
 	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+	glm::mat4 perspective = glm::perspective( s_fovY, getRatio(window), s_zNear, 10.f);
 	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
+
+	static float s_nearH = s_zNear  * std::tanf( s_fovY );
+	static float s_nearW = s_nearH * TEXTURE_RESOLUTION.x / (TEXTURE_RESOLUTION.y);
 
 	// create Volume and VertexGrid
 	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
@@ -459,7 +466,7 @@ int main(int argc, char *argv[])
 		float z_near = -1.0f;
 		float z_far = -10.0f;
 
-		float resolution = 512.0f;
+		float resolution = TEXTURE_RESOLUTION.x;
 		glm::vec4 p( 0.5f, 0.5f, 0.0f, 1.0f); // gl_FragCoord (bottom leftmost pixel)
 		glm::vec4 p_c = glm::vec4( floor(p.x) / resolution, p.y / resolution, p.z, p.w); // uv of pixel corner 
 		glm::vec4 p_v = glm::inverse(perspective) * // -w .. w
@@ -482,7 +489,18 @@ int main(int argc, char *argv[])
 		DEBUGLOG->log("left view coord for far point: ", p_v0);
 		DEBUGLOG->log("left uv coord for far point: ", p_c0);
 		DEBUGLOG->log("left layer idx: ", p_l0);
+
 		
+		float e = s_eyeDistance;
+		float w = resolution;
+		// float t = z_far / z_near; // defined above
+		float nW = s_nearW;
+		float offSet = (e * w) / (t * nW * 2.0f);
+
+		float pLeft_0 = floor( 0.5f ) + offSet;
+		float pLeft_1 = floor( resolution - 0.5f ) + offSet;
+		float pLeft_2 = floor( (resolution / 2.0f) - 0.5f ) + offSet;
+		DEBUGLOG->log("pLeft_0 ", pLeft_0);
 	}
 
 
@@ -576,9 +594,30 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uWriteStereo", s_writeStereo); 	  // lower grayscale ramp boundary
 
 		showTexShader.update("layer", s_displayedLayer);
+
+		float s_zRayEnd  = abs(eye.z) + sqrt(2.0);
+		float s_zRayStart = abs(eye.z) - sqrt(2.0);
+		float e = s_eyeDistance;
+		float w = TEXTURE_RESOLUTION.x;
+		float t_near = (s_zRayStart) / s_zNear;
+		float t_far  = (s_zRayEnd)  / s_zNear;
+		float nW = s_nearW;
+		float pixelOffsetFar  = (1.0f / t_far)  * (e * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
+		float pixelOffsetNear = (1.0f / t_near) * (e * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
+		
+		composeTexArrayShader.update("uPixelOffsetFar",  pixelOffsetFar);
+		composeTexArrayShader.update("uPixelOffsetNear", pixelOffsetNear);
+		
+		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
+		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+		ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
+		ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
+		ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
+		//ImGui::SliderFloat("zBack", &s_zRayEnd, s_zNear, 20.0f);
+		//ImGui::SliderFloat("zFront",&s_zRayStart, s_zNear, 20.0f);
 		//////////////////////////////////////////////////////////////////////////////
 		
-		////////////////////////////////  RENDERING //// /////////////////////////////
+		////////////////////////////////  RENDERING //// ///////////////////////////// 
 		glDisable(GL_BLEND);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
@@ -596,6 +635,7 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
+		glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
 		// display right image
 		if(s_showSingleLayer)

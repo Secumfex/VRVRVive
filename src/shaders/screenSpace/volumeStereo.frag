@@ -139,13 +139,15 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 		if ( curTexelCoord_r != texelCoord_r ) //changed
 		{
 			// reproject color, then reset segment color
-
 			if (
 			 uWriteStereo
 			 //&& segmentColor_r.a > 0.005
 			 ) // don't bother if nearly invisible
 			{
-				reproject( segmentColor_r, texelCoord_r, layerIdx );
+				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)
+				{
+					reproject( segmentColor_r, ivec2(i, texelCoord_r.y) , layerIdx );
+				}
 			}
 			texelCoord_r = curTexelCoord_r;
 			segmentColor_r = vec4(0); // reset for next segment
