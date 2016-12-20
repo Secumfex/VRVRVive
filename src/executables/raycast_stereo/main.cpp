@@ -227,13 +227,6 @@ int main(int argc, char *argv[])
 	Quad quad;
 	Grid grid(100, 100, 0.1f, 0.1f);
 
-	//int w = getResolution(window).x/2;
-	//int h = getResolution(window).y;
-	//float s = 16.0f; 
-	//float sw = w / s;
-	//float sh = h / s; 
-	//Grid grid(w / s, h / s, 2.0f / sw, 2.0f / sh, true); 
-
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
 	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
@@ -428,38 +421,70 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	//++++++++++++++ DEBUG
-	glm::mat4 m = 
-		(perspective * // -1 .. -1
-			view_r * glm::inverse(view) * // from one view to the other
-		glm::inverse(perspective) ) * // world with non-one w
+	{
+		glm::mat4 m = 
+			(perspective * // -1 .. -1
+				view_r * glm::inverse(view) * // from one view to the other
+			glm::inverse(perspective) ) * // world with non-one w
 		
-		glm::translate(glm::vec3(-1.f, -1.f, -1.f)) * //-1..1 
-		glm::scale(glm::vec3(2.0f,2.0f,2.0f)) // 0..2
-		;
+			glm::translate(glm::vec3(-1.f, -1.f, -1.f)) * //-1..1 
+			glm::scale(glm::vec3(2.0f,2.0f,2.0f)) // 0..2
+			;
 	
-	DEBUGLOG->log("m", m);
+		DEBUGLOG->log("m", m);
 
-	glm::vec4 p1(0.0f,0.0f,0.0f,1.0f); // bottom left on near plane
-	glm::vec4 p2(0.5f,0.5f,1.0f,1.0f); // center on far plane
-	glm::vec4 p3(0.5f,0.5f,0.0f,1.0f); // center on near plane
+		glm::vec4 p1(0.0f,0.0f,0.0f,1.0f); // bottom left on near plane
+		glm::vec4 p2(0.5f,0.5f,1.0f,1.0f); // center on far plane
+		glm::vec4 p3(0.5f,0.5f,0.0f,1.0f); // center on near plane
 
-	DEBUGLOG->log("bottom left: ", m * p1);
-	DEBUGLOG->log("center far : ", m * p2);
-	DEBUGLOG->log("center near: ", m * p3);
+		DEBUGLOG->log("bottom left: ", m * p1);
+		DEBUGLOG->log("center far : ", m * p2);
+		DEBUGLOG->log("center near: ", m * p3);
 
-	glm::vec4 p1n =  (m * p1) / (m * p1).w; // bottom left on near plane
-	glm::vec4 p2n =  (m * p2) / (m * p2).w; // center on far plane
-	glm::vec4 p3n =  (m * p3) / (m * p3).w; // center on near plane
+		glm::vec4 p1n =  (m * p1) / (m * p1).w; // bottom left on near plane
+		glm::vec4 p2n =  (m * p2) / (m * p2).w; // center on far plane
+		glm::vec4 p3n =  (m * p3) / (m * p3).w; // center on near plane
 
-	DEBUGLOG->log("bottom left {normalized}: ", p1n);
-	DEBUGLOG->log("center far  {normalized}: ", p2n);
-	DEBUGLOG->log("center near {normalized}: ", p3n);
+		DEBUGLOG->log("bottom left {normalized}: ", p1n);
+		DEBUGLOG->log("center far  {normalized}: ", p2n);
+		DEBUGLOG->log("center near {normalized}: ", p3n);
 
-	glm::mat4 bias = glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f));
+		glm::mat4 bias = glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 	
-	DEBUGLOG->log("bottom left : ", bias * p1n);
-	DEBUGLOG->log("center far  : ", bias * p2n);
-	DEBUGLOG->log("center near : ", bias * p3n);
+		DEBUGLOG->log("bottom left : ", bias * p1n);
+		DEBUGLOG->log("center far  : ", bias * p2n);
+		DEBUGLOG->log("center near : ", bias * p3n);
+	}
+	{
+		float z_near = -1.0f;
+		float z_far = -10.0f;
+
+		float resolution = 512.0f;
+		glm::vec4 p( 0.5f, 0.5f, 0.0f, 1.0f); // gl_FragCoord (bottom leftmost pixel)
+		glm::vec4 p_c = glm::vec4( floor(p.x) / resolution, p.y / resolution, p.z, p.w); // uv of pixel corner 
+		glm::vec4 p_v = glm::inverse(perspective) * // -w .. w
+						glm::translate(glm::vec3(-1.f, -1.f, -1.f)) * //-1..1 
+						glm::scale(glm::vec3(2.0f,2.0f,2.0f)) * p_c;// 0..2
+		p_v = p_v / p_v.w; // divide by w
+		
+		float t = z_far / z_near; // constant for t
+		glm::vec4 p_f = glm::vec4( t * p_v.x, p_v.y, t * p_v.z, p_v.w ); // corner of pixel (z becomes z_far)
+		glm::vec4 p_v0 = view * glm::inverse(view_r) * p_f; // point in left view
+		glm::vec4 p_p0 = perspective * p_v0;
+		p_p0 = p_p0 / p_p0.w;
+
+		glm::vec4 p_c0 = glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * // 0..1
+						glm::scale(glm::vec3(0.5f,0.5f,0.5f)) * p_p0; // -0.5..0.5
+		glm::vec4 p_0 = glm::scale(glm::vec3(resolution, resolution, 1.0f)) * p_c0; // texture relative coordinates
+		int p_l0 = 	(NUM_LAYERS - ( (int) p_0.x % NUM_LAYERS) - 1 );
+						
+		DEBUGLOG->log("view coord for far point: ", p_f);
+		DEBUGLOG->log("left view coord for far point: ", p_v0);
+		DEBUGLOG->log("left uv coord for far point: ", p_c0);
+		DEBUGLOG->log("left layer idx: ", p_l0);
+		
+	}
+
 
 	//++++++++++++++ DEBUG
 
