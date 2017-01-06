@@ -762,6 +762,14 @@ int main(int argc, char *argv[])
 			quadWarpShader.update( "uFarPlane", warpFarPlane ); 
 		}
 
+		{
+			static float scale = s_scale[0][0];
+			if (ImGui::SliderFloat("Scale", &scale, 0.01, 5.0f))
+			{
+				s_scale = glm::scale(glm::vec3(scale));
+			}
+		}
+
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
