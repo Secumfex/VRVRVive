@@ -193,7 +193,7 @@ int main(int argc, char *argv[])
 
 	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, -1.0f, 6.0f);
 	/// perspective projection is experimental; yields weird warping effects due to vertex interpolation of uv-coordinates
-	glm::mat4 perspective = glm::perspective(glm::radians(45.f), getRatio(window), 1.0f, 10.f);
+	glm::mat4 perspective = glm::perspective(glm::radians(45.f), 1.0f, 1.0f, 10.f);
 
 	// create Volume
 	VolumeSubdiv volume(1.0f, 1.0f, 1.26315f, 3);

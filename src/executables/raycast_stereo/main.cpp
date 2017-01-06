@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
 	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
 	glm::mat4 view   = glm::lookAt(glm::vec3(eye) - glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) - glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0,1,0));
 	glm::mat4 view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(s_eyeDistance/2.0f,0.0f,0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance / 2.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	glm::mat4 perspective = glm::perspective( s_fovY, getRatio(window), s_zNear, 10.f);
+	glm::mat4 perspective = glm::perspective( s_fovY, 1.0f, s_zNear, 10.f);
 	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
 
