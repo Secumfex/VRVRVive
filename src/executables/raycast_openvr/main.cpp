@@ -401,7 +401,7 @@ int main(int argc, char *argv[])
 	
 	///////////////////////   Simple Warp Renderpass    //////////////////////////
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
-	ShaderProgram quadWarpShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
+	ShaderProgram quadWarpShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", s_shaderDefines);
 	quadWarpShader.update( "blendColor", 1.0f );
 	quadWarpShader.update( "uFarPlane", s_far );
 
