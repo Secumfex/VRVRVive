@@ -17,6 +17,10 @@ uniform mat4 oldView;
 uniform mat4 newView;
 uniform mat4 projection; //used for both
 
+#ifdef WARP_SET_FAR_PLANE
+uniform float uFarPlane;
+#endif
+
 //!< out-variables
 layout(location = 0) out vec4 fragColor;
 
@@ -24,6 +28,11 @@ void main()
 {
 	// assume position is on farPlane (z := 1)
 	vec4 pos = vec4( ( (passPosition.xy * 2.0) - 1.0), 1.0, 1.0);
+
+#ifdef WARP_SET_FAR_PLANE
+	pos.z = (-uFarPlane * projection[2][2] - projection[3][2]) / (uFarPlane);
+#endif
+
 	vec4 reprojected = inverse(projection) * pos;
 
 	reprojected /= reprojected.w; //view new

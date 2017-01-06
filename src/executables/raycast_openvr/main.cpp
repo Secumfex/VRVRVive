@@ -46,14 +46,10 @@ static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (secon
 static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET"
+	"RANDOM_OFFSET",
+	"WARP_SET_FAR_PLANE"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
-
-struct TFPoint{
-	int v; // value 
-	glm::vec4 col; // mapped color
-};
 
 static TransferFunction s_transferFunction;
 
@@ -407,6 +403,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
 	ShaderProgram quadWarpShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
 	quadWarpShader.update( "blendColor", 1.0f );
+	quadWarpShader.update( "uFarPlane", s_far );
 
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 	FrameBufferObject FBO_warp(quadWarpShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
@@ -759,7 +756,12 @@ int main(int argc, char *argv[])
 		//static bool useOcclusionMap = true;
 		//ImGui::Checkbox("Pause First Hit Updated", &pauseFirstHitUpdates);
 		//ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
-		
+		static float warpFarPlane = s_far;
+		if (ImGui::SliderFloat("Far", &warpFarPlane, s_near, s_far))
+		{
+			quadWarpShader.update( "uFarPlane", warpFarPlane ); 
+		}
+
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);

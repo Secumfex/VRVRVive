@@ -339,7 +339,8 @@ public:
 		m_pSlowShader->update("projection", m_perspective);
 		m_pSlowShader->update("color", glm::vec4(1.0));
 
-		m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag");
+		std::vector<std::string> defines(1, "WARP_SET_FAR_PLANE");
+		m_pWarpingShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", defines);
 		m_pWarpingShader->bindTextureOnUse("tex", m_pFboDisplay[0]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		m_pWarpingShader->update( "blendColor", 0.85f );
 		m_pWarpingShader->update( "newView", m_view );
@@ -364,7 +365,7 @@ public:
 		m_view = glm::lookAt(glm::vec3(m_eye), glm::vec3(m_center), glm::vec3(0,1,0));
 		m_viewRenderingPresent = m_view;
 		m_viewRenderingIssued= m_view;
-		m_perspective = glm::perspective(glm::radians(65.f), ((float)(SCREEN_WIDTH/2)/(float)SCREEN_HEIGHT), 0.1f, 20.f);
+		m_perspective = glm::perspective(glm::radians(65.f), ((float)(SCREEN_WIDTH/2)/(float)SCREEN_HEIGHT), 0.1f, 10.f);
 	}
 
 	void initThreads()
@@ -472,6 +473,13 @@ public:
 				m_view = v.view;
 				m_pWarpingShader->update( "newView", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
 				m_pGeomShader->update( "view", m_view ); // matrix that transforms projspace_new to projspace_old (missing homogenization)
+
+				// update far plane used in warping
+				static float farPlane = 10.0f;
+				if (ImGui::SliderFloat("Far", &farPlane, 0.1f, 20.0f))
+				{
+					m_pWarpingShader->update( "uFarPlane", farPlane ); 
+				}
 			}
 
 			m_pSlowThread->render();
