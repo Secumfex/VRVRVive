@@ -241,8 +241,8 @@ void main()
 	}
 
 	// this ray's write-to layer idx
-	float textureWidth = float( textureSize( front_uvw_map, 0 ).x );
-	int layerIdx = (uBlockWidth - ( int(passUV.x * textureWidth) % uBlockWidth ) - 1 );
+	//float textureWidth = float( textureSize( front_uvw_map, 0 ).x );
+	int layerIdx = (uBlockWidth - ( int(gl_FragCoord.x-0.5) % uBlockWidth ) - 1 );
 
 	// linearize depth
 	float startDistance = abs(getViewCoord(vec3(passUV, uvwStart.a)).z);
@@ -276,5 +276,6 @@ void main()
 	}
 
 	// DEBUG reproject
-	// reproject(fragColor, uvwStart.xyz);
+	 //reproject(fragColor, uvwStart.xyz);
+	 //reproject(vec4(float(layerIdx)/32), ivec2(reprojectCoords(uvwStart.xyz)), layerIdx);
 }

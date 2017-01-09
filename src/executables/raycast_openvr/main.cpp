@@ -60,7 +60,7 @@ namespace Frame{
 	static Profiler FrameProfiler;
 	static OpenGLTimings Timings[2];
 	int FRONT_FRAME_IDX = 0;
-	int BACK_FRAME_IDX= 0;
+	int BACK_FRAME_IDX= 1;
 	void SwapFrameIdx() { int tmp = FRONT_FRAME_IDX; FRONT_FRAME_IDX = BACK_FRAME_IDX;  BACK_FRAME_IDX = tmp; }
 }
 

@@ -17,7 +17,7 @@ in vec2 passUV;
 
 // textures
 uniform sampler1D transferFunctionTex;
-uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
+uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
@@ -174,7 +174,7 @@ void main()
 
 	// linearize depth
 	float startDistance = abs(getViewCoord(vec3(passUV, uvwStart.a)).z);
-	float endDistance = abs(getViewCoord(vec3(passUV, uvwEnd.a)).z);
+	float endDistance   = abs(getViewCoord(vec3(passUV, uvwEnd.a)).z);
 
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
