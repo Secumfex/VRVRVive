@@ -458,7 +458,6 @@ int main(int argc, char *argv[])
 
 	// Setup ImGui binding
 	ImGui_ImplSdlGL3_Init(window);
-    bool show_test_window = true;
 
 	Turntable turntable;
 	float old_x;
@@ -752,10 +751,7 @@ int main(int argc, char *argv[])
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		ImGui::Separator();
-		//static bool pauseFirstHitUpdates = false;
-		//static bool useOcclusionMap = true;
-		//ImGui::Checkbox("Pause First Hit Updated", &pauseFirstHitUpdates);
-		//ImGui::Checkbox("Use Occlusion Map", &useOcclusionMap);
+
 		static float warpFarPlane = s_far;
 		if (ImGui::SliderFloat("Far", &warpFarPlane, s_near, s_far))
 		{

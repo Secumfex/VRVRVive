@@ -1,5 +1,17 @@
 #version 430
 
+////////////////////////////////     DEFINES      ////////////////////////////////
+#ifndef ALPHA_SCALE
+#define ALPHA_SCALE 20.0
+#endif
+
+#ifdef RANDOM_OFFSET 
+float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+#endif
+///////////////////////////////////////////////////////////////////////////////////
+
 // in-variables
 in vec2 passUV;
 
@@ -16,11 +28,16 @@ uniform float uWindowingRange;  // windowing value range
 uniform float uWindowingMinVal; // windowing lower bound
 
 // ray traversal related uniforms
-uniform float uStepSize;		// ray sampling step size
-uniform float uLodDepthScale;  // factor with wich depth influences sampled LoD and step size 
-uniform float uLodBias;        // depth at which lod begins to degrade
+uniform float uStepSize;	// ray sampling step size
+uniform float uLodMaxLevel; // factor with which depth influences sampled LoD and step size 
+uniform float uLodBegin;    // depth at which lod begins to degrade
+uniform float uLodRange;    // depth at which lod begins to degrade
 
+// auxiliary matrices
+uniform mat4 uViewToTexture;
 uniform mat4 uScreenToTexture;
+uniform mat4 uProjection;
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -47,12 +64,9 @@ struct RaycastResult
 };
 
 /**
-* @brief 'transfer-function' applied to value at a given distance to Camera.
-* shifts towards one color or the other
+* @brief 'transfer-function' applied to value.
 * @param value to be mapped to a color
-* @param depth parameter to shift towards front or back color
-*
-* @return mapped color corresponding to value at provided depth
+* @param stepSize used for alpha scaling
 */
 vec4 transferFunction(int value, float stepSize)
 {
@@ -61,22 +75,22 @@ vec4 transferFunction(int value, float stepSize)
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= 20.0 * stepSize;
+	color.a *= ALPHA_SCALE *  stepSize;
 	color.rgb *= (color.a);
 
 	return color;
 }
 
 /**
- * @brief retrieve value for a maximum intensity projection	
+ * @brief retrieve value for a raycast
  * 
  * @param startUVW start uvw coordinates
  * @param endUVW end uvw coordinates
  * @param stepSize of ray traversal
- * @param minValueThreshold to ignore values when deceeded (experimental parameter)
- * @param maxValueThreshold to ignore values when exceeded (experimental parameter)
+ * @param startDepth of ray (linearized or not)
+ * @param endDepth of ray (linearized or not)
  * 
- * @return sample point in volume, holding value and uvw coordinates
+ * @return RaycastResult consisiting of accumulated color, first hit and last hit
  */
 RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth)
 {
@@ -90,12 +104,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 
 	// traverse ray front to back rendering
 	float t = 0.01;
+	#ifdef RANDOM_OFFSET 
+		t = t * 2.0 * rand(passUV);
+	#endif
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		
-		float curDepth = mix( startDepth, endDepth, t); // stupid approx
-		float curLod = max(0.0, uLodDepthScale * (curDepth - uLodBias)); // bad approximation, but idc for now
+		float curDepth = mix(startDepth, endDepth, t);
+		float curLod = max(0.0, min(1.0, ((curDepth - uLodBegin) / uLodRange))) * uLodMaxLevel;
 		float curStepSize = stepSize * pow(2.0, curLod);
 		parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 
@@ -107,12 +124,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
-
-		// early ray-termination
-		if (curColor.a > 0.99)
-		{
-			break;
-		}
 		
 		// first hit?
 		if (result.firstHit.a > curDepth && sampleColor.a > 0.001)
@@ -120,13 +131,30 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			result.firstHit.rgb = curSample.uvw;
 			result.firstHit.a = curDepth;
 		} 
+		
+		// early ray-termination
+		if (curColor.a > 0.99)
+		{
+			break;
+		}
 
 		t += parameterStepSize;
 	}
 
-	result.color = curColor;
 	// return emission absorbtion result
+	result.color = curColor;
 	return result;
+}
+
+/**
+*   @param screenPos screen space position in [0..1]
+**/
+vec4 getViewCoord(vec3 screenPos)
+{
+	vec4 unProject = inverse(uProjection) * vec4((screenPos * 2.0) - 1.0, 1.0);
+	unProject /= unProject.w;
+
+	return unProject;
 }
 
 void main()
@@ -144,16 +172,33 @@ void main()
 		uvwStart.a = 0.0;
 	}
 
+	// linearize depth
+	float startDistance = abs(getViewCoord(vec3(passUV, uvwStart.a)).z);
+	float endDistance = abs(getViewCoord(vec3(passUV, uvwEnd.a)).z);
+
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
 		uStepSize    			// sampling step size
-		, uvwStart.a
-		, uvwEnd.a
+		, startDistance
+		, endDistance
 		);
 
 	// final color
 	fragColor = raycastResult.color;// * 0.8 + 0.2 * uvwStart; //debug
-	fragFirstHit = vec4(raycastResult.firstHit);
+	
+	if (raycastResult.firstHit.a > 0.0)
+	{
+		fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords
+		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4(raycastResult.firstHit.xyz, 1.0);
+		fragFirstHit.a = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
+
+		gl_FragDepth = fragFirstHit.a;
+	}
+	else
+	{
+		fragFirstHit = uvwEnd;
+		gl_FragDepth = 1.0;
+	}
 }

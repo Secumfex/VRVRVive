@@ -22,6 +22,12 @@ uniform float uStepSize;		// ray sampling step size
 // out-variables
 layout(location = 0) out vec4 fragColor;
 
+////////////////////////////////     DEFINES      ////////////////////////////////
+#ifndef ALPHA_SCALE
+#define ALPHA_SCALE 10.0
+#endif
+///////////////////////////////////////////////////////////////////////////////////
+
 /**
  * @brief Struct of a volume sample point
  */
@@ -46,7 +52,7 @@ vec4 transferFunction(int value)
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= 10.0 * uStepSize;
+	color.a *= ALPHA_SCALE * uStepSize;
 	color.rgb *= (color.a);
 
 	return color;
