@@ -717,7 +717,6 @@ int main(int argc, char *argv[])
 		Frame::Timings.getBack().timestamp("Frame End");
 		ImGui::Render();
 
-		glFinish();
 		SDL_GL_SwapWindow(window); // swap buffers
 		//////////////////////////////////////////////////////////////////////////////
 	}

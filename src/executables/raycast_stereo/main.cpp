@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
 	//glm::mat4 perspective = glm::ortho(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 10.f);
 	glm::mat4 viewprojection_r = perspective * view_r;
 
-	static float s_nearH = s_zNear  * std::tanf( s_fovY );
+	static float s_nearH = s_zNear  * std::tanf( s_fovY / 2.0f );
 	static float s_nearW = s_nearH * TEXTURE_RESOLUTION.x / (TEXTURE_RESOLUTION.y);
 
 	// create Volume and VertexGrid
@@ -613,8 +613,6 @@ int main(int argc, char *argv[])
 		ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
 		ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
 		ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
-		//ImGui::SliderFloat("zBack", &s_zRayEnd, s_zNear, 20.0f);
-		//ImGui::SliderFloat("zFront",&s_zRayStart, s_zNear, 20.0f);
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// ///////////////////////////// 
