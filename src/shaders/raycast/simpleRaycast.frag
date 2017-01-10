@@ -1,11 +1,23 @@
 #version 430
 
+////////////////////////////////     DEFINES      ////////////////////////////////
+#ifndef ALPHA_SCALE
+#define ALPHA_SCALE 20.0
+#endif
+
+#ifdef RANDOM_OFFSET 
+float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+#endif
+///////////////////////////////////////////////////////////////////////////////////
+
 // in-variables
 in vec2 passUV;
 
 // textures
 uniform sampler1D transferFunctionTex;
-uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
+uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
@@ -21,12 +33,6 @@ uniform float uStepSize;		// ray sampling step size
 
 // out-variables
 layout(location = 0) out vec4 fragColor;
-
-////////////////////////////////     DEFINES      ////////////////////////////////
-#ifndef ALPHA_SCALE
-#define ALPHA_SCALE 10.0
-#endif
-///////////////////////////////////////////////////////////////////////////////////
 
 /**
  * @brief Struct of a volume sample point
@@ -76,7 +82,11 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize)
 	vec4 curColor = vec4(0);
 
 	// traverse ray front to back rendering
-	for (float t = 0.01; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
+	float t = 0.01;
+	#ifdef RANDOM_OFFSET 
+	t = t * 2.0 * rand(passUV);
+	#endif
+	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 
@@ -94,6 +104,8 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize)
 		{
 			break;
 		}
+
+		t += parameterStepSize;
 	}
 
 	// return emission absorbtion result
