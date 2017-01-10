@@ -30,12 +30,15 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"ARRAY_TEXTURE"
+	//"ARRAY_TEXTURE"
+	"blub"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
 const glm::vec2 TEXTURE_RESOLUTION = glm::vec2( 800, 800);
 const glm::vec2 WINDOW_RESOLUTION = glm::vec2( 1600, 800);
+
+const int NUM_LAYERS = 1; // lol lets try this
 
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
@@ -118,21 +121,25 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/simpleRaycast.frag"); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag"); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
 	// DEBUG
 	generateTransferFunction();
 	updateTransferFunctionTex();
 
+	DEBUGLOG->log("FrameBufferObject Creation: synth ray casting layers"); DEBUGLOG->indent();
+	FrameBufferObject::s_internalFormat = GL_RGBA16F; // allow arbitrary values
+	FrameBufferObject synth_raycastLayerFBO(shaderProgram.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	FrameBufferObject::s_internalFormat = GL_RGBA; // default
+	DEBUGLOG->outdent(); 
+
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE4, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE5, GL_TEXTURE_2D);
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE0);
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	// generate and bind right view image texture
 	//GLuint textureArray = createTextureArray((int) getResolution(window).x/2, (int)getResolution(window).y, NUM_LAYERS, GL_RGBA16F);
@@ -145,7 +152,7 @@ int main(int argc, char *argv[])
 	shaderProgram.update("transferFunctionTex", 3);
 
 	// ray casting render pass
-	RenderPass renderPass(&shaderProgram);
+	RenderPass renderPass(&shaderProgram, &synth_raycastLayerFBO);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
@@ -154,13 +161,20 @@ int main(int argc, char *argv[])
 	///////////////////////   Show Texture Renderpass    //////////////////////////
 	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", s_shaderDefines);
 	RenderPass showTex(&showTexShader,0);
+	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	showTex.addRenderable(&quad);
+	showTex.setViewport(0,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	showTex.addEnable(GL_BLEND);
+
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D);
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
+
+	showTexShader.update("tex", 4);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
-	// Setup ImGui binding
 	// Setup ImGui binding
 	ImGui_ImplSdlGL3_Init(window);
 
@@ -313,6 +327,8 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 
 		/************* update experimental  parameters ******************/
+		shaderProgram.update("uProjection", s_perspective);
+		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) );
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// ///////////////////////////// 
@@ -324,7 +340,7 @@ int main(int argc, char *argv[])
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
 
-		//showTex.render();
+		showTex.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers
