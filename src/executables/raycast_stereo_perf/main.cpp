@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include <Core/Timer.h>
+#include <Core/DoubleBuffer.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -87,10 +88,7 @@ const int RIGHT = 1;
 
 namespace Frame {
 	static Profiler FrameProfiler;
-	static OpenGLTimings Timings[2];
-	int FRONT_FRAME_IDX = 0;
-	int BACK_FRAME_IDX = 1;
-	void SwapFrameIdx() { int tmp = FRONT_FRAME_IDX; FRONT_FRAME_IDX = BACK_FRAME_IDX;  BACK_FRAME_IDX = tmp; }
+	static SimpleDoubleBuffer<OpenGLTimings> Timings;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -514,33 +512,33 @@ int main(int argc, char *argv[])
 
 		ImGui::Checkbox("Perf Profiler", &frame_profiler_visible);
 		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
-		Frame::Timings[Frame::FRONT_FRAME_IDX].setEnabled(!pause_frame_profiler);
-		Frame::Timings[Frame::BACK_FRAME_IDX].setEnabled(!pause_frame_profiler);
-		Frame::Timings[Frame::FRONT_FRAME_IDX].updateReadyTimings();
-		Frame::Timings[Frame::BACK_FRAME_IDX].updateReadyTimings();
+		Frame::Timings.getFront().setEnabled(!pause_frame_profiler);
+		Frame::Timings.getBack().setEnabled(!pause_frame_profiler);
+		Frame::Timings.getFront().updateReadyTimings();
+		Frame::Timings.getBack().updateReadyTimings();
 
 		double frame_begin = 0.0;
 		double frame_end = 17.0;
-		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame Begin") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		if (Frame::Timings.getFront().m_timestamps.find("Frame Begin") != Frame::Timings.getFront().m_timestamps.end())
 		{
-			frame_begin = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame Begin").lastTime;
+			frame_begin = Frame::Timings.getFront().m_timestamps.at("Frame Begin").lastTime;
 		}
-		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame End") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		if (Frame::Timings.getFront().m_timestamps.find("Frame End") != Frame::Timings.getFront().m_timestamps.end())
 		{
-			frame_end = Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame End").lastTime;
+			frame_end = Frame::Timings.getFront().m_timestamps.at("Frame End").lastTime;
 		}
 
 		if (frame_profiler_visible)
 		{
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timers)
+			for (auto e : Frame::Timings.getFront().m_timers)
 			{
 				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timersElapsed)
+			for (auto e : Frame::Timings.getFront().m_timersElapsed)
 			{
 				Frame::FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps)
+			for (auto e : Frame::Timings.getFront().m_timestamps)
 			{
 				Frame::FrameProfiler.setMarkerByTag(e.first, e.second.lastTime);
 			}
@@ -548,8 +546,8 @@ int main(int argc, char *argv[])
 			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
 		}
 
-		Frame::SwapFrameIdx();
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
+		Frame::Timings.swap();
+		Frame::Timings.getBack().timestamp("Frame Begin");
 
 		ImGui::PopItemWidth();
         //////////////////////////////////////////////////////////////////////////////
@@ -624,23 +622,23 @@ int main(int argc, char *argv[])
 
 
 		// clear output texture
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Clear Array");
+		Frame::Timings.getBack().beginTimerElapsed("Clear Array");
 		clearOutputTexture( stereoOutputTextureArray );
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
 		// reset atomic buffers
 		GLuint a[3] = {0,0,0};
 		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0 , sizeof(GLuint) * 3, a);
 
 		// render left image
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Raycast Left");
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW_L");
+		Frame::Timings.getBack().timestamp("Raycast Left");
+		Frame::Timings.getBack().beginTimerElapsed("UVW_L");
 		uvwShaderProgram.update("view", s_view);
 		uvwRenderPass.setFrameBufferObject(&uvwFBO);
 		uvwRenderPass.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Raycast_L");
+		Frame::Timings.getBack().beginTimerElapsed("Raycast_L");
 		simpleRaycastShader.update("back_uvw_map", 2);
 		simpleRaycastShader.update("front_uvw_map", 4);
 		simpleRaycastShader.update("uScreenToTexture", s_modelToTexture * glm::inverse(model) * glm::inverse(s_view) * s_screenToView);
@@ -648,17 +646,17 @@ int main(int argc, char *argv[])
 		simpleRaycastShader.update("uProjection", s_perspective);
 		simpleRaycast.setFrameBufferObject(&FBO);
 		simpleRaycast.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Raycast Right");
+		Frame::Timings.getBack().timestamp("Raycast Right");
 		// render right image
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW_R");
+		Frame::Timings.getBack().beginTimerElapsed("UVW_R");
 		uvwShaderProgram.update("view", s_view_r);
 		uvwRenderPass.setFrameBufferObject(&uvwFBO_r);
 		uvwRenderPass.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Raycast_R");
+		Frame::Timings.getBack().beginTimerElapsed("Raycast_R");
 		simpleRaycastShader.update("back_uvw_map", 3);
 		simpleRaycastShader.update("front_uvw_map", 5);
 		simpleRaycastShader.update("uScreenToTexture", s_modelToTexture * glm::inverse(model) * glm::inverse(s_view_r) * s_screenToView);
@@ -666,31 +664,31 @@ int main(int argc, char *argv[])
 		simpleRaycastShader.update("uProjection", s_perspective);
 		simpleRaycast.setFrameBufferObject(&FBO_r);
 		simpleRaycast.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
 		// render stereo images in a single pass
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Raycast Stereo");
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW");
+		Frame::Timings.getBack().timestamp("Raycast Stereo");
+		Frame::Timings.getBack().beginTimerElapsed("UVW");
 		uvwShaderProgram.update("view", s_view);
 		uvwRenderPass.setFrameBufferObject(&uvwFBO);
 		uvwRenderPass.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("RaycastAndWrite");
+		Frame::Timings.getBack().beginTimerElapsed("RaycastAndWrite");
 		stereoRaycastShader.update("uScreenToTexture", s_modelToTexture * glm::inverse(model) * glm::inverse(s_view) * s_screenToView);
 		stereoRaycastShader.update("uViewToTexture", s_modelToTexture * glm::inverse(model) * glm::inverse(s_view));
 		stereoRaycastShader.update("uProjection", s_perspective);
 		stereoRaycast.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
 		glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
 		// compose right image from single pass output
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Compose");
+		Frame::Timings.getBack().beginTimerElapsed("Compose");
 		composeTexArray.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Finished");
+		Frame::Timings.getBack().timestamp("Finished");
 		// display fbo contents
 		showTexShader.updateAndBindTexture("tex", 7, FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 		showTex.setViewport((int)0, 0, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
@@ -716,7 +714,7 @@ int main(int argc, char *argv[])
 			showLayer.render();
 		}
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
+		Frame::Timings.getBack().timestamp("Frame End");
 		ImGui::Render();
 
 		glFinish();

@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include <Core/Timer.h>
+#include <Core/DoubleBuffer.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -58,10 +59,7 @@ static int s_curFPSidx = 0;
 
 namespace Frame{
 	static Profiler FrameProfiler;
-	static OpenGLTimings Timings[2];
-	int FRONT_FRAME_IDX = 0;
-	int BACK_FRAME_IDX= 1;
-	void SwapFrameIdx() { int tmp = FRONT_FRAME_IDX; FRONT_FRAME_IDX = BACK_FRAME_IDX;  BACK_FRAME_IDX = tmp; }
+	static SimpleDoubleBuffer<OpenGLTimings> Timings;
 }
 
 float s_near = 0.1f;
@@ -770,43 +768,43 @@ int main(int argc, char *argv[])
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
 		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
-		Frame::Timings[Frame::FRONT_FRAME_IDX].setEnabled(!pause_frame_profiler);
-		Frame::Timings[Frame::BACK_FRAME_IDX].setEnabled(!pause_frame_profiler);
+		Frame::Timings.getFront().setEnabled(!pause_frame_profiler);
+		Frame::Timings.getBack().setEnabled(!pause_frame_profiler);
 		
 		// update whatever is finished
-		Frame::Timings[Frame::FRONT_FRAME_IDX].updateReadyTimings();
-		Frame::Timings[Frame::BACK_FRAME_IDX].updateReadyTimings();
+		Frame::Timings.getFront().updateReadyTimings();
+		Frame::Timings.getBack().updateReadyTimings();
 
 		float frame_begin = 0.0;
 		float frame_end = 17.0;
-		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame Begin") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		if (Frame::Timings.getFront().m_timestamps.find("Frame Begin") != Frame::Timings.getFront().m_timestamps.end())
 		{
-			frame_begin = (float) Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame Begin").lastTime;
+			frame_begin = (float) Frame::Timings.getFront().m_timestamps.at("Frame Begin").lastTime;
 		}
-		if (Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.find("Frame End") != Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.end())
+		if (Frame::Timings.getFront().m_timestamps.find("Frame End") != Frame::Timings.getFront().m_timestamps.end())
 		{
-			frame_end = (float) Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps.at("Frame End").lastTime;
+			frame_end = (float) Frame::Timings.getFront().m_timestamps.at("Frame End").lastTime;
 		}
 
 		if (frame_profiler_visible) 
 		{ 
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timers)
+			for (auto e : Frame::Timings.getFront().m_timers)
 			{
 				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timersElapsed)
+			for (auto e : Frame::Timings.getFront().m_timersElapsed)
 			{
 				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings[Frame::FRONT_FRAME_IDX].m_timestamps)
+			for (auto e : Frame::Timings.getFront().m_timestamps)
 			{
 				Frame::FrameProfiler.setMarkerByTag(e.first, (float) e.second.lastTime - frame_begin);
 			}
 
 			Frame::FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
 		}
-		Frame::SwapFrameIdx();
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame Begin");
+		Frame::Timings.swap();
+		Frame::Timings.getBack().timestamp("Frame Begin");
 		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -873,17 +871,17 @@ int main(int argc, char *argv[])
 		// check for finished left/right images, copy to Front FBOs
 		if (chunkedRenderPass.isFinished())
 		{
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Copy Result LEFT");
+			Frame::Timings.getBack().beginTimerElapsed("Copy Result LEFT");
 			copyFBOContent(&FBO, &FBO_front, GL_COLOR_BUFFER_BIT);
 			copyFBOContent(&FBO, &FBO_front, GL_DEPTH_BUFFER_BIT);
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		}
 		if (chunkedRenderPass_r.isFinished())
 		{
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Copy Result RIGHT");
+			Frame::Timings.getBack().beginTimerElapsed("Copy Result RIGHT");
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
 			copyFBOContent(&FBO_r, &FBO_front_r, GL_DEPTH_BUFFER_BIT);
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		}
 		//%%%%%%%%%%%% render left image
 		if (chunkedRenderPass.isFinished())
@@ -932,13 +930,13 @@ int main(int argc, char *argv[])
 			// quickly do a depth pass of the models
 			if ( ovr.m_pHMD )
 			{
-				Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Depth Models");
+				Frame::Timings.getBack().beginTimerElapsed("Depth Models");
 				FBO_scene_depth.bind();
 				glClear(GL_DEPTH_BUFFER_BIT);
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 				ovr.renderModels(vr::Eye_Left);
 				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-				Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+				Frame::Timings.getBack().stopTimerElapsed();
 			}
 			//++++++++++++++++++++++++++++++++//
 
@@ -950,23 +948,23 @@ int main(int argc, char *argv[])
 			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
 			
 			// uvw maps
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW LEFT");
+			Frame::Timings.getBack().beginTimerElapsed("UVW LEFT");
 			uvwRenderPass.setFrameBufferObject( &uvwFBO );
 			uvwShaderProgram.update("view", current.view);
 			uvwShaderProgram.update("model", current.model);
 			uvwShaderProgram.update("projection", current.perspective);
 			uvwRenderPass.render();
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 
 			// occlusion maps
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum LEFT");
+			Frame::Timings.getBack().beginTimerElapsed("Occlusion Frustum LEFT");
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
 			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
 			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
 		// raycasting (chunked)
@@ -978,9 +976,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", 8 );
 
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast LEFT");
+		Frame::Timings.getBack().beginTimer("Chunked Raycast LEFT");
 		chunkedRenderPass.render(); 
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast LEFT");
+		Frame::Timings.getBack().stopTimer("Chunked Raycast LEFT");
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1045,23 +1043,23 @@ int main(int argc, char *argv[])
 			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
 			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
 			
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("UVW RIGHT");
+			Frame::Timings.getBack().beginTimerElapsed("UVW RIGHT");
 			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
 			uvwShaderProgram.update( "view", current.view );
 			uvwShaderProgram.update( "model", current.model );
 			uvwShaderProgram.update( "projection", current.perspective );
 			uvwRenderPass.render();
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		
 			// occlusion maps 
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Occlusion Frustum RIGHT");
+			Frame::Timings.getBack().beginTimerElapsed("Occlusion Frustum RIGHT");
 			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
 			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
 			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
 		// raycasting (chunked)
@@ -1074,9 +1072,9 @@ int main(int argc, char *argv[])
 		shaderProgram.update("occlusion_map", 9);
 
 		//renderPass_r.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimer("Chunked Raycast RIGHT");
+		Frame::Timings.getBack().beginTimer("Chunked Raycast RIGHT");
 		chunkedRenderPass_r.render();
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimer("Chunked Raycast RIGHT");
+		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
 
 		//%%%%%%%%%%%% Image Warping
 		FBO_warp.bind();
@@ -1085,7 +1083,7 @@ int main(int argc, char *argv[])
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		if (ovr.m_pHMD) // render controller models if possible
 		{
-			Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Render Models");
+			Frame::Timings.getBack().beginTimerElapsed("Render Models");
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 			FBO_warp.bind();
 			ovr.renderModels(vr::Eye_Left);
@@ -1093,11 +1091,11 @@ int main(int argc, char *argv[])
 			FBO_warp_r.bind();
 			ovr.renderModels(vr::Eye_Right);
 			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-			Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
-		Frame::Timings[Frame::BACK_FRAME_IDX].beginTimerElapsed("Warping");
+		Frame::Timings.getBack().beginTimerElapsed("Warping");
 
 		
 		if (!useGridWarp)
@@ -1138,7 +1136,7 @@ int main(int argc, char *argv[])
 			gridWarp.render();
 		}
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
-		Frame::Timings[Frame::BACK_FRAME_IDX].stopTimerElapsed();
+		Frame::Timings.getBack().stopTimerElapsed();
 
 		//%%%%%%%%%%%% Submit/Display images
 		setDebugView(activeView);
@@ -1171,7 +1169,7 @@ int main(int argc, char *argv[])
 			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + rightDebugView], vr::Eye_Right);
 		}
 		
-		Frame::Timings[Frame::BACK_FRAME_IDX].timestamp("Frame End");
+		Frame::Timings.getBack().timestamp("Frame End");
 		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
 		{
 			{
