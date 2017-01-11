@@ -31,7 +31,8 @@ uniform float uWindowingMinVal; // windowing lower bound
 uniform float uStepSize;		// ray sampling step size
 
 uniform mat4 uProjection;
-uniform mat4 uViewToTexture; 
+uniform mat4 uViewToTexture;
+uniform mat4 uScreenToView; 
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -40,6 +41,7 @@ layout(location = 1) out vec4 fragColor1;
 layout(location = 2) out vec4 fragColor2;
 layout(location = 3) out vec4 fragColor3;
 layout(location = 4) out vec4 fragColor4;
+layout(location = 5) out vec4 fragColorDebug;
 // depth buffer holds layer 0 depth (rgba is assumed vec4(0) anyway)
 
 /**
@@ -65,29 +67,16 @@ struct RaycastResult
 * @brief 'transfer-function' applied to value
 * @return mapped color corresponding to value
 */
-vec4 transferFunction(float value)
+vec4 transferFunction(float value, float stepSize)
 {
 	// linear mapping to grayscale color [0,1]
 	float rel = (value - uWindowingMinVal) / uWindowingRange;
 	float clamped =	max(0.0, min(1.0, rel));
 	
 	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= ALPHA_SCALE * uStepSize;
+	color.a *= ALPHA_SCALE * stepSize;
 	color.rgb *= (color.a);
 
-	return color;
-}
-
-/**
-* @brief returns Values for Emission (no premultiplied alpha color)
-*/
-vec4 transferFunctionEmissionAbsorption(float value)
-{	
-	float rel = (value - uWindowingMinVal) / uWindowingRange;
-	float clamped =	max(0.0, min(1.0, rel));
-
-	vec4 color = texture(transferFunctionTex, clamped);
-	color.a *= ALPHA_SCALE * uStepSize;
 	return color;
 }
 
@@ -95,12 +84,12 @@ vec4 transferFunctionEmissionAbsorption(float value)
 * @brief returns only the alpha value (transmittance) of 'transfer-function' applied to value
 * @return mapped alpha corresponding to value
 */
-float transferFunctionAlphaOnly(float value)
+float transferFunctionAlphaOnly(float value, float stepSize)
 {	
 	// linear mapping to grayscale color [0,1]
 	float rel = (value - uWindowingMinVal) / uWindowingRange;
 	float clamped =	max(0.0, min(1.0, rel));
-	return ALPHA_SCALE * uStepSize * texture(transferFunctionTex, clamped).a;
+	return ALPHA_SCALE * stepSize * texture(transferFunctionTex, clamped).a;
 }
 
 /**
@@ -128,6 +117,7 @@ vec4 getViewCoord(vec3 screenPos)
 RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDistance, float endDistance)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
+	float distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
 
 	RaycastResult result;
 	result.color = vec4(0);
@@ -135,7 +125,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	result.lastHit = vec4(endUVW, endDistance);
 
 	////////////////// FIRST PASS: Compute Normalization constant /////////////////
-	// Transmission k( /inf ) used for normalization
+	// Transmission kappa( /inf ) used for normalization
 	float T_norm = 0.0;
 
 	float t = 0.01;
@@ -147,7 +137,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		float curDistance = mix(startDistance, endDistance, t);
 
-		float sampleAlpha = transferFunctionAlphaOnly( texture(volume_texture, curUVW).r );
+		float sampleAlpha = transferFunctionAlphaOnly( texture(volume_texture, curUVW).r, distanceStepSize);
 		T_norm = (1.0 - T_norm) * sampleAlpha + T_norm;
 
 		// first hit? (implicitly: d_0)
@@ -166,46 +156,101 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		t += parameterStepSize;
 	}
 
-	//////////////////// SECOND PASS: PERFORM EMISSION ABSORBTION and write to layers//////////////////////
-	vec4 curColor = vec4(0);
-	vec3 startUVW_ = result.firstHit.rgb; // skip ahead, because we can
+	//////////////////// SECOND PASS: Compute Emission Absorbtion coefficients and write to layers//////////////////////
+	vec4 segmentColor = vec4(0);
+	float curAlpha = 0.0f; // keep track of kappa(d)
+
+	vec4 curColor = vec4(0.0); // the raycasting result, for fun
+
+	// TODO debug
+	//vec3 startUVW_ = result.firstHit.rgb; // skip ahead, because we can
 	//parameterStepSize = stepSize / length(endUVW - startUVW_); // necessary parametric steps to get from start to end
 	
-	int currentLayer = 0; // to identify fbo output to write to
-	int numLayers = 4;    // total number of Layers
+	int currentLayer = 1; // to identify fbo output to write to
+	int numLayers = 5;    // total number of Layers (if you include depth layer)
 	float currentLayerThreshold = (float(currentLayer) + 0.5) / float(numLayers); // y_i
-	float lastDistance = result.firstHit.a; // distance where last layer ended
+	float lastDistance = result.firstHit.a; // distance where last layer ended d_(i-1)
 
 	t = 0.00;
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
-		float curDistance = mix(startDistance, endDistance, t);
+		float curDistance = mix(startDistance, endDistance, t); // distance on ray
 
 		// retrieve current sample
 		VolumeSample curSample;
 		curSample.value = texture(volume_texture, curUVW).r;
 		curSample.uvw   = curUVW;
 
-		vec4 sampleColor = transferFunctionEmissionAbsorption(curSample.value);
+		vec4 sampleColor = transferFunction(curSample.value, distanceStepSize);
+
+		// update segment color
+		segmentColor.rgb = (1.0 - segmentColor.a) * (sampleColor.rgb) + segmentColor.rgb;
+		segmentColor.a   = (1.0 - segmentColor.a) * sampleColor.a     + segmentColor.a;
+		
+		//update kappa(d)
+		curAlpha = (1.0 - curAlpha) * sampleColor.a + curAlpha;
+
+		// DEBUG the full raycasting result
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
-		curColor.a   = (1.0 - curColor.a) * sampleColor.a     + curColor.a;
+		curColor.a = curAlpha;
 
 		// reached y_i?
-		if ( (curColor.a * T_norm) > currentLayerThreshold) // inspect relative to total value
+		if ( (curAlpha / T_norm) >= currentLayerThreshold) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
 		{
-			// compute the Beer-Lambert equivalent values
-			float z   = curDistance - lastDistance;
-			float T_i = exp( -curColor.a * z );
-			float A   = -log(T_i) / z;
+			//<<<< compute the Beer-Lambert equivalent values
+			float z_i   = curDistance - lastDistance;
+
+			// compute Absorption
+			float T_i = segmentColor.a; // implicitly, alpha value tells us the desired value of exp( -A * z )
+			float A_i   = -log(T_i) / z_i; // invert equation to to get A
+
+			// compute Emission
+			vec3 C_i = segmentColor.rgb; // implicitly, color value tells us the desired value of E*T 
+			vec3 E_i = C_i / T_i; // invert equation to to get E
+
+			//<<<< write to layer
+			if (currentLayer == 1) // i = 1
+			{
+				fragColor1 = vec4(E_i, A_i);
+				fragDepth.x = curDistance;
+			}
+			else if (currentLayer == 2) // i = 2
+			{
+				fragColor2 = vec4(E_i, A_i);
+				fragDepth.y = curDistance;
+			}
+			else if (currentLayer == 3) // i = 3
+			{
+				fragColor3 = vec4(E_i, A_i);
+				fragDepth.z = curDistance;
+			}
+			else if (currentLayer == 4) // i = 4
+			{
+				fragColor4 = vec4(E_i, A_i);
+				fragDepth.w = curDistance;
+			}
+
+			//<<<< reset and update for next segment
+			segmentColor = vec4(0.0);
+			currentLayer = currentLayer + 1; // i+1
+			currentLayerThreshold = (float(currentLayer) + 0.5) / float(numLayers); // y_(i+1)
+			lastDistance = curDistance; // d_(i)
 		}
 
 		t += parameterStepSize;
 	}
 
-	// return emission absorbtion result
-	result.color = curColor;
+	result.color = curColor; //DEBUG
 	return result;
+}
+
+float distanceToDepth(vec2 uv, float dist)
+{
+	vec4 pView = uScreenToView * vec4(passUV, 0.0, 1.0);
+	vec4 projected = uProjection * vec4( normalize(pView.xyz) * dist, 1.0 );
+	projected.z = projected.z / projected.w;
+	return (0.5 * projected.z) + 0.5;
 }
 
 void main()
@@ -229,12 +274,16 @@ void main()
 		, endDistance
 		);
 
-	// final color
-	fragColor1 = raycastResult.color;
+	// DEBUG
+	fragColorDebug = raycastResult.color;
 
+	// first hit texture
 	if (raycastResult.firstHit.a > 0.0)
 	{
-		vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4(raycastResult.firstHit.xyz, 1.0);
-		gl_FragDepth = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
+		//vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4(raycastResult.firstHit.xyz, 1.0);
+		//gl_FragDepth = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
+		
+		gl_FragDepth = distanceToDepth(passUV, raycastResult.firstHit.a);
+		//fragColorDebug = vec4( distanceToDepth(passUV, raycastResult.firstHit.a) );
 	}
 }

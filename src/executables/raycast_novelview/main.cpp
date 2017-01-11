@@ -167,9 +167,28 @@ int main(int argc, char *argv[])
 	showTex.addEnable(GL_BLEND);
 
 	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE5, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE6, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT4), GL_TEXTURE7, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE8, GL_TEXTURE_2D); // debugging output
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getDepthTextureHandle(),								  GL_TEXTURE9, GL_TEXTURE_2D); //depth 0
+	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); //depth 1-4
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	showTexShader.update("tex", 4);
+
+	///////////////////////   DEBUG Recompose Layers Renderpass    //////////////////////////
+	ShaderProgram debugRecomposeShader("/screenSpace/fullscreen.vert", "/raycast/debug_synth_recomposeLayers.frag");
+	RenderPass debugRecompose(&debugRecomposeShader,0);
+	debugRecompose.addRenderable(&quad);
+	debugRecompose.setViewport(TEXTURE_RESOLUTION.x,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+
+	debugRecomposeShader.update("layer1",4);
+	debugRecomposeShader.update("layer2",5);
+	debugRecomposeShader.update("layer3",6);
+	debugRecomposeShader.update("layer4",7);
+	debugRecomposeShader.update("depth0",9);
+	debugRecomposeShader.update("depth", 10);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -302,7 +321,14 @@ int main(int argc, char *argv[])
 		}
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
-        //////////////////////////////////////////////////////////////////////////////
+
+		static int active_debug_texture = 4;
+		if ( ImGui::SliderInt("debug texture", &active_debug_texture, 4, 10) ) // active layer texture
+		{
+			showTexShader.update("tex", active_debug_texture);
+		}
+
+		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		if (s_isRotating) // update view matrix
@@ -328,7 +354,10 @@ int main(int argc, char *argv[])
 
 		/************* update experimental  parameters ******************/
 		shaderProgram.update("uProjection", s_perspective);
-		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) );
+		//shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) );
+		shaderProgram.update("uScreenToView", s_screenToView );
+
+		debugRecomposeShader.update("uProjection", s_perspective); // used for depth to distance computation
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// ///////////////////////////// 
@@ -341,6 +370,8 @@ int main(int argc, char *argv[])
 		renderPass.render();
 
 		showTex.render();
+
+		debugRecompose.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers
