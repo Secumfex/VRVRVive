@@ -58,6 +58,11 @@ void main()
 	vec4 layerColor3 = beerLambert(EA1.rgb, EA3.a, d.z - d.y);
 	vec4 layerColor4 = beerLambert(EA1.rgb, EA4.a, d.w - d.z);
 
+	layerColor1.a = 1 - layerColor1.a; // turn T to alpha
+	layerColor2.a = 1 - layerColor2.a;
+	layerColor3.a = 1 - layerColor3.a;
+	layerColor4.a = 1 - layerColor4.a;
+
 	//<<<< compute pixel color, using front-to-back compositing
 	vec4 color = vec4(0.0);
 
