@@ -72,6 +72,18 @@ struct RaycastResult
 };
 
 /**
+* @brief 'transfer-function' applied to value, no premultiplied alpha
+*/
+vec4 transferFunctionRaw(float value)
+{
+	// linear mapping to grayscale color [0,1]
+	float rel = (value - uWindowingMinVal) / uWindowingRange;
+	float clamped =	max(0.0, min(1.0, rel));
+	vec4 color = texture(transferFunctionTex, clamped);
+	return color;
+}
+
+/**
 * @brief 'transfer-function' applied to value
 * @return mapped color corresponding to value
 */
@@ -145,7 +157,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	////////////////// FIRST PASS: Compute Normalization constant /////////////////
 	// Transmission kappa( /inf ) used for normalization
-	float T_norm = 0.0;
+	float maxAlpha = 0.0;
 
 	float t = 0.001;
 	#ifdef RANDOM_OFFSET 
@@ -156,8 +168,13 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		vec3 curUVW = mix(startUVW, endUVW, t);
 		float curDistance = mix(startDistance, endDistance, t);
 
-		float sampleAlpha = transferFunctionAlphaOnly(texture(volume_texture, curUVW).r, distanceStepSize);
-		T_norm = (1.0 - T_norm) * sampleAlpha + T_norm;
+		float sampleAbsorption = transferFunctionRaw(texture(volume_texture, curUVW).r).a; // scale to 0..10, then pow
+		sampleAbsorption = pow(sampleAbsorption * ABSORPTION_SCALE, 2.0);
+
+		float sampleTransmittance = 1.0 - exp( - sampleAbsorption * distanceStepSize );
+		float sampleAlpha = sampleTransmittance;
+
+		maxAlpha = (1.0 - maxAlpha) * sampleAlpha + maxAlpha;
 
 		// first hit? (implicitly: d_0)
 		if (result.firstHit.a > curDistance && sampleAlpha > 0.0)
@@ -167,7 +184,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		}
 
 		// early ray-termination
-		if (T_norm > 0.99)
+		if (maxAlpha > 0.99)
 		{
 			break;
 		}
@@ -189,6 +206,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	//parameterStepSize = stepSize / length(endUVW - startUVW_); // necessary parametric steps to get from start to end
 	
 	float lastDistance = result.firstHit.a; // distance where last layer ended d_(i-1)
+	float lastAlpha = 0.0;
 	int currentLayer = 1; // to identify fbo output to write to
 	int numLayers = 4;    // total number of Layers (excluding first depth layer d_0)
 
@@ -208,7 +226,12 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		curSample.value = texture(volume_texture, curUVW).r;
 		curSample.uvw   = curUVW;
 
-		vec4 sampleColor = transferFunction(curSample.value, distanceStepSize);
+		vec4 sampleEmissionAbsorption = transferFunctionRaw(texture(volume_texture, curUVW).r);
+		sampleEmissionAbsorption.rgb = sampleEmissionAbsorption.rgb * EMISSION_SCALE;
+		sampleEmissionAbsorption.a = pow(sampleEmissionAbsorption.a * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
+
+		float sampleTransmittance = 1.0 - exp( - sampleEmissionAbsorption.a * distanceStepSize );
+		vec4 sampleColor = vec4(sampleEmissionAbsorption.rgb * (sampleTransmittance), sampleTransmittance);
 
 		// update segment color
 		segmentColor.rgb = (1.0 - segmentColor.a) * (sampleColor.rgb) + segmentColor.rgb;
@@ -217,26 +240,14 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		//update kappa(d)
 		curAlpha = (1.0 - curAlpha) * sampleColor.a + curAlpha;
 
-		// DEBUG the full raycasting result
-		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
-		curColor.a = curAlpha;
-
 		// reached y_i?
-		if ( (curAlpha / T_norm) >= currentLayerThreshold) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
+		if ( (curAlpha / maxAlpha) >= currentLayerThreshold) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
 		{
 			//<<<< compute the Beer-Lambert equivalent values
-			float z_i   = curDistance - lastDistance;
-
-			// compute Absorption
-			float T_i = segmentColor.a; // implicitly, alpha value tells us the desired value of exp( -A * z )
-			float A_i   = -log(T_i) / z_i; // invert equation to to get A
-
-			// compute Emission
-			vec3 C_i = segmentColor.rgb; // implicitly, color value tells us the desired value of E*T 
-			vec3 E_i = C_i / T_i; // invert equation to to get E
+			vec4 emissionAbsorption = beerLambertColorToEmissionAbsorption(segmentColor.rgb, segmentColor.a - lastAlpha, curDistance - lastDistance);
 
 			//<<<< write to layer
-			layerColor[currentLayer - 1] = vec4(E_i, A_i);
+			layerColor[currentLayer - 1] = emissionAbsorption;
 			layerDepth[currentLayer - 1] = curDistance;
 
 			//<<<< reset and update for next segment
@@ -246,7 +257,21 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			lastDistance = curDistance; // d_(i)
 		}
 
+		// DEBUG the full raycasting result
+		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
+		curColor.a = curAlpha;
+
 		t += parameterStepSize;
+	}
+
+	// make sure last layer gets filled
+	if (layerDepth[3] == 0.0)
+	{
+		vec4 emissionAbsorption = beerLambertColorToEmissionAbsorption(segmentColor.rgb, segmentColor.a - lastAlpha, endDistance - lastDistance);
+
+		//<<<< write to layer
+		layerColor[3] = emissionAbsorption;
+		layerDepth[3] = endDistance;
 	}
 
 	//<<<< write to outputs
