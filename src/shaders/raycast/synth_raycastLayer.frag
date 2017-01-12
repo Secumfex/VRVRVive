@@ -5,6 +5,14 @@
 #define ALPHA_SCALE 20.0
 #endif
 
+#ifndef EMISSION_SCALE
+#define EMISSION_SCALE 1.0
+#endif
+
+#ifndef ABSORPTION_SCALE
+#define ABSORPTION_SCALE 10.0
+#endif
+
 #ifdef RANDOM_OFFSET 
 float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
 	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
@@ -103,6 +111,17 @@ vec4 getViewCoord(vec3 screenPos)
 	return unProject;
 }
 
+vec4 beerLambertColorToEmissionAbsorption(vec3 C, float T, float z)
+{
+	// compute Absorption
+	float A = -log( T ) / z; // invert equation to to get A
+
+	// compute Emission
+	vec3 E = C / T; // invert equation to to get E
+
+	return vec4(E, A);
+}
+
 /**
  * @brief retrieve value for a maximum intensity projection	
  * 
@@ -128,10 +147,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// Transmission kappa( /inf ) used for normalization
 	float T_norm = 0.0;
 
-	float t = 0.01;
-#ifdef RANDOM_OFFSET 
+	float t = 0.001;
+	#ifdef RANDOM_OFFSET 
 	t = t * 2.0 * rand(passUV);
-#endif
+	#endif
 	while (t < 1.0 + (0.5 * parameterStepSize))
 	{
 		vec3 curUVW = mix(startUVW, endUVW, t);
@@ -159,23 +178,26 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	//////////////////// SECOND PASS: Compute Emission Absorbtion coefficients and write to layers//////////////////////
 	vec4 segmentColor = vec4(0);
 	float curAlpha = 0.0f; // keep track of kappa(d)
-
-	// declare some output variables (to get rid of if-else)
-	vec4 layerColor[4];
-	float layerDepth[4];
-
 	vec4 curColor = vec4(0.0); // the raycasting result, for fun
+	
+	// declare some output variables (to get rid of if-else)
+	vec4 layerColor[4] = vec4[4](0.0);
+	float layerDepth[4] = float[4](0.0);
 
 	// TODO debug
 	//vec3 startUVW_ = result.firstHit.rgb; // skip ahead, because we can
 	//parameterStepSize = stepSize / length(endUVW - startUVW_); // necessary parametric steps to get from start to end
 	
-	int currentLayer = 1; // to identify fbo output to write to
-	int numLayers = 5;    // total number of Layers (if you include depth layer)
-	float currentLayerThreshold = (float(currentLayer) + 0.5) / float(numLayers); // y_i
 	float lastDistance = result.firstHit.a; // distance where last layer ended d_(i-1)
+	int currentLayer = 1; // to identify fbo output to write to
+	int numLayers = 4;    // total number of Layers (excluding first depth layer d_0)
 
-	t = 0.00;
+	float currentLayerThreshold = ( float(currentLayer) ) / float(numLayers); // y_i
+
+	t = 0.001;
+	#ifdef RANDOM_OFFSET 
+	t = t * 2.0 * rand(passUV);
+	#endif
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
@@ -220,7 +242,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			//<<<< reset and update for next segment
 			segmentColor = vec4(0.0);
 			currentLayer = currentLayer + 1; // i+1
-			currentLayerThreshold = (float(currentLayer) + 0.5) / float(numLayers); // y_(i+1)
+			currentLayerThreshold = ( float(currentLayer) ) / float(numLayers);
 			lastDistance = curDistance; // d_(i)
 		}
 

@@ -30,8 +30,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	//"ARRAY_TEXTURE"
-	"blub"
+	"RANDOM_OFFSET"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -108,7 +107,7 @@ int main(int argc, char *argv[])
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
 	FrameBufferObject uvwFBO(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	FrameBufferObject::s_internalFormat = GL_RGBA16F; // allow arbitrary values
+	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
 	uvwFBO.addColorAttachments(2);
 	FrameBufferObject::s_internalFormat = GL_RGBA; // default
 	DEBUGLOG->outdent(); 
@@ -121,7 +120,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag"); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 		
 	// DEBUG
@@ -129,7 +128,7 @@ int main(int argc, char *argv[])
 	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: synth ray casting layers"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA16F; // allow arbitrary values
+	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
 	FrameBufferObject synth_raycastLayerFBO(shaderProgram.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 	FrameBufferObject::s_internalFormat = GL_RGBA; // default
 	DEBUGLOG->outdent(); 

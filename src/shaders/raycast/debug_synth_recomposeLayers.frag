@@ -78,5 +78,4 @@ void main()
 	color.a   = (1.0 - color.a) * layerColor4.a     + color.a;
 
 	fragColor = color;
-	fragColor = vec4(d.x - d0);
 }
