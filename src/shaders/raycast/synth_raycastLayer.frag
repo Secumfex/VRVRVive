@@ -129,15 +129,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	float T_norm = 0.0;
 
 	float t = 0.01;
-	#ifdef RANDOM_OFFSET 
+#ifdef RANDOM_OFFSET 
 	t = t * 2.0 * rand(passUV);
-	#endif
-	while( t < 1.0 + (0.5 * parameterStepSize) )
+#endif
+	while (t < 1.0 + (0.5 * parameterStepSize))
 	{
-		vec3 curUVW = mix( startUVW, endUVW, t);
+		vec3 curUVW = mix(startUVW, endUVW, t);
 		float curDistance = mix(startDistance, endDistance, t);
 
-		float sampleAlpha = transferFunctionAlphaOnly( texture(volume_texture, curUVW).r, distanceStepSize);
+		float sampleAlpha = transferFunctionAlphaOnly(texture(volume_texture, curUVW).r, distanceStepSize);
 		T_norm = (1.0 - T_norm) * sampleAlpha + T_norm;
 
 		// first hit? (implicitly: d_0)
@@ -145,7 +145,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		{
 			result.firstHit.rgb = curUVW;
 			result.firstHit.a = curDistance;
-		} 
+		}
 
 		// early ray-termination
 		if (T_norm > 0.99)
@@ -159,6 +159,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	//////////////////// SECOND PASS: Compute Emission Absorbtion coefficients and write to layers//////////////////////
 	vec4 segmentColor = vec4(0);
 	float curAlpha = 0.0f; // keep track of kappa(d)
+
+	// declare some output variables (to get rid of if-else)
+	vec4 layerColor[4];
+	float layerDepth[4];
 
 	vec4 curColor = vec4(0.0); // the raycasting result, for fun
 
@@ -210,26 +214,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			vec3 E_i = C_i / T_i; // invert equation to to get E
 
 			//<<<< write to layer
-			if (currentLayer == 1) // i = 1
-			{
-				fragColor1 = vec4(E_i, A_i);
-				fragDepth.x = curDistance;
-			}
-			else if (currentLayer == 2) // i = 2
-			{
-				fragColor2 = vec4(E_i, A_i);
-				fragDepth.y = curDistance;
-			}
-			else if (currentLayer == 3) // i = 3
-			{
-				fragColor3 = vec4(E_i, A_i);
-				fragDepth.z = curDistance;
-			}
-			else if (currentLayer == 4) // i = 4
-			{
-				fragColor4 = vec4(E_i, A_i);
-				fragDepth.w = curDistance;
-			}
+			layerColor[currentLayer - 1] = vec4(E_i, A_i);
+			layerDepth[currentLayer - 1] = curDistance;
 
 			//<<<< reset and update for next segment
 			segmentColor = vec4(0.0);
@@ -240,6 +226,19 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		t += parameterStepSize;
 	}
+
+	//<<<< write to outputs
+	fragColor1 = layerColor[0];
+	fragDepth.x = layerDepth[0];
+
+	fragColor2 = layerColor[1];
+	fragDepth.y = layerDepth[1];
+
+	fragColor3 = layerColor[2];
+	fragDepth.z = layerDepth[2];
+
+	fragColor4 = layerColor[3];
+	fragDepth.w = layerDepth[3];
 
 	result.color = curColor; //DEBUG
 	return result;

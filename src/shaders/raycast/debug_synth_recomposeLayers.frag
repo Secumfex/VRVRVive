@@ -39,10 +39,12 @@ float depthToDistance(vec2 uv, float depth)
 
 void main()
 {	
-	float d0 = depthToDistance(passUV, texture(depth0, passUV).x ); // d0 is from depth-attachment, to convert to distance first
+	float d0 = texture(depth0, passUV).x;
+	if (d0 == 1.0) { discard; } //invalid pixel
+	d0 = depthToDistance(passUV, d0); // d0 is from depth-attachment, so convert to distance first
+	
 	vec4 d  = texture(depth, passUV);
 
-	//if (d0 == 1.0) { discard; } //invalid pixel
 
 	//<<<< retrieve values
 	vec4 EA1 = texture(layer1, passUV);
@@ -76,4 +78,5 @@ void main()
 	color.a   = (1.0 - color.a) * layerColor4.a     + color.a;
 
 	fragColor = color;
+	fragColor = vec4(d.x - d0);
 }
