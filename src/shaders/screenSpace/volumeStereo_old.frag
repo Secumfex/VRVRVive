@@ -81,7 +81,7 @@ void reproject(vec4 sampleColor, ivec2 texelCoord_r)
 	curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 	vec4 result_color = curColor;
 
-	result_color = curColor + vec4( 1.0/64.0 ); // DEBUG
+	//result_color = curColor + vec4( 1.0/64.0 ); // DEBUG
 
 	// write into texture
 	imageStore( output_image, texelCoord_r, result_color );

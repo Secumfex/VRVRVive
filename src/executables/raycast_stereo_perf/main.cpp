@@ -546,7 +546,7 @@ int main(int argc, char *argv[])
 			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
 		}
 
-		Frame::Timings.swap();
+		if (!pause_frame_profiler) Frame::Timings.swap();
 		Frame::Timings.getBack().timestamp("Frame Begin");
 
 		ImGui::PopItemWidth();
@@ -716,7 +716,8 @@ int main(int argc, char *argv[])
 
 		Frame::Timings.getBack().timestamp("Frame End");
 		ImGui::Render();
-
+		
+		glFinish();
 		SDL_GL_SwapWindow(window); // swap buffers
 		//////////////////////////////////////////////////////////////////////////////
 	}
