@@ -22,7 +22,7 @@ uniform mat4 uProjection; // cuz im lazy
 // out-variables
 layout(location = 0) out vec4 fragColor; 
 
-vec4 beerLambert(vec3 E, float A, float z)
+vec4 beerLambertEmissionAbsorptionToColorTransmission(vec3 E, float A, float z)
 {
 	float T = exp( -A * z);
 	vec3 C = E * T;
@@ -53,15 +53,15 @@ void main()
 	vec4 EA4 = texture(layer4, passUV);
 
 	//<<<< compute colors
-	vec4 layerColor1 = beerLambert(EA1.rgb, EA1.a, d.x - d0);
-	vec4 layerColor2 = beerLambert(EA1.rgb, EA2.a, d.y - d.x);
-	vec4 layerColor3 = beerLambert(EA1.rgb, EA3.a, d.z - d.y);
-	vec4 layerColor4 = beerLambert(EA1.rgb, EA4.a, d.w - d.z);
+	vec4 layerColor1 = beerLambertEmissionAbsorptionToColorTransmission(EA1.rgb, EA1.a, d.x - d0);
+	vec4 layerColor2 = beerLambertEmissionAbsorptionToColorTransmission(EA2.rgb, EA2.a, d.y - d.x);
+	vec4 layerColor3 = beerLambertEmissionAbsorptionToColorTransmission(EA3.rgb, EA3.a, d.z - d.y);
+	vec4 layerColor4 = beerLambertEmissionAbsorptionToColorTransmission(EA4.rgb, EA4.a, d.w - d.z);
 
-	layerColor1.a = 1 - layerColor1.a; // turn T to alpha
-	layerColor2.a = 1 - layerColor2.a;
-	layerColor3.a = 1 - layerColor3.a;
-	layerColor4.a = 1 - layerColor4.a;
+	layerColor1.a = 1.0 - layerColor1.a; // turn T to alpha
+	layerColor2.a = 1.0 - layerColor2.a;
+	layerColor3.a = 1.0 - layerColor3.a;
+	layerColor4.a = 1.0 - layerColor4.a;
 
 	//<<<< compute pixel color, using front-to-back compositing
 	vec4 color = vec4(0.0);
