@@ -29,13 +29,13 @@ namespace RaycastingParameters
 		s_transferFunction.getValues().push_back(58);
 		s_transferFunction.getColors().push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
 		s_transferFunction.getValues().push_back(539);
-		s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 231.0/255.0f));
+		s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 150.0/255.0f));
 		s_transferFunction.getValues().push_back(572);
 		s_transferFunction.getColors().push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
 		s_transferFunction.getValues().push_back(1356);
 		s_transferFunction.getColors().push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
 		s_transferFunction.getValues().push_back(1500);
-		s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 255.0 /255.0f));
+		s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 240.0 /255.0f));
 	}
 
 	inline void updateTransferFunctionTex()
@@ -76,13 +76,13 @@ namespace ViewParameters
 			);
 	}
 
-	static glm::mat4 s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -3.0f)); // translational part of model matrix
+	static glm::mat4 s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -1.5f)); // translational part of model matrix
 	static glm::mat4 s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f)); // rotational part of model matrix
-	static glm::mat4 s_scale = glm::scale(glm::vec3(1.0f)); // scalation part of model matrix
+	static glm::mat4 s_scale = glm::scale(glm::vec3(0.5f)); // scalation part of model matrix
 	
 	static glm::mat4 s_model = s_translation * s_rotation * s_scale; // model matrix (discouraged to use if something else interferes (i.e. additional scalation/rotation etc)
 
-	static glm::vec4 s_eye = glm::vec4(0.0f, 0.0f, 3.0f, 1.0f); // (left) eye position
+	static glm::vec4 s_eye = glm::vec4(0.0f, 0.0f, 1.5f, 1.0f); // (left) eye position
 	static glm::vec4 s_center = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // center point
 	static glm::vec4 s_up = glm::vec4(0.0f,1.0f,0.0f,0.0f); // up vector
 	static glm::mat4 s_view = glm::lookAt(glm::vec3(s_eye), glm::vec3(s_center), glm::vec3(s_up)); // view of left eye
