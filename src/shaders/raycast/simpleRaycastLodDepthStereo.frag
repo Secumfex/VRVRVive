@@ -166,7 +166,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		}
 
 		
-		//TODO reproject Coords, check whether image coords changed
+		// reproject Coords, check whether image coords changed
 		ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
 		if ( curTexelCoord_r != texelCoord_r ) //changed
 		{

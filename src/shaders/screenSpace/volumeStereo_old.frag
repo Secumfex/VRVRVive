@@ -6,8 +6,6 @@ in vec2 passUV;
 // textures
 uniform sampler1D transferFunctionTex;
 uniform sampler2D  back_uvw_map;   // uvw coordinates map of back  faces
-uniform sampler2D front_pos_map;   // uvw coordinates map of front faces
-uniform sampler2D  back_pos_map;   // uvw coordinates map of back  faces
 uniform sampler2D front_uvw_map;   // uvw coordinates map of front faces
 uniform sampler3D volume_texture; // volume 3D integer texture sampler
 //uniform isampler3D volume_texture; // volume 3D integer texture sampler
@@ -26,7 +24,7 @@ uniform bool uWriteStereo;		// ray sampling step size
 uniform int uBlockWidth;
 
 // for reprojection
-uniform mat4 viewprojection_r; // viewprojection of right view
+uniform mat4 uTextureToProjection_r; // viewprojection of right view
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -81,16 +79,17 @@ void reproject(vec4 sampleColor, ivec2 texelCoord_r)
 	curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 	vec4 result_color = curColor;
 
-	result_color = curColor;// + vec4( 1.0/64.0 ); // DEBUG
+	//result_color = curColor + vec4( 1.0/64.0 ); // DEBUG
 
 	// write into texture
 	imageStore( output_image, texelCoord_r, result_color );
 }
 
+/** @brief reproject provided texture coordinate into right image coordinate space [0..res]*/
 vec2 reprojectCoords(vec3 curPos)
 {
 	// reproject position
-	vec4 pos_r = viewprojection_r * vec4(curPos, 1.0);
+	vec4 pos_r = uTextureToProjection_r * vec4(curPos, 1.0);
 	pos_r /= pos_r.w;
 	pos_r.xy = ( pos_r.xy / vec2(2.0) + vec2(0.5) );
 
@@ -106,19 +105,18 @@ vec2 reprojectCoords(vec3 curPos)
  * 
  * @return sample point in volume, holding value and uvw coordinates
  */
-vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 endPos)
+vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // necessary parametric steps to get from start to end
 
 	vec4 curColor = vec4(0);
 	vec4 segmentColor_r = vec4(0);
-	ivec2 texelCoord_r = ivec2( reprojectCoords( startPos ) );
+	ivec2 texelCoord_r = ivec2( reprojectCoords( startUVW ) );
 
 	// traverse ray front to back rendering
 	for (float t = 0.01; t < 1.0 + (0.5 * parameterStepSize); t += parameterStepSize)
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
-		vec3 curPos = mix( startPos, endPos, t);
 
 		// retrieve current sample
 		VolumeSample curSample;
@@ -130,7 +128,7 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 
 		// reproject Coords, check whether image coords changed
-		ivec2 curTexelCoord_r = ivec2( reprojectCoords( curPos ) );
+		ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
 		if ( curTexelCoord_r != texelCoord_r ) //changed
 		{
 			// reproject color, then reset segment color
@@ -141,7 +139,7 @@ vec4 raycast(vec3 startUVW, vec3 endUVW, float stepSize, vec3 startPos, vec3 end
 			{
 				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)
 				{
-					reproject( segmentColor_r, ivec2(i, texelCoord_r.y));
+					reproject( segmentColor_r, texelCoord_r);
 				}
 			}
 			texelCoord_r = curTexelCoord_r;
@@ -175,10 +173,6 @@ void main()
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
 
-	// TODO this can be skipped, by reprojection using the depth value from .a cannel of uvw map
-	vec4 posStart = texture( front_pos_map, passUV );
-	vec4 posEnd   = texture( back_pos_map,  passUV );
-
 	if (uvwStart.a == 0.0) { discard; } //invalid pixel
 
 	float textureWidth = float( textureSize( front_uvw_map, 0 ).x );
@@ -187,14 +181,11 @@ void main()
 	vec4 color = raycast( 
 		uvwStart.rgb, 			// ray start
 		uvwEnd.rgb,   			// ray end
-		uStepSize,    			// sampling step size
-		posStart.xyz,
-		posEnd.xyz
+		uStepSize    			// sampling step size
 		);
 
 	// final color
 	fragColor = color;// * 0.5 + 0.5 * vec4(uBlockWidth); //debug
 
 	// DEBUG reproject
-	// reproject(fragColor, posStart.xyz);
 }
