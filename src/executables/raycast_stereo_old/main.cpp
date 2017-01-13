@@ -601,7 +601,7 @@ int main(int argc, char *argv[])
 		float pixelOffsetFar  = (1.0f / t_far)  * (e * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
 		float pixelOffsetNear = (1.0f / t_near) * (e * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
 		
-		ImGui::Text("Active Renderable: "); ImGui::SameLine(); ImGui::Text(activeRenderableStr.c_str());
+		ImGui::Text("Active Fragment Generator: "); ImGui::SameLine(); ImGui::Text(activeRenderableStr.c_str());
 		ImGui::Separator();
 
 		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);

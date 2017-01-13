@@ -20,18 +20,17 @@ layout(binding = 0, offset = 0) uniform atomic_uint counter;
 //!< out-variables
 layout(location = 0) out vec4 fragColor;
 
+uniform bool uEnableIdOverlay;
+
 void main()
 {
-	fragColor = vec4(passVertexColor, 1.0);
+	vec4 color_ = texelFetch(colorTex, ivec2(gl_FragCoord.xy),0);
+	fragColor = vec4(color_);
 
 //*-------  REGULAR RENDERING ENDS HERE, THIS IS WHERE IMAGE STORING COMES INTO PLAY ------*//
 
 	// assumed "window" size
 	vec2 resolution = vec2( imageSize( output_image ) );
-
-	// which number is this fragment's invocation?
-	uint cnt = atomicCounterIncrement( counter );
-	float relative = float(cnt) / (resolution.x * resolution.y); // shows that invocation index relates to gl_VertexID
 	
 	vec4 depth = texelFetch(depthTex, ivec2(gl_FragCoord.xy),0);
 	vec4 pos   = texelFetch(posTex,   ivec2(gl_FragCoord.xy),0);
@@ -48,11 +47,17 @@ void main()
 	}
 
 	//vec4 reprojected_color = vec4( vec3(relative),1.0);
-	vec4 reprojected_color = vec4( 0.25 * color.xy + (0.75 * relative), relative, 1.0 );
-	
-	// reproject a point to image from 'different' view
-	vec4 result_color = reprojected_color;
+	vec4 result_color = color;
+	if (uEnableIdOverlay)
+	{
+		// which number is this fragment's invocation?
+		uint cnt = atomicCounterIncrement( counter );
+		float relative = float(cnt) / (resolution.x * resolution.y); // shows that invocation index relates to gl_VertexID
+		result_color = vec4( 0.25 * result_color.xy + (0.75 * relative), relative, 1.0 );
 
+		fragColor = vec4( 0.25 * fragColor.xy + (0.75 * relative), relative, 1.0 );
+	}
+	
 	ivec2 right_texelCoord = ivec2( vec2( imageSize( output_image ) ) * ( pos.xy / vec2(2.0) + vec2(0.5)) );
 
 	vec4 current = imageLoad(output_image, right_texelCoord);

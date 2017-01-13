@@ -21,10 +21,12 @@ uniform float uWindowingMinVal; // windowing lower bound
 // ray traversal related uniforms
 uniform float uStepSize;		// ray sampling step size
 uniform bool uWriteStereo;		// ray sampling step size
-uniform int uBlockWidth;
 
 // for reprojection
 uniform mat4 uTextureToProjection_r; // viewprojection of right view
+
+// misc
+uniform bool uShowInstanceIdOverlay;
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -79,7 +81,7 @@ void reproject(vec4 sampleColor, ivec2 texelCoord_r)
 	curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 	vec4 result_color = curColor;
 
-	//result_color = curColor + vec4( 1.0/64.0 ); // DEBUG
+	result_color = curColor + vec4( 1.0/64.0 ); // DEBUG
 
 	// write into texture
 	imageStore( output_image, texelCoord_r, result_color );
@@ -185,7 +187,7 @@ void main()
 		);
 
 	// final color
-	fragColor = color;// * 0.5 + 0.5 * vec4(uBlockWidth); //debug
+	fragColor = color;// * 0.5 + 0.5; //debug
 
 	// DEBUG reproject
 }
