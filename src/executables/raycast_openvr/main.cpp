@@ -1081,10 +1081,13 @@ int main(int argc, char *argv[])
 		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
 
 		//%%%%%%%%%%%% Image Warping
+		
+		glClearColor(0.1f,0.12f,0.15f,0.0f);
 		FBO_warp.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		FBO_warp_r.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClearColor(0.f,0.f,0.f,0.f);
 		if (ovr.m_pHMD) // render controller models if possible
 		{
 			Frame::Timings.getBack().beginTimerElapsed("Render Models");
@@ -1125,8 +1128,8 @@ int main(int argc, char *argv[])
 			gridWarp.setFrameBufferObject(&FBO_warp);
 			gridWarpShader.update( "tex", 12 ); // last result left
 			gridWarpShader.update( "depth_map", 24); // last first hit map
-			gridWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "newView", s_view ); // most current view
+			gridWarpShader.update( "uViewOld", matrices[LEFT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "uViewNew", s_view ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
 			gridWarp.render();
 
@@ -1134,8 +1137,8 @@ int main(int argc, char *argv[])
 			gridWarp.setFrameBufferObject(&FBO_warp_r);
 			gridWarpShader.update( "tex", 13 ); // last result left
 			gridWarpShader.update( "depth_map", 25); // last first hit map
-			gridWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "newView", s_view_r ); // most current view
+			gridWarpShader.update( "uViewOld", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "uViewNew", s_view_r ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
 			gridWarp.render();
 		}

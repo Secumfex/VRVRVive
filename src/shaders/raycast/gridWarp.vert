@@ -8,8 +8,8 @@ layout(location = 1) in vec2 uv; // 0..1
 uniform sampler2D depth_map;
 
 uniform mat4 uProjection;
-uniform mat4 oldView;
-uniform mat4 newView;
+uniform mat4 uViewOld;
+uniform mat4 uViewNew;
 
 //!< out-variables
 out vec2 passUV;
@@ -27,7 +27,7 @@ vec4 getViewCoord( vec3 screenPos )
 
 void main() {
 	float depth = texture(depth_map, uv).x;
-	vec4 position = uProjection * newView * inverse(oldView) * getViewCoord(vec3(uv, depth));
+	vec4 position = uProjection * uViewNew * inverse(uViewOld) * getViewCoord(vec3(uv, depth));
 
 	passUV  = uv;
 	gl_Position = position;
