@@ -202,7 +202,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		t += parameterStepSize;
 	}
 
-	//////////////////// SECOND PASS: Compute Emission Absorbtion coefficients and write to layers//////////////////////
+	//////////////////// SECOND PASS: Compute Emission Absorption coefficients and write to layers//////////////////////
 	vec4 segmentColor = vec4(0);
 	float curAlpha = 0.0f; // keep track of kappa(d)
 	vec4 curColor = vec4(0.0); // the raycasting result, for fun

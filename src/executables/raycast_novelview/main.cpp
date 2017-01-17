@@ -186,12 +186,15 @@ int main(int argc, char *argv[])
 	//ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag");
 	ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
 	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	RenderPass novelView(&novelViewShader, &FBO_novelView);
+	//RenderPass novelView(&novelViewShader, &FBO_novelView);
+	RenderPass novelView(&novelViewShader, 0);
 	//novelView.addRenderable(&grid);
 	novelView.addRenderable(&volume);
+	novelView.addEnable(GL_DEPTH_TEST);
+	//novelView.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	novelView.setViewport(TEXTURE_RESOLUTION.x,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
+	OPENGLCONTEXT->bindTextureToUnit(FBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	novelViewShader.update("layer1",4);
@@ -372,7 +375,7 @@ int main(int argc, char *argv[])
 		novelViewShader.update("uProjection", s_perspective); // used for depth to distance computation
 		
 		// used to render the volume bbox (entry point)
-		novelViewShader.update("uModel", s_model);
+		novelViewShader.update("uModel",  s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
 		
 		// used for reprojection
 		novelViewShader.update("uViewOld", s_view); // used for depth to distance computation
@@ -388,10 +391,11 @@ int main(int argc, char *argv[])
 		uvwRenderPass.render();		
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
-
+		
 		showTex.render();
-
-		debugRecompose.render();
+		
+		novelView.render();
+		//debugRecompose.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers
