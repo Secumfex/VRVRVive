@@ -44,7 +44,7 @@ static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
+static glm::vec2 WINDOW_RESOLUTION(1400, 700.0f);
 
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->setAutoPrint(true);
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(1400,700);
+	auto window = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 	SDL_DisplayMode currentDisplayMode;
 	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
 
@@ -205,6 +205,10 @@ int main(int argc, char *argv[])
 		ovr.SetupRenderModels();
 
 		s_fovY = ovr.getFovY();
+
+		unsigned int width, height;
+		ovr.m_pHMD->GetRecommendedRenderTargetSize(&width, &height);
+		WINDOW_RESOLUTION = glm::vec2(width * 2, height);
 	}
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -1188,12 +1192,12 @@ int main(int argc, char *argv[])
 		{
 			{
 				showTexShader.update("tex", leftDebugView);
-				showTex.setViewport(0,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+				showTex.setViewport(0, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
 				showTex.render();
 			}
 			{
 				showTexShader.update("tex", rightDebugView);
-				showTex.setViewport((int) WINDOW_RESOLUTION.x/2,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+				showTex.setViewport((int)getResolution(window).x / 2, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
 				showTex.render();
 			}
 			//////////////////////////////////////////////////////////////////////////////
