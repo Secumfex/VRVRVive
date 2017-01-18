@@ -62,16 +62,6 @@ vec4 accumulateFrontToBack(vec4 color, vec4 backColor)
 	             (1.0 - color.a) * backColor.a     + color.a);
 }
 
-//!< DEBUG simple, but expensive condition method to check whether samplepoint is valid
-//bool isInVolume(vec3 samplePoint)
-//{
-//	// check position compared to last layer
-//	bool onScreen = all( greaterThanEqual( samplePoint.xy, vec2(0.0) ) && lessThanEqual( samplePoint.xy, vec2(1.0) ) );
-//
-//	bool inRange  = ( samplePoint.z <= backDistance ) && (samplePoint.z >= frontDistance); // inbetween "front" and "back"
-//	return (onScreen && inRange);
-//}
-
 //!< DEBUG simple, but expensive update method to retrieve ea values
 vec4 getLayerEA(vec2 uv, int layer)
 {
@@ -93,33 +83,6 @@ float getLayerDistance(vec2 uv, int layer)
 	else if ( layer == 4 )  { return texture(depth, uv).w; }
 	else/*if( layer == 5 )*/{ return depthToDistance(uv, texture(back_uvw_map_old, uv).w); }
 }
-
-/*
-vec4[6] readTexturesEA( vec2 uv ) // TODO THIS IS ONLY DEBUG!!
-{
-	vec4[6] layerEA = vec4[6](0.0);
-	layerEA[1] = 
-	layerEA[2] = texture(layer2, uv);
-	layerEA[3] = texture(layer3, uv);
-	layerEA[4] = texture(layer4, uv);
-	return layerEA;
-}
-
-//!< DEBUG simple, but expensive update method to retrieve depth values
-float[6] readTexturesDepth( vec2 uv )
-{
-	float[6] depths = float[6](0.0);
-
-	vec4 depths_ = texture(depth, uv);
-	depths[0] = depthToDistance(uv, texture(depth0, uv).x);
-	depths[1] = depths_.x;
-	depths[2] = depths_.y;
-	depths[3] = depths_.z;
-	depths[4] = depths_.w;
-	depths[5] = depthToDistance(uv, texture(back_uvw_map_old, uv).w);
-	return depths;
-}
-*/
 
 void main()
 {	

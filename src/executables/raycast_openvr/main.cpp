@@ -48,7 +48,12 @@ static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
 
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
-	"WARP_SET_FAR_PLANE"
+	"WARP_SET_FAR_PLANE",
+	"OCCLUSION_MAP",
+	"EMISSION_ABSORPTION_RAW",
+	"SCENE_DEPTH",
+	"LEVEL_OF_DETAIL",
+	"FIRST_HIT"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -286,10 +291,12 @@ int main(int argc, char *argv[])
 	uvwShaderProgram.update("projection", s_perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject uvwFBO((int) WINDOW_RESOLUTION.x/2,(int) WINDOW_RESOLUTION.y);
 	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
 	FrameBufferObject uvwFBO_r((int) WINDOW_RESOLUTION.x/2,(int)  WINDOW_RESOLUTION.y);
 	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
+	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
@@ -300,7 +307,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepthOcclusion.frag", s_shaderDefines); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y));	
 	shaderProgram.update("uResolution", glm::vec4(WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y,0,0));

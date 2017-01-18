@@ -145,6 +145,7 @@ int main(int argc, char *argv[])
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram, &synth_raycastLayerFBO);
+	renderPass.setClearColor(0.0f,0.0f,0.0f,1.0f);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
