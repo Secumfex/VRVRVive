@@ -157,8 +157,11 @@ int main(int argc, char *argv[])
 	showTex.addRenderable(&quad);
 	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	showTex.setViewport(0,0,WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y);
-	showTexShader.bindTextureOnUse( "tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-
+	showTexShader.bindTextureOnUse( "tex", fbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	
+	static std::string activeRenderableStr = "Vertex Grid";
+	static std::string activeViewStr = "Original";
+	static bool enableIdOverlay = false;
 	setKeyCallback(window, [&](int k, int s, int a, int m){
 		if (a == GLFW_RELEASE) {return;}
 		if (k == GLFW_KEY_SPACE)
@@ -166,10 +169,12 @@ int main(int argc, char *argv[])
 			static bool swap = true;
 			if (swap){
 				showTexShader.bindTextureOnUse("tex", outputTexture);
+				activeViewStr = "Warped";
 				DEBUGLOG->log("display: Output");
 				swap = false;
 			} else {
-				showTexShader.bindTextureOnUse("tex", cubeFbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
+				showTexShader.bindTextureOnUse("tex", fbo.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
+				activeViewStr = "Original";
 				DEBUGLOG->log("display: Cube FBO");
 				swap = true;
 			}
@@ -182,14 +187,20 @@ int main(int argc, char *argv[])
 				vertexGrid.addRenderable(&quad);
 				vertexGrid.setShaderProgram(&quadShader);
 				DEBUGLOG->log("renderable: Quad");
+				activeRenderableStr = "Quad";
 				swap = false;
 			} else {
 				vertexGrid.clearRenderables();
 				vertexGrid.addRenderable(s_vertexGrid);
 				vertexGrid.setShaderProgram(&vertexGridShader);
 				DEBUGLOG->log("renderable: Vertex Grid");
+				activeRenderableStr = "Vertex Grid";
 				swap = true;
 			}
+		}
+		if (k == GLFW_KEY_I) 
+		{
+			enableIdOverlay = !enableIdOverlay;
 		}
 	});
 
@@ -228,7 +239,13 @@ int main(int argc, char *argv[])
 		ImGui_ImplGlfwGL3_NewFrame(); // tell ImGui a new frame is being rendered
 		ImGui::Value("FPS", ImGui::GetIO().Framerate);
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
-		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		//ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		ImGui::Text("Active View:"); ImGui::SameLine(); ImGui::Text(activeViewStr.c_str());
+		ImGui::Text("Active Fragment Generator:"); ImGui::SameLine(); ImGui::Text(activeRenderableStr.c_str());
+		ImGui::Checkbox("Enable Invocation ID Overlay", &enableIdOverlay);
+		vertexGridShader.update("uEnableIdOverlay", enableIdOverlay);
+		quadShader.update("uEnableIdOverlay", enableIdOverlay);
+
 		ImGui::PopStyleColor();
 		///////////////////////////////////////////////////////////////////////////////
 		checkGLError();
@@ -247,7 +264,7 @@ int main(int argc, char *argv[])
 
 		showTex.render();
 
-		//ImGui::Render();
+		ImGui::Render();
 	});
 
 	destroyWindow(window);

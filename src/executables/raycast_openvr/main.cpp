@@ -803,7 +803,7 @@ int main(int argc, char *argv[])
 
 			Frame::FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
 		}
-		Frame::Timings.swap();
+		if(!pause_frame_profiler) Frame::Timings.swap();
 		Frame::Timings.getBack().timestamp("Frame Begin");
 		//////////////////////////////////////////////////////////////////////////////
 
@@ -832,11 +832,13 @@ int main(int argc, char *argv[])
 
 		//++++++++++++++ DEBUG
 		static bool animateView = false;
-		ImGui::Checkbox("Animate View", &animateView);
+		static bool animateTranslation = false;
+		ImGui::Checkbox("Animate View", &animateView); ImGui::SameLine(); ImGui::Checkbox("Animate Translation", &animateTranslation);
 		if (animateView)
 		{
 			glm::vec4 warpCenter  = glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
-			glm::vec4 warpEye  = eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			glm::vec4 warpEye = eye;
+			if (animateTranslation) warpEye = eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
 			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 		}
@@ -919,7 +921,8 @@ int main(int argc, char *argv[])
 					if (animateView)
 					{
 						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						glm::vec4 warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						glm::vec4 warpEye = eye;
+						if (animateTranslation) warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
 						matrices[LEFT][CURRENT].view = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
 					}
 				}
@@ -1018,7 +1021,8 @@ int main(int argc, char *argv[])
 					if (animateView)
 					{
 						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						glm::vec4 warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+						glm::vec4 warpEye = eye;
+						if (animateTranslation) warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
 						matrices[RIGHT][CURRENT].view = glm::lookAt(glm::vec3(warpEye) + glm::vec3(0.15, 0.0, 0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
 					}
 				}
@@ -1077,10 +1081,13 @@ int main(int argc, char *argv[])
 		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
 
 		//%%%%%%%%%%%% Image Warping
+		
+		glClearColor(0.1f,0.12f,0.15f,0.0f);
 		FBO_warp.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		FBO_warp_r.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClearColor(0.f,0.f,0.f,0.f);
 		if (ovr.m_pHMD) // render controller models if possible
 		{
 			Frame::Timings.getBack().beginTimerElapsed("Render Models");
@@ -1121,8 +1128,8 @@ int main(int argc, char *argv[])
 			gridWarp.setFrameBufferObject(&FBO_warp);
 			gridWarpShader.update( "tex", 12 ); // last result left
 			gridWarpShader.update( "depth_map", 24); // last first hit map
-			gridWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "newView", s_view ); // most current view
+			gridWarpShader.update( "uViewOld", matrices[LEFT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "uViewNew", s_view ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
 			gridWarp.render();
 
@@ -1130,8 +1137,8 @@ int main(int argc, char *argv[])
 			gridWarp.setFrameBufferObject(&FBO_warp_r);
 			gridWarpShader.update( "tex", 13 ); // last result left
 			gridWarpShader.update( "depth_map", 25); // last first hit map
-			gridWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "newView", s_view_r ); // most current view
+			gridWarpShader.update( "uViewOld", matrices[RIGHT][FIRST_HIT].view ); // update with old view
+			gridWarpShader.update( "uViewNew", s_view_r ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
 			gridWarp.render();
 		}

@@ -46,15 +46,6 @@ const int NUM_LAYERS = 1; // lol lets try this
 template <class T>
 void activateVolume(VolumeData<T>& volumeData ) // set static variables
 {
-	DEBUGLOG->log("File Info:");
-	DEBUGLOG->indent();
-		DEBUGLOG->log("min value: ", volumeData.min);
-		DEBUGLOG->log("max value: ", volumeData.max);
-		DEBUGLOG->log("res. x   : ", volumeData.size_x);
-		DEBUGLOG->log("res. y   : ", volumeData.size_y);
-		DEBUGLOG->log("res. z   : ", volumeData.size_z);
-	DEBUGLOG->outdent();
-
 	// set volume specific parameters
 	s_minValue = volumeData.min;
 	s_maxValue = volumeData.max;
@@ -189,6 +180,30 @@ int main(int argc, char *argv[])
 	debugRecomposeShader.update("depth0",9);
 	debugRecomposeShader.update("depth", 10);
 
+	///////////////////////   novel view synthesis Renderpass    //////////////////////////
+	//Grid grid(400,400,0.0025f,0.0025f, false);
+
+	//ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag");
+	ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
+	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	//RenderPass novelView(&novelViewShader, &FBO_novelView);
+	RenderPass novelView(&novelViewShader, 0);
+	//novelView.addRenderable(&grid);
+	novelView.addRenderable(&volume);
+	novelView.addEnable(GL_DEPTH_TEST);
+	//novelView.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	novelView.setViewport(TEXTURE_RESOLUTION.x,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+
+	OPENGLCONTEXT->bindTextureToUnit(FBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
+	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
+
+	novelViewShader.update("layer1",4);
+	novelViewShader.update("layer2",5);
+	novelViewShader.update("layer3",6);
+	novelViewShader.update("layer4",7);
+	novelViewShader.update("depth0",9);
+	novelViewShader.update("depth", 10);
+
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
@@ -322,7 +337,7 @@ int main(int argc, char *argv[])
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 
 		static int active_debug_texture = 4;
-		if ( ImGui::SliderInt("debug texture", &active_debug_texture, 4, 10) ) // active layer texture
+		if ( ImGui::SliderInt("debug texture", &active_debug_texture, 4, 11) ) // active layer texture
 		{
 			showTexShader.update("tex", active_debug_texture);
 		}
@@ -357,6 +372,15 @@ int main(int argc, char *argv[])
 		shaderProgram.update("uScreenToView", s_screenToView );
 
 		debugRecomposeShader.update("uProjection", s_perspective); // used for depth to distance computation
+		novelViewShader.update("uProjection", s_perspective); // used for depth to distance computation
+		
+		// used to render the volume bbox (entry point)
+		novelViewShader.update("uModel",  s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
+		
+		// used for reprojection
+		novelViewShader.update("uViewOld", s_view); // used for depth to distance computation
+		novelViewShader.update("uViewNovel", s_view_r); // used for depth to distance computation
+
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// ///////////////////////////// 
@@ -367,10 +391,11 @@ int main(int argc, char *argv[])
 		uvwRenderPass.render();		
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
-
+		
 		showTex.render();
-
-		debugRecompose.render();
+		
+		novelView.render();
+		//debugRecompose.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers
