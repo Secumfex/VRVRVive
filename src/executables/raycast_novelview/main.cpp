@@ -30,7 +30,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET_"
+	"RANDOM_OFFSET"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -207,9 +207,12 @@ int main(int argc, char *argv[])
 	novelViewShader.update("layer4",7);
 	novelViewShader.update("depth0",9);
 	novelViewShader.update("depth", 10);
-
+	
+	novelViewShader.update("back_uvw_map_old", 1);
 	novelViewShader.update("back_uvw_map",  12);
 	novelViewShader.update("front_uvw_map", 13);
+	
+	novelViewShader.update("uThreshold", 100);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -349,6 +352,17 @@ int main(int argc, char *argv[])
 			showTexShader.update("tex", active_debug_texture);
 		}
 
+		static int threshold = 4;
+		if ( ImGui::SliderInt("threshold", &threshold, 0, 100) ) // active layer texture
+		{
+			novelViewShader.update("uThreshold", threshold);
+		}
+
+		if ( ImGui::SliderFloat("eye dist", &s_eyeDistance, 0.0, 1.0) ) // active layer texture
+		{
+			ViewParameters::updateView();
+		}
+
 		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -357,7 +371,7 @@ int main(int argc, char *argv[])
 			s_rotation = glm::rotate(glm::mat4(1.0f), (float) io.DeltaTime, glm::vec3(0.0f, 1.0f, 0.0f) ) * s_rotation;
 		}
 
-		ViewParameters::updateView(); // might have changed from SLD Event
+		ViewParameters::updateView(); // might have changed from SDL Event
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////

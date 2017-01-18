@@ -88,7 +88,7 @@ namespace ViewParameters
 	static glm::mat4 s_view = glm::lookAt(glm::vec3(s_eye), glm::vec3(s_center), glm::vec3(s_up)); // view of left eye
 	static glm::mat4 s_view_r = glm::lookAt(glm::vec3(s_eye) +  glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(s_center) + glm::vec3(s_eyeDistance, 0.0f, 0.0f), glm::vec3(s_up)); // view of right eye (parallel)
 
-	//!< call when s_eye, s_center or s_up changed
+	//!< call when s_eye, s_center, s_eyeDistance or s_up changed
 	inline void updateView()
 	{
 		s_view = glm::lookAt(glm::vec3(s_eye), glm::vec3(s_center), glm::vec3(s_up));

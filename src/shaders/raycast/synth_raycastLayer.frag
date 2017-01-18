@@ -129,7 +129,7 @@ vec4 beerLambertColorTransmissionToEmissionAbsorption(vec3 C, float T, float z)
 	float A = -log( T ) / z; // invert equation to to get A
 
 	// compute Emission
-	vec3 E = C / T; // invert equation to to get E
+	vec3 E = C / (1.0 - T); // invert equation to to get E
 
 	return vec4(E, A);
 }
@@ -139,7 +139,7 @@ vec4 beerLambertEmissionAbsorptionToColorTransmission(vec3 E, float A, float z)
 {
 	float T = exp( -A * z);
 
-	vec3 C = E * T;
+	vec3 C = E * (1.0 - T);
 
 	return vec4(C, T);
 }
