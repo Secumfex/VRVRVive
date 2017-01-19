@@ -36,7 +36,8 @@ static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten
 static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
-static const char* s_models[] = {"CT Head"};
+static int 		 s_activeModel = 0;
+static const char* s_models[] = {"CT Head", "MRT Brain"};
 
 static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
@@ -116,18 +117,7 @@ enum DebugViews{
 
 void generateTransferFunction()
 {
-	s_transferFunction.getValues().clear();
-	s_transferFunction.getColors().clear();
-	s_transferFunction.getValues().push_back(58);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
-	s_transferFunction.getValues().push_back(539);
-	s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 231.0/255.0f));
-	s_transferFunction.getValues().push_back(572);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
-	s_transferFunction.getValues().push_back(1356);
-	s_transferFunction.getColors().push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
-	s_transferFunction.getValues().push_back(1500);
-	s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 255.0 /255.0f));
+	s_transferFunction.loadPreset(TransferFunction::Preset::CT_Head, s_minValue, s_maxValue);
 }
 
 void updateTransferFunctionTex()
@@ -218,13 +208,19 @@ int main(int argc, char *argv[])
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH;
 	file += std::string( "/volumes/CTHead/CThead");
-	VolumeData<float> volumeData = Importer::load3DData<float>(file, 256, 256, 113, 2);
-	GLuint volumeTextureCT = loadTo3DTexture<float>(volumeData, 8, GL_R16F, GL_RED, GL_FLOAT);
+	VolumeData<float> volumeData[2];
+	GLuint volumeTexture[2];
+	volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
+	volumeTexture[0] = loadTo3DTexture<float>(volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
+	
+	volumeData[1] = Importer::loadBruder<float>();
+	volumeTexture[1] =  loadTo3DTexture<float>(volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
+
 
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
 
-	activateVolume<float>(volumeData);
+	activateVolume<float>(volumeData[0]);
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
@@ -318,7 +314,6 @@ int main(int argc, char *argv[])
 
 	// DEBUG
 	generateTransferFunction();
-	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
@@ -328,7 +323,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->outdent();
 
 	// bind volume texture, back uvw textures, front uvws
-	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
+	OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
@@ -703,23 +698,26 @@ int main(int argc, char *argv[])
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 	
-		ImGui::Columns(2, "mycolumns2", true);
-        ImGui::Separator();
-		bool changed = false;
-		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
-        {
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
-			ImGui::NextColumn();
-			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
-            ImGui::NextColumn();
-        }
-
-		if(changed)
+		if (ImGui::CollapsingHeader("Transfer Function Settings"))
 		{
-			updateTransferFunctionTex();
+			ImGui::Columns(2, "mycolumns2", true);
+			ImGui::Separator();
+			bool changed = false;
+			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			{
+				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
+				ImGui::NextColumn();
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				ImGui::NextColumn();
+			}
+		
+			if(changed)
+			{
+				updateTransferFunctionTex();
+			}
+			ImGui::Columns(1);
+			ImGui::Separator();
 		}
-        ImGui::Columns(1);
-        ImGui::Separator();
 
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
@@ -730,6 +728,16 @@ int main(int argc, char *argv[])
         }
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
+
+		
+    	if (ImGui::ListBox("active model", &s_activeModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
+    	{
+			activateVolume(volumeData[s_activeModel]);
+			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+			OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
+			s_transferFunction.loadPreset((TransferFunction::Preset) s_activeModel, s_minValue, s_maxValue);
+    	}
+
 		ImGui::PopItemWidth();
 		
 		ImGui::Separator();
@@ -769,7 +777,7 @@ int main(int argc, char *argv[])
 
 		{
 			static float scale = s_scale[0][0];
-			if (ImGui::SliderFloat("Scale", &scale, 0.01, 5.0f))
+			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 5.0f))
 			{
 				s_scale = glm::scale(glm::vec3(scale));
 			}

@@ -169,9 +169,9 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// Transmission kappa( /inf ) used for normalization
 	float maxAlpha = 0.0;
 
-	float t = 0.001;
+	float t = 0.0;
 	#ifdef RANDOM_OFFSET 
-	t = t * 2.0 * rand(passUV);
+	t = 0.002 * 2.0 * rand(passUV);
 	#endif
 	while (t < 1.0 + (0.5 * parameterStepSize))
 	{
