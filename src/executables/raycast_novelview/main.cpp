@@ -429,8 +429,8 @@ int main(int argc, char *argv[])
 		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
 		uvwRenderPass.render();
 
-		novelView.render();
-		//debugRecompose.render();
+		//novelView.render();
+		debugRecompose.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers

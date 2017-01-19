@@ -68,7 +68,7 @@ namespace Frame{
 	static SimpleDoubleBuffer<OpenGLTimings> Timings;
 }
 
-float s_near = 0.1f;
+float s_near = 0.5f;
 float s_far = 30.0f;
 float s_fovY = 45.0f;
 float s_nearH;
@@ -105,6 +105,8 @@ enum DebugViews{
 	UVW_FRONT,
 	FIRST_HIT_,
 	OCCLUSION,
+	OCCLUSION_CLIP_FRUSTUM_FRONT,
+	OCCLUSION_CLIP_FRUSTUM_BACK,
 	CURRENT_,
 	FRONT,
 	WARPED,
@@ -400,8 +402,26 @@ int main(int argc, char *argv[])
 	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
 	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
 
+	ShaderProgram occlusionClipFrustumShader("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", s_shaderDefines);
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
+	FrameBufferObject occlusionClipFrustumFBO(   occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
+	FrameBufferObject occlusionClipFrustumFBO_r( occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
+	FrameBufferObject::s_internalFormat = GL_RGBA;
+	RenderPass occlusionClipFrustum(&occlusionClipFrustumShader, &occlusionClipFrustumFBO);
+	Volume ndcCube(0.999f); // a cube that spans -1 .. 1 
+	occlusionClipFrustum.addRenderable(&ndcCube);	
+	occlusionClipFrustum.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	occlusionClipFrustum.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
+	occlusionClipFrustum.addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE26, GL_TEXTURE_2D); // left occlusion clip map back
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // right occlusion clip map back
+	
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // left occlusion clip map front
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE29, GL_TEXTURE_2D); // right occlusion clip map front
 	
 	///////////////////////   Simple Warp Renderpass    //////////////////////////
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
@@ -665,6 +685,14 @@ int main(int argc, char *argv[])
 				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
 				depthToTexture.setFrameBufferObject(&FBO_debug_depth_r);
 				depthToTexture.render();
+				break;
+			case OCCLUSION_CLIP_FRUSTUM_BACK:
+				leftDebugView = 26;
+				rightDebugView = leftDebugView + 1;
+				break;
+			case OCCLUSION_CLIP_FRUSTUM_FRONT:
+				leftDebugView = 28;
+				rightDebugView = leftDebugView + 1;
 				break;
 		}
 	};
@@ -987,6 +1015,14 @@ int main(int argc, char *argv[])
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+
+			occlusionClipFrustumShader.update("uProjection", current.perspective);
+			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO);
+			occlusionClipFrustumShader.update("uView", current.view);
+			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
+			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(firstHit.model) );
+			occlusionClipFrustum.render();
+
 			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
@@ -998,6 +1034,8 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "front_uvw_map", 4 );
 		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", 8 );
+		//shaderProgram.update( "occlusion_clip_frustum_back", 26 );
+		shaderProgram.update( "occlusion_clip_frustum_front", 28 );
 
 		Frame::Timings.getBack().beginTimer("Chunked Raycast LEFT");
 		chunkedRenderPass.render(); 
@@ -1083,6 +1121,14 @@ int main(int argc, char *argv[])
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+
+			occlusionClipFrustumShader.update("uProjection", current.perspective);
+			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO_r);
+			occlusionClipFrustumShader.update("uView", current.view);
+			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
+			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(current.model));
+			occlusionClipFrustum.render();
+
 			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
@@ -1094,15 +1140,16 @@ int main(int argc, char *argv[])
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("scene_depth_map", 19 );
 		shaderProgram.update("occlusion_map", 9);
+		//shaderProgram.update( "occlusion_clip_frustum_back", 27 );
+		shaderProgram.update( "occlusion_clip_frustum_front", 29 );
 
 		//renderPass_r.render();
 		Frame::Timings.getBack().beginTimer("Chunked Raycast RIGHT");
 		chunkedRenderPass_r.render();
 		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
 
-		//%%%%%%%%%%%% Image Warping
-		
-		glClearColor(0.1f,0.12f,0.15f,0.0f);
+		//%%%%%%%%%%%% Image Warping		
+		glClearColor(0.0f,0.0f,0.0f,0.0f);
 		FBO_warp.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		FBO_warp_r.bind();
@@ -1123,8 +1170,6 @@ int main(int argc, char *argv[])
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
 		Frame::Timings.getBack().beginTimerElapsed("Warping");
-
-		
 		if (!useGridWarp)
 		{
 			// warp left
@@ -1145,6 +1190,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
+			glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
 			gridWarp.setFrameBufferObject(&FBO_warp);
 			gridWarpShader.update( "tex", 12 ); // last result left
 			gridWarpShader.update( "depth_map", 24); // last first hit map
@@ -1153,7 +1199,6 @@ int main(int argc, char *argv[])
 			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
 			gridWarp.render();
 
-
 			gridWarp.setFrameBufferObject(&FBO_warp_r);
 			gridWarpShader.update( "tex", 13 ); // last result left
 			gridWarpShader.update( "depth_map", 25); // last first hit map
@@ -1161,6 +1206,7 @@ int main(int argc, char *argv[])
 			gridWarpShader.update( "uViewNew", s_view_r ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
 			gridWarp.render();
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		}
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		Frame::Timings.getBack().stopTimerElapsed();

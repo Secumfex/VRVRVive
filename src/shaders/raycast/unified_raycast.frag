@@ -51,6 +51,11 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 
 #ifdef OCCLUSION_MAP
 	uniform sampler2D occlusion_map;   // uvw coordinates map of occlusion map
+	uniform sampler2D occlusion_clip_frustum_back;   // uvw coordinates map of occlusion map
+	uniform sampler2D occlusion_clip_frustum_front;   // uvw coordinates map of occlusion map
+	
+	//uniform mat4 uScreenToOcclusionView; // view that produced the first hit map on which the occlusion_map is based
+	//uniform mat4 uOcclusionViewToTexture; // from occlusion view to texture
 #endif
 
 #ifdef SCENE_DEPTH
@@ -136,7 +141,7 @@ vec4 transferFunction(float value, float stepSize)
 }
 
 /**
- * @brief retrieve value for a maximum intensity projection	
+ * @brief retrieve color for a front-to-back raycast between two points in the volume
  * 
  * @param startUVW start uvw coordinates
  * @param endUVW end uvw coordinates
@@ -246,6 +251,26 @@ void main()
 	}
 
 	#ifdef OCCLUSION_MAP
+		vec4 clipFrustumFront = texture(occlusion_clip_frustum_front, passUV);
+		clipFrustumFront.rgb = (uViewToTexture * getViewCoord( vec3(passUV, clipFrustumFront.a) ) ).xyz;
+		float firstHit = 0.0;
+		if ( clipFrustumFront.a > uvwStart.a ) // there is unknown volume space between proxy geom and frustum map
+		{
+			RaycastResult raycastResult = raycast( 
+			uvwStart.rgb, 			// ray start
+			clipFrustumFront.rgb,   // ray end
+			uStepSize    			// sampling step size
+			, length( getViewCoord(vec3(passUV, uvwStart.a) ).xyz)
+			, length( getViewCoord(vec3(passUV, clipFrustumFront.a) ).xyz)
+			);
+
+			fragColor = raycastResult.color;
+			firstHit = raycastResult.firstHit.a;
+		}
+
+		//vec4 clipFrustumBack = texture(occlusion_clip_frustum_back, passUV);
+		// not as important...
+
 		// check uvw coords against occlusion map
 		vec4 uvwOcclusion = texture(occlusion_map, passUV);
 		if (uvwOcclusion.x < 1.0 && uvwOcclusion.x < uvwEnd.a && uvwOcclusion.x > uvwStart.a) // found starting point in front of back face but in back of front face
@@ -273,8 +298,8 @@ void main()
 	#endif
 
 	// linearize depth
-	float startDistance = abs(getViewCoord(vec3(passUV,uvwStart.a)).z);
-	float endDistance   = abs(getViewCoord(vec3(passUV,uvwEnd.a)).z);
+	float startDistance = length(getViewCoord(vec3(passUV,uvwStart.a)).xyz);
+	float endDistance   = length(getViewCoord(vec3(passUV,uvwEnd.a)).xyz);
 	//float startDistance = uvwStart.a;
 	//float endDistance   = uvwEnd.a;
 
@@ -287,10 +312,17 @@ void main()
 		, endDistance
 		);
 
-	// final color
-	fragColor = raycastResult.color;
+	// final color (front to back)
+	fragColor.rgb = (1.0 - fragColor.a) * (raycastResult.color.rgb) + fragColor.rgb;
+	fragColor.a   = (1.0 - fragColor.a) * raycastResult.color.a + fragColor.a;
 
 	#ifdef FIRST_HIT
+		#ifdef OCCLUSION_MAP
+		if (firstHit != 0.0) // first hit happened even before raycasting within occlusion frustum
+		{
+			raycastResult.firstHit.a = firstHit;
+		}
+		#endif
 		if (raycastResult.firstHit.a > 0.0)
 		{
 			fragFirstHit.xyz = raycastResult.firstHit.xyz; // uvw coords

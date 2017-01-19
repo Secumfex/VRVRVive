@@ -66,7 +66,9 @@ VertexData getVertexData(vec3 screenPos)
 {
 	vec4 posView = getViewCoord(screenPos); // position in first hit view space
 	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
-	posNewView.z = min( -NEAR_PLANE, posNewView.z + DEPTH_BIAS_VIEW);
+	float closerDistance = max(NEAR_PLANE, length(posNewView.xyz) - DEPTH_BIAS_VIEW);
+	posNewView.xyz = closerDistance * normalize(posNewView.xyz);
+
 	vec4 posNewProj = uProjection * posNewView; // new view space position projected
 
 	posNewProj.z = max( min( posNewProj.z / posNewProj.w, 1.0), -1.0 ) * posNewProj.w; // clamp to near/far plane to force fragment generation

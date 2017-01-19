@@ -25,7 +25,7 @@ layout(location = 0) out vec4 fragColor;
 vec4 beerLambertEmissionAbsorptionToColorTransmission(vec3 E, float A, float z)
 {
 	float T = exp( -A * z);
-	vec3 C = E * T;
+	vec3 C = E * (1.0 - T);
 	return vec4(C,T);
 }
 
@@ -44,7 +44,6 @@ void main()
 	d0 = depthToDistance(passUV, d0); // d0 is from depth-attachment, so convert to distance first
 	
 	vec4 d  = texture(depth, passUV);
-
 
 	//<<<< retrieve values
 	vec4 EA1 = texture(layer1, passUV);

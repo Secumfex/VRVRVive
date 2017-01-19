@@ -322,8 +322,8 @@ void main()
 	if (uvwStart.a == 0.0) { discard; } //invalid pixel
 
 	// linearize depth
-	float startDistance = abs(getViewCoord(vec3(passUV, uvwStart.a)).z);
-	float endDistance   = abs(getViewCoord(vec3(passUV, uvwEnd.a)).z);
+	float startDistance = length(getViewCoord(vec3(passUV, uvwStart.a)).xyz);
+	float endDistance   = length(getViewCoord(vec3(passUV, uvwEnd.a)).xyz);
 
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 

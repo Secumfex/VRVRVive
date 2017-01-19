@@ -2,6 +2,7 @@
 
 //!< in-variables
 in vec2 passUV;
+in vec3 passPosition;
 
 //!< uniforms
 uniform sampler2D tex;
