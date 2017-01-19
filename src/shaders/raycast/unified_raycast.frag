@@ -297,7 +297,7 @@ void main()
 			vec4 firstHitProjected = uProjection * inverse(uViewToTexture) * vec4( raycastResult.firstHit.xyz, 1.0);
 			fragFirstHit.a = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
 			
-			gl_FragDepth = fragFirstHit.a;
+			gl_FragDepth = max(fragFirstHit.a, 0.0);
 		}
 		else
 		{

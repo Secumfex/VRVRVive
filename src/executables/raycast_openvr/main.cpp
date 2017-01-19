@@ -425,6 +425,7 @@ int main(int argc, char *argv[])
 	Grid grid(400, 400, 0.0025f, 0.0025f, false);
 	ShaderProgram gridWarpShader("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", s_shaderDefines);
 	RenderPass gridWarp(&gridWarpShader, &FBO_warp);
+	gridWarp.addEnable(GL_DEPTH_TEST);
 	gridWarp.addRenderable(&grid);
 	static bool useGridWarp = false;
 
