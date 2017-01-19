@@ -302,6 +302,7 @@ int main(int argc, char *argv[])
 	//++++++++++++++ DEBUG
 	//++++++++++++++ DEBUG
 
+	float elapsedTime = 0.0;
 	while (!shouldClose(window))
 	{
 		////////////////////////////////    EVENTS    ////////////////////////////////
@@ -313,6 +314,7 @@ int main(int argc, char *argv[])
 		ImGui_ImplSdlGL3_NewFrame(window); // tell ImGui a new frame is being rendered
 
 		ImGui::Value("FPS", (float) (io.Framerate));
+		elapsedTime += io.DeltaTime;
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
@@ -373,6 +375,12 @@ int main(int argc, char *argv[])
 		}
 
 		ViewParameters::updateView(); // might have changed from SDL Event
+
+		//glm::vec4 warpCenter  = s_center + glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+		glm::vec4 warpCenter  = s_center;
+		glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+		s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+	
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
