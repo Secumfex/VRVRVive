@@ -54,7 +54,8 @@ const char* SHADER_DEFINES[] = {
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
 	"LEVEL_OF_DETAIL",
-	"FIRST_HIT"
+	"FIRST_HIT",
+	"SCENE_DEPTH"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 

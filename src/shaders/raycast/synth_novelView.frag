@@ -7,9 +7,9 @@
 in vec2 passUV;
 
 // textures
-uniform sampler2D back_uvw_map_old;   // uvw coordinates map of back  faces FROM OLD VIEW
-uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces FROM OLD VIEW
-uniform sampler2D front_uvw_map;  // uvw coordinates map of front faces FROM OLD VIEW
+uniform sampler2D back_uvw_map_old;   // uvw coordinates map of back faces FROM OLD VIEW
+uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces in novel view
+uniform sampler2D front_uvw_map;  // uvw coordinates map of front faces in novel view
 
 uniform sampler2D depth0; // first hit, aka depth layer 0
 uniform sampler2D depth;   // depth layers 1 to 4

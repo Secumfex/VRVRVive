@@ -284,7 +284,7 @@ void main()
 	#ifdef SCENE_DEPTH
 		// check uvw coords against scene depth map, 
 		float scene_depth = texture(scene_depth_map, passUV).x;
-		if (scene_depth < uvwStart.a) 
+		if (scene_depth < uvwStart.a) // fully occluded
 		{
 			gl_FragDepth = uvwStart.a;
 			return;

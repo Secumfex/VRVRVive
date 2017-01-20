@@ -30,7 +30,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET"
+	"RANDOM_OFFSET_"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -429,8 +429,8 @@ int main(int argc, char *argv[])
 		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
 		uvwRenderPass.render();
 
-		//novelView.render();
-		debugRecompose.render();
+		novelView.render();
+		//debugRecompose.render();
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers

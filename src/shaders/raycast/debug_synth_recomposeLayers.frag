@@ -52,15 +52,18 @@ void main()
 	vec4 EA4 = texture(layer4, passUV);
 
 	//<<<< compute colors
-	vec4 layerColor1 = beerLambertEmissionAbsorptionToColorTransmission(EA1.rgb, EA1.a, d.x - d0);
-	vec4 layerColor2 = beerLambertEmissionAbsorptionToColorTransmission(EA2.rgb, EA2.a, d.y - d.x);
-	vec4 layerColor3 = beerLambertEmissionAbsorptionToColorTransmission(EA3.rgb, EA3.a, d.z - d.y);
-	vec4 layerColor4 = beerLambertEmissionAbsorptionToColorTransmission(EA4.rgb, EA4.a, d.w - d.z);
+	vec4 layerColor1 = beerLambertEmissionAbsorptionToColorTransmission(EA1.rgb, EA1.a, max( d.x - d0, 0.0) );
+	vec4 layerColor2 = beerLambertEmissionAbsorptionToColorTransmission(EA2.rgb, EA2.a, max( d.y - d.x, 0.0) );
+	vec4 layerColor3 = beerLambertEmissionAbsorptionToColorTransmission(EA3.rgb, EA3.a, max( d.z - d.y, 0.0) );
+	vec4 layerColor4 = beerLambertEmissionAbsorptionToColorTransmission(EA4.rgb, EA4.a, max( d.w - d.z, 0.0) );
 
 	layerColor1.a = 1.0 - layerColor1.a; // turn T to alpha
 	layerColor2.a = 1.0 - layerColor2.a;
 	layerColor3.a = 1.0 - layerColor3.a;
 	layerColor4.a = 1.0 - layerColor4.a;
+
+	//fragColor = vec4( float( d.x - d0 < 0.0 || d.y - d.x < 0.0 || d.y - d.z < 0.0 || d.w - d.z < 0.0 ) ) ;
+	//return;
 
 	//<<<< compute pixel color, using front-to-back compositing
 	vec4 color = vec4(0.0);
