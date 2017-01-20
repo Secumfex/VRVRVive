@@ -105,11 +105,11 @@ enum DebugViews{
 	UVW_FRONT,
 	FIRST_HIT_,
 	OCCLUSION,
-	OCCLUSION_CLIP_FRUSTUM_FRONT,
-	OCCLUSION_CLIP_FRUSTUM_BACK,
 	CURRENT_,
 	FRONT,
 	WARPED,
+	OCCLUSION_CLIP_FRUSTUM_FRONT,
+	OCCLUSION_CLIP_FRUSTUM_BACK,
 	NUM_VIEWS // auxiliary
 };
 //////////////////////////////////////////////////////////////////////////////
@@ -231,7 +231,7 @@ int main(int argc, char *argv[])
 	/////////////////////     Scene / View Settings     //////////////////////////
 	if (ovr.m_pHMD)
 	{
-		s_translation = glm::translate(glm::vec3(0.0f,1.0f,0.0f));
+		s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
 		s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 	}
 	else
@@ -408,7 +408,7 @@ int main(int argc, char *argv[])
 	FrameBufferObject occlusionClipFrustumFBO_r( occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
 	FrameBufferObject::s_internalFormat = GL_RGBA;
 	RenderPass occlusionClipFrustum(&occlusionClipFrustumShader, &occlusionClipFrustumFBO);
-	Volume ndcCube(0.999f); // a cube that spans -1 .. 1 
+	Volume ndcCube(1.0f); // a cube that spans -1 .. 1 
 	occlusionClipFrustum.addRenderable(&ndcCube);	
 	occlusionClipFrustum.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 	occlusionClipFrustum.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
@@ -659,13 +659,13 @@ int main(int argc, char *argv[])
 		{
 			// regular textures -> show directly
 			default:	
-			case UVW_FRONT:
 			case UVW_BACK:
+			case UVW_FRONT:
 			case CURRENT_:
 			case FRONT:
 			case WARPED:
 				leftDebugView = view * 2 + 2;
-				leftDebugView = max((leftDebugView) % 16, 2);
+				if (leftDebugView >= 16 ) leftDebugView = 2;
 				rightDebugView = leftDebugView + 1;
 				break;
 			case OCCLUSION:
@@ -806,10 +806,16 @@ int main(int argc, char *argv[])
 
 		{
 			static float scale = s_scale[0][0];
+			static float scaleY = s_scale[1][1];
 			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 5.0f))
 			{
-				s_scale = glm::scale(glm::vec3(scale));
+				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
 			}
+			if (ImGui::SliderFloat("Scale Y", &scaleY, 0.5f, 1.5f))
+			{
+				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
+			}
+
 		}
 
 		static bool frame_profiler_visible = false;

@@ -261,7 +261,7 @@ void main()
 			clipFrustumFront.rgb,   // ray end
 			uStepSize    			// sampling step size
 			, length( getViewCoord(vec3(passUV, uvwStart.a) ).xyz)
-			, length( getViewCoord(vec3(passUV, clipFrustumFront.a) ).xyz)
+			, length( getViewCoord(vec3(passUV, min(clipFrustumFront.a, uvwEnd.a) ) ).xyz)
 			);
 
 			fragColor = raycastResult.color;
