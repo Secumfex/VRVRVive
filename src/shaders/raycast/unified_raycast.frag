@@ -13,6 +13,8 @@
 	OCCLUSION_MAP
 	RANDOM_OFFSET
 	SCENE_DEPTH
+	STEREO_SINGLE_PASS
+		STEREO_SINGLE_OUTPUT
 ***********/
 
 #ifndef ALPHA_SCALE
@@ -60,6 +62,19 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 
 #ifdef SCENE_DEPTH
 	uniform sampler2D scene_depth_map;   // depth map of scene
+#endif
+
+#ifdef STEREO_SINGLE_PASS
+	#ifdef STEREO_SINGLE_OUTPUT
+		layout(binding = 0, rgba16f) restrict uniform image2D stereo_image;
+	#else
+		layout(binding = 0, rgba16f) writeonly uniform image2DArray stereo_image;
+		//uniform int uBlockWidth; // width of a texture block (i.e. number of textures of array) 
+	#endif
+
+	// stereo output uniforms
+	uniform mat4 uTextureToProjection_r; // UVR to right view's image coordinates
+	//uniform bool uPauseStereo; // if true, no write commands are executed
 #endif
 
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
@@ -122,6 +137,43 @@ struct RaycastResult
 	}
 #endif
 
+#ifdef STEREO_SINGLE_PASS
+	/**
+	 * @brief store color value at specified image coordinate and layer
+	 */
+	void storeColor(vec4 sampleColor, ivec2 texelCoord_r
+	#ifndef STEREO_SINGLE_OUTPUT
+	, int layerIdx
+	#endif
+	)
+	{
+		#ifdef STEREO_SINGLE_OUTPUT
+			vec4 curColor = imageLoad( stereo_image, texelCoord_r );
+			
+			//TODO compute segment length from ray angle to view vector (multiply with uStepSize)
+
+			//compute accumulated value
+			curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
+			curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
+			vec4 result_color = curColor;
+			imageStore( stereo_image, texelCoord_r, result_color );
+		#else 
+			imageStore( stereo_image, ivec3(texelCoord_r, layerIdx), sampleColor );
+		#endif
+	}
+
+	/** @brief reproject provided texture coordinate into right image coordinate space [0..res]*/
+	vec2 reprojectCoords(vec3 curUVW)
+	{
+		// reproject position
+		vec4 pos_r = uTextureToProjection_r * vec4(curUVW, 1.0);
+		pos_r /= pos_r.w;
+		pos_r.xy = ( pos_r.xy / vec2(2.0) + vec2(0.5) );
+
+		return vec2( imageSize( stereo_image ) ) * pos_r.xy;
+	}
+#endif
+
 /**
 * @brief 'transfer-function' applied to value.
 * @param value to be mapped to a color
@@ -151,7 +203,13 @@ vec4 transferFunction(float value, float stepSize)
  * 
  * @return RaycastResult consisiting of accumulated color, first hit and last hit
  */
-RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth)
+RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDepth, float endDepth
+#ifdef STEREO_SINGLE_PASS
+	#ifndef STEREO_SINGLE_OUTPUT
+	, int layerIdx 
+	#endif
+#endif
+)
 {
 	float parameterStepSize = stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 	
@@ -160,6 +218,11 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	result.firstHit = vec4(0.0);
 	result.lastHit = vec4(endUVW, endDepth);
 	vec4 curColor = vec4(0);
+
+	#ifdef STEREO_SINGLE_PASS
+		vec4 segmentColor_r = vec4(0);
+		ivec2 texelCoord_r = ivec2( reprojectCoords( startUVW ) );
+	#endif
 
 	// traverse ray front to back rendering
 	float t = 0.0;
@@ -198,6 +261,31 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		#endif
 
+		#ifdef STEREO_SINGLE_PASS
+			// reproject Coords, check whether image coords changed
+			ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
+			if ( curTexelCoord_r != texelCoord_r ) //changed
+			{
+				// reproject color, then reset segment color
+				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)
+				{
+					storeColor( segmentColor_r, ivec2(i, texelCoord_r.y)
+						#ifndef STEREO_SINGLE_OUTPUT
+						, layerIdx 
+						#endif
+					);
+				}
+
+				// update/reset for next segment
+				texelCoord_r = curTexelCoord_r;
+				segmentColor_r = vec4(0);
+			}
+
+			// accumulate segment colors
+			segmentColor_r.rgb = (1.0 - segmentColor_r.a) * (sampleColor.rgb) + segmentColor_r.rgb;
+			segmentColor_r.a = (1.0 - segmentColor_r.a) * sampleColor.a + segmentColor_r.a;
+		#endif
+
 		curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 		curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 
@@ -218,7 +306,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		t += parameterStepSize;
 	}
 
-	// return emission absorbtion result
+	#ifdef STEREO_SINGLE_PASS
+	storeColor( segmentColor_r, texelCoord_r // reproject last state of segmentColor
+		#ifndef STEREO_SINGLE_OUTPUT
+		, layerIdx 
+		#endif
+	);
+	#endif
+
+	// return emission absorption result
 	result.color = curColor;
 	return result;
 }
@@ -303,6 +399,13 @@ void main()
 	//float startDistance = uvwStart.a;
 	//float endDistance   = uvwEnd.a;
 
+	#ifdef STEREO_SINGLE_PASS
+		#ifndef STEREO_SINGLE_OUTPUT
+		ivec3 texSize = imageSize(stereo_image);
+		int layerIdx = texSize.z - ( int(passUV.x * texSize.x) % texSize.z ) - 1;
+		#endif
+	#endif
+	
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
 		uvwStart.rgb, 			// ray start
@@ -310,6 +413,11 @@ void main()
 		uStepSize    			// sampling step size
 		, startDistance
 		, endDistance
+		#ifdef STEREO_SINGLE_PASS
+			#ifndef STEREO_SINGLE_OUTPUT
+				, layerIdx
+			#endif
+		#endif
 		);
 
 	// final color (front to back)

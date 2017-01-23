@@ -53,7 +53,12 @@ static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
-	//"ARRAY_TEXTURE"
+	//"OCCLUSION_MAP",
+	//"EMISSION_ABSORPTION_RAW",
+	//"SCENE_DEPTH",
+	"LEVEL_OF_DETAIL",
+	"FIRST_HIT",
+	//"SCENE_DEPTH"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -253,13 +258,15 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Simple Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram simpleRaycastShader("/raycast/simpleRaycast.vert", "/raycast/simpleRaycastLodDepth.frag", s_shaderDefines); DEBUGLOG->outdent();
+	ShaderProgram simpleRaycastShader("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", s_shaderDefines); DEBUGLOG->outdent();
 	simpleRaycastShader.update("uStepSize", s_rayStepSize);
 		
 	DEBUGLOG->log("Shader Compilation: ray casting shader - single pass stereo"); DEBUGLOG->indent();
-	ShaderProgram stereoRaycastShader("/raycast/simpleRaycast.vert", "/raycast/simpleRaycastLodDepthStereo.frag", s_shaderDefines); DEBUGLOG->outdent();
+	std::vector<std::string> shaderDefinesStereo = s_shaderDefines;
+	shaderDefinesStereo.push_back("STEREO_SINGLE_PASS");
+	ShaderProgram stereoRaycastShader("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", shaderDefinesStereo); DEBUGLOG->outdent();
 	stereoRaycastShader.update("uStepSize", s_rayStepSize);
-	stereoRaycastShader.update("uBlockWidth", NUM_LAYERS);
+	//stereoRaycastShader.update("uBlockWidth", NUM_LAYERS);
 
 	//DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 	FrameBufferObject FBO(simpleRaycastShader.getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
@@ -316,11 +323,13 @@ int main(int argc, char *argv[])
 	///////////////////////   Back-To-Front Compose Texture Array Renderpass    //////////////////////////
 	ShaderProgram composeTexArrayShader("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", s_shaderDefines);
 	FrameBufferObject FBO_single_r(composeTexArrayShader.getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
+	OPENGLCONTEXT->bindTextureToUnit(FBO_single_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	RenderPass composeTexArray(&composeTexArrayShader, &FBO_single_r);
 	composeTexArray.addRenderable(&grid);
 	composeTexArray.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	composeTexArrayShader.update( "tex", 6); // output texture
-	composeTexArrayShader.update( "uBlockWidth", NUM_LAYERS ); // output texture
 	
 	///////////////////////   Debug view Texture Array Renderpass//////////////////////////
 	ShaderProgram showLayerShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(1,"ARRAY_TEXTURE"));
@@ -591,7 +600,7 @@ int main(int argc, char *argv[])
 		simpleRaycastShader.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 
 		/************* update experimental  parameters ******************/
-		stereoRaycastShader.update("uWriteStereo", s_writeStereo); 	  // lower grayscale ramp boundary
+		//stereoRaycastShader.update("uWriteStereo", s_writeStereo);
 
 		float s_zRayEnd   = abs(eye.z) + sqrt(2.0);
 		float s_zRayStart = abs(eye.z) - sqrt(2.0);
