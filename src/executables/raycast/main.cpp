@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
 	glm::mat4 perspective = glm::perspective(glm::radians(45.f), 1.0f, 1.0f, 10.f);
 
 	// create Volume
-	VolumeSubdiv volume(1.0f, 1.0f, 1.26315f, 3);
+	VolumeSubdiv volume(1.0f, 0.886f, 1.0, 3);
 
 	///////////////////////     UVW Map Renderpass     ///////////////////////////
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();

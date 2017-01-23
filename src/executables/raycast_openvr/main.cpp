@@ -36,7 +36,8 @@ static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten
 static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
-static const char* s_models[] = {"CT Head"};
+static int 		 s_activeModel = 0;
+static const char* s_models[] = {"CT Head", "MRT Brain"};
 
 static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
@@ -44,11 +45,17 @@ static float s_windowingRange = FLT_MAX;
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static const glm::vec2 WINDOW_RESOLUTION(1400.0f, 700.0f);
+static glm::vec2 WINDOW_RESOLUTION(1400, 700.0f);
 
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
-	"WARP_SET_FAR_PLANE"
+	"WARP_SET_FAR_PLANE",
+	"OCCLUSION_MAP",
+	"EMISSION_ABSORPTION_RAW",
+	"SCENE_DEPTH",
+	"LEVEL_OF_DETAIL",
+	"FIRST_HIT",
+	"SCENE_DEPTH"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -62,7 +69,7 @@ namespace Frame{
 	static SimpleDoubleBuffer<OpenGLTimings> Timings;
 }
 
-float s_near = 0.1f;
+float s_near = 0.5f;
 float s_far = 30.0f;
 float s_fovY = 45.0f;
 float s_nearH;
@@ -102,6 +109,8 @@ enum DebugViews{
 	CURRENT_,
 	FRONT,
 	WARPED,
+	OCCLUSION_CLIP_FRUSTUM_FRONT,
+	OCCLUSION_CLIP_FRUSTUM_BACK,
 	NUM_VIEWS // auxiliary
 };
 //////////////////////////////////////////////////////////////////////////////
@@ -111,18 +120,7 @@ enum DebugViews{
 
 void generateTransferFunction()
 {
-	s_transferFunction.getValues().clear();
-	s_transferFunction.getColors().clear();
-	s_transferFunction.getValues().push_back(58);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
-	s_transferFunction.getValues().push_back(539);
-	s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 231.0/255.0f));
-	s_transferFunction.getValues().push_back(572);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
-	s_transferFunction.getValues().push_back(1356);
-	s_transferFunction.getColors().push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
-	s_transferFunction.getValues().push_back(1500);
-	s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 255.0 /255.0f));
+	s_transferFunction.loadPreset(TransferFunction::Preset::CT_Head, s_minValue, s_maxValue);
 }
 
 void updateTransferFunctionTex()
@@ -166,7 +164,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->setAutoPrint(true);
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(1400,700);
+	auto window = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 	SDL_DisplayMode currentDisplayMode;
 	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
 
@@ -200,6 +198,10 @@ int main(int argc, char *argv[])
 		ovr.SetupRenderModels();
 
 		s_fovY = ovr.getFovY();
+
+		unsigned int width, height;
+		ovr.m_pHMD->GetRecommendedRenderTargetSize(&width, &height);
+		WINDOW_RESOLUTION = glm::vec2(width * 2, height);
 	}
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -209,13 +211,19 @@ int main(int argc, char *argv[])
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH;
 	file += std::string( "/volumes/CTHead/CThead");
-	VolumeData<float> volumeData = Importer::load3DData<float>(file, 256, 256, 113, 2);
-	GLuint volumeTextureCT = loadTo3DTexture<float>(volumeData, 8, GL_R16F, GL_RED, GL_FLOAT);
+	VolumeData<float> volumeData[2];
+	GLuint volumeTexture[2];
+	volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
+	volumeTexture[0] = loadTo3DTexture<float>(volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
+	
+	volumeData[1] = Importer::loadBruder<float>();
+	volumeTexture[1] =  loadTo3DTexture<float>(volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
+
 
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
 
-	activateVolume<float>(volumeData);
+	activateVolume<float>(volumeData[0]);
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
@@ -224,7 +232,7 @@ int main(int argc, char *argv[])
 	/////////////////////     Scene / View Settings     //////////////////////////
 	if (ovr.m_pHMD)
 	{
-		s_translation = glm::translate(glm::vec3(0.0f,1.0f,0.0f));
+		s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
 		s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 	}
 	else
@@ -286,10 +294,12 @@ int main(int argc, char *argv[])
 	uvwShaderProgram.update("projection", s_perspective);
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	FrameBufferObject uvwFBO((int) WINDOW_RESOLUTION.x/2,(int) WINDOW_RESOLUTION.y);
 	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
 	FrameBufferObject uvwFBO_r((int) WINDOW_RESOLUTION.x/2,(int)  WINDOW_RESOLUTION.y);
 	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
+	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 	
 	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
@@ -300,14 +310,13 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/simpleRaycastLodDepthOcclusion.frag", s_shaderDefines); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y));	
 	shaderProgram.update("uResolution", glm::vec4(WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y,0,0));
 
 	// DEBUG
 	generateTransferFunction();
-	updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
@@ -317,7 +326,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->outdent();
 
 	// bind volume texture, back uvw textures, front uvws
-	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
+	OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
@@ -394,8 +403,26 @@ int main(int argc, char *argv[])
 	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
 	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
 
+	ShaderProgram occlusionClipFrustumShader("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", s_shaderDefines);
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
+	FrameBufferObject occlusionClipFrustumFBO(   occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
+	FrameBufferObject occlusionClipFrustumFBO_r( occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
+	FrameBufferObject::s_internalFormat = GL_RGBA;
+	RenderPass occlusionClipFrustum(&occlusionClipFrustumShader, &occlusionClipFrustumFBO);
+	Volume ndcCube(1.0f); // a cube that spans -1 .. 1 
+	occlusionClipFrustum.addRenderable(&ndcCube);	
+	occlusionClipFrustum.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+	occlusionClipFrustum.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
+	occlusionClipFrustum.addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
 	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE26, GL_TEXTURE_2D); // left occlusion clip map back
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // right occlusion clip map back
+	
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // left occlusion clip map front
+	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE29, GL_TEXTURE_2D); // right occlusion clip map front
 	
 	///////////////////////   Simple Warp Renderpass    //////////////////////////
 	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
@@ -419,6 +446,7 @@ int main(int argc, char *argv[])
 	Grid grid(400, 400, 0.0025f, 0.0025f, false);
 	ShaderProgram gridWarpShader("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", s_shaderDefines);
 	RenderPass gridWarp(&gridWarpShader, &FBO_warp);
+	gridWarp.addEnable(GL_DEPTH_TEST);
 	gridWarp.addRenderable(&grid);
 	static bool useGridWarp = false;
 
@@ -632,13 +660,13 @@ int main(int argc, char *argv[])
 		{
 			// regular textures -> show directly
 			default:	
-			case UVW_FRONT:
 			case UVW_BACK:
+			case UVW_FRONT:
 			case CURRENT_:
 			case FRONT:
 			case WARPED:
 				leftDebugView = view * 2 + 2;
-				leftDebugView = max((leftDebugView) % 16, 2);
+				if (leftDebugView >= 16 ) leftDebugView = 2;
 				rightDebugView = leftDebugView + 1;
 				break;
 			case OCCLUSION:
@@ -658,6 +686,14 @@ int main(int argc, char *argv[])
 				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
 				depthToTexture.setFrameBufferObject(&FBO_debug_depth_r);
 				depthToTexture.render();
+				break;
+			case OCCLUSION_CLIP_FRUSTUM_BACK:
+				leftDebugView = 26;
+				rightDebugView = leftDebugView + 1;
+				break;
+			case OCCLUSION_CLIP_FRUSTUM_FRONT:
+				leftDebugView = 28;
+				rightDebugView = leftDebugView + 1;
 				break;
 		}
 	};
@@ -692,23 +728,26 @@ int main(int argc, char *argv[])
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 	
-		ImGui::Columns(2, "mycolumns2", true);
-        ImGui::Separator();
-		bool changed = false;
-		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
-        {
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
-			ImGui::NextColumn();
-			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
-            ImGui::NextColumn();
-        }
-
-		if(changed)
+		if (ImGui::CollapsingHeader("Transfer Function Settings"))
 		{
-			updateTransferFunctionTex();
+			ImGui::Columns(2, "mycolumns2", true);
+			ImGui::Separator();
+			bool changed = false;
+			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			{
+				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
+				ImGui::NextColumn();
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				ImGui::NextColumn();
+			}
+		
+			if(changed)
+			{
+				updateTransferFunctionTex();
+			}
+			ImGui::Columns(1);
+			ImGui::Separator();
 		}
-        ImGui::Columns(1);
-        ImGui::Separator();
 
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
@@ -719,6 +758,16 @@ int main(int argc, char *argv[])
         }
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
+
+		
+    	if (ImGui::ListBox("active model", &s_activeModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
+    	{
+			activateVolume(volumeData[s_activeModel]);
+			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+			OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
+			s_transferFunction.loadPreset((TransferFunction::Preset) s_activeModel, s_minValue, s_maxValue);
+    	}
+
 		ImGui::PopItemWidth();
 		
 		ImGui::Separator();
@@ -758,10 +807,16 @@ int main(int argc, char *argv[])
 
 		{
 			static float scale = s_scale[0][0];
-			if (ImGui::SliderFloat("Scale", &scale, 0.01, 5.0f))
+			static float scaleY = s_scale[1][1];
+			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 5.0f))
 			{
-				s_scale = glm::scale(glm::vec3(scale));
+				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
 			}
+			if (ImGui::SliderFloat("Scale Y", &scaleY, 0.5f, 1.5f))
+			{
+				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
+			}
+
 		}
 
 		static bool frame_profiler_visible = false;
@@ -967,6 +1022,14 @@ int main(int argc, char *argv[])
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+
+			occlusionClipFrustumShader.update("uProjection", current.perspective);
+			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO);
+			occlusionClipFrustumShader.update("uView", current.view);
+			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
+			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(firstHit.model) );
+			occlusionClipFrustum.render();
+
 			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
@@ -978,6 +1041,8 @@ int main(int argc, char *argv[])
 		shaderProgram.update( "front_uvw_map", 4 );
 		shaderProgram.update( "scene_depth_map", 18 );
 		shaderProgram.update( "occlusion_map", 8 );
+		//shaderProgram.update( "occlusion_clip_frustum_back", 26 );
+		shaderProgram.update( "occlusion_clip_frustum_front", 28 );
 
 		Frame::Timings.getBack().beginTimer("Chunked Raycast LEFT");
 		chunkedRenderPass.render(); 
@@ -1063,6 +1128,14 @@ int main(int argc, char *argv[])
 			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
 			occlusionFrustumShader.update("uProjection", current.perspective);
 			occlusionFrustum.render();
+
+			occlusionClipFrustumShader.update("uProjection", current.perspective);
+			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO_r);
+			occlusionClipFrustumShader.update("uView", current.view);
+			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
+			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(current.model));
+			occlusionClipFrustum.render();
+
 			Frame::Timings.getBack().stopTimerElapsed();
 		}
 
@@ -1074,15 +1147,16 @@ int main(int argc, char *argv[])
 		shaderProgram.update("front_uvw_map", 5);
 		shaderProgram.update("scene_depth_map", 19 );
 		shaderProgram.update("occlusion_map", 9);
+		//shaderProgram.update( "occlusion_clip_frustum_back", 27 );
+		shaderProgram.update( "occlusion_clip_frustum_front", 29 );
 
 		//renderPass_r.render();
 		Frame::Timings.getBack().beginTimer("Chunked Raycast RIGHT");
 		chunkedRenderPass_r.render();
 		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
 
-		//%%%%%%%%%%%% Image Warping
-		
-		glClearColor(0.1f,0.12f,0.15f,0.0f);
+		//%%%%%%%%%%%% Image Warping		
+		glClearColor(0.0f,0.0f,0.0f,0.0f);
 		FBO_warp.bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		FBO_warp_r.bind();
@@ -1103,8 +1177,6 @@ int main(int argc, char *argv[])
 
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
 		Frame::Timings.getBack().beginTimerElapsed("Warping");
-
-		
 		if (!useGridWarp)
 		{
 			// warp left
@@ -1125,6 +1197,7 @@ int main(int argc, char *argv[])
 		}
 		else
 		{
+			glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
 			gridWarp.setFrameBufferObject(&FBO_warp);
 			gridWarpShader.update( "tex", 12 ); // last result left
 			gridWarpShader.update( "depth_map", 24); // last first hit map
@@ -1133,7 +1206,6 @@ int main(int argc, char *argv[])
 			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
 			gridWarp.render();
 
-
 			gridWarp.setFrameBufferObject(&FBO_warp_r);
 			gridWarpShader.update( "tex", 13 ); // last result left
 			gridWarpShader.update( "depth_map", 25); // last first hit map
@@ -1141,6 +1213,7 @@ int main(int argc, char *argv[])
 			gridWarpShader.update( "uViewNew", s_view_r ); // most current view
 			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
 			gridWarp.render();
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		}
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		Frame::Timings.getBack().stopTimerElapsed();
@@ -1181,12 +1254,12 @@ int main(int argc, char *argv[])
 		{
 			{
 				showTexShader.update("tex", leftDebugView);
-				showTex.setViewport(0,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+				showTex.setViewport(0, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
 				showTex.render();
 			}
 			{
 				showTexShader.update("tex", rightDebugView);
-				showTex.setViewport((int) WINDOW_RESOLUTION.x/2,0,(int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
+				showTex.setViewport((int)getResolution(window).x / 2, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
 				showTex.render();
 			}
 			//////////////////////////////////////////////////////////////////////////////

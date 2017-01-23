@@ -30,5 +30,7 @@ void main() {
 	vec4 position = uProjection * uViewNew * inverse(uViewOld) * getViewCoord(vec3(uv, depth));
 
 	passUV  = uv;
+
+	if (position.z < -position.w){ position.z = -position.w; }
 	gl_Position = position;
 }

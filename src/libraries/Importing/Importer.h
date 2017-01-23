@@ -122,6 +122,27 @@ namespace Importer {
 	}
 
 	VolumeData<short> loadBruder();
+
+	template<class T>
+	VolumeData<T> loadBruder()
+	{
+		VolumeData<short> result_ = loadBruder();
+		VolumeData<T> result;
+		result.size_x = (T) result_.size_x;
+		result.size_y = (T) result_.size_y;
+		result.size_z = (T) result_.size_z;
+		result.max = (T) result_.max;
+		result.min = (T) result_.min;
+		result.real_size_x = (T) result_.real_size_x;
+		result.real_size_y = (T) result_.real_size_y;
+		result.real_size_z = (T) result_.real_size_z;
+		
+		result.data.clear();
+		result.data = std::vector<T>(result_.data.begin(), result_.data.end()); 
+
+		return result;
+	}
+
 } // namespace Importer
 
 

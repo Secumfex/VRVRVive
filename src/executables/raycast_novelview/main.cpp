@@ -30,7 +30,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET"
+	"RANDOM_OFFSET_"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -98,8 +98,10 @@ int main(int argc, char *argv[])
 
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
 	FrameBufferObject uvwFBO(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	FrameBufferObject uvwFBO_novelView(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
 	uvwFBO.addColorAttachments(2);
+	uvwFBO_novelView.addColorAttachments(2);
 	FrameBufferObject::s_internalFormat = GL_RGBA; // default
 	DEBUGLOG->outdent(); 
 	
@@ -113,7 +115,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
 	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
-		
+	
 	// DEBUG
 	generateTransferFunction();
 	updateTransferFunctionTex();
@@ -143,6 +145,7 @@ int main(int argc, char *argv[])
 
 	// ray casting render pass
 	RenderPass renderPass(&shaderProgram, &synth_raycastLayerFBO);
+	renderPass.setClearColor(0.0f,0.0f,0.0f,1.0f);
 	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	renderPass.addRenderable(&quad);
 	renderPass.addEnable(GL_DEPTH_TEST);
@@ -183,17 +186,19 @@ int main(int argc, char *argv[])
 	///////////////////////   novel view synthesis Renderpass    //////////////////////////
 	//Grid grid(400,400,0.0025f,0.0025f, false);
 
-	//ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag");
-	ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
+	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag");
+	//ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
 	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 	//RenderPass novelView(&novelViewShader, &FBO_novelView);
 	RenderPass novelView(&novelViewShader, 0);
-	//novelView.addRenderable(&grid);
-	novelView.addRenderable(&volume);
+	novelView.addRenderable(&quad);
+	//novelView.addRenderable(&volume);
 	novelView.addEnable(GL_DEPTH_TEST);
 	//novelView.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	novelView.setViewport(TEXTURE_RESOLUTION.x,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D);
+	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE13, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(FBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
@@ -203,6 +208,12 @@ int main(int argc, char *argv[])
 	novelViewShader.update("layer4",7);
 	novelViewShader.update("depth0",9);
 	novelViewShader.update("depth", 10);
+	
+	novelViewShader.update("back_uvw_map_old", 1);
+	novelViewShader.update("back_uvw_map",  12);
+	novelViewShader.update("front_uvw_map", 13);
+	
+	novelViewShader.update("uThreshold", 100);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -291,6 +302,7 @@ int main(int argc, char *argv[])
 	//++++++++++++++ DEBUG
 	//++++++++++++++ DEBUG
 
+	float elapsedTime = 0.0;
 	while (!shouldClose(window))
 	{
 		////////////////////////////////    EVENTS    ////////////////////////////////
@@ -302,6 +314,7 @@ int main(int argc, char *argv[])
 		ImGui_ImplSdlGL3_NewFrame(window); // tell ImGui a new frame is being rendered
 
 		ImGui::Value("FPS", (float) (io.Framerate));
+		elapsedTime += io.DeltaTime;
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
 		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
@@ -342,6 +355,17 @@ int main(int argc, char *argv[])
 			showTexShader.update("tex", active_debug_texture);
 		}
 
+		static int threshold = 4;
+		if ( ImGui::SliderInt("threshold", &threshold, 0, 100) ) // active layer texture
+		{
+			novelViewShader.update("uThreshold", threshold);
+		}
+
+		if ( ImGui::SliderFloat("eye dist", &s_eyeDistance, 0.0, 1.0) ) // active layer texture
+		{
+			ViewParameters::updateView();
+		}
+
 		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -350,13 +374,18 @@ int main(int argc, char *argv[])
 			s_rotation = glm::rotate(glm::mat4(1.0f), (float) io.DeltaTime, glm::vec3(0.0f, 1.0f, 0.0f) ) * s_rotation;
 		}
 
-		ViewParameters::updateView(); // might have changed from SLD Event
+		ViewParameters::updateView(); // might have changed from SDL Event
+
+		//glm::vec4 warpCenter  = s_center + glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+		glm::vec4 warpCenter  = s_center;
+		glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+		s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+	
 		//////////////////////////////////////////////////////////////////////////////
 				
 		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
 		// update view related uniforms
 		uvwShaderProgram.update("model", s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
-		uvwShaderProgram.update("view", s_view);
 
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
@@ -375,7 +404,7 @@ int main(int argc, char *argv[])
 		novelViewShader.update("uProjection", s_perspective); // used for depth to distance computation
 		
 		// used to render the volume bbox (entry point)
-		novelViewShader.update("uModel",  s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
+		//novelViewShader.update("uModel",  s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
 		
 		// used for reprojection
 		novelViewShader.update("uViewOld", s_view); // used for depth to distance computation
@@ -388,12 +417,18 @@ int main(int argc, char *argv[])
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
 		// render left image
+		uvwShaderProgram.update("view", s_view);
+		uvwRenderPass.setFrameBufferObject(&uvwFBO);
 		uvwRenderPass.render();		
 		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
 		renderPass.render();
 		
 		showTex.render();
-		
+
+		uvwShaderProgram.update("view", s_view_r);
+		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
+		uvwRenderPass.render();
+
 		novelView.render();
 		//debugRecompose.render();
 		

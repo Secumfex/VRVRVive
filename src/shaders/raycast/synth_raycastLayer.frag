@@ -129,7 +129,7 @@ vec4 beerLambertColorTransmissionToEmissionAbsorption(vec3 C, float T, float z)
 	float A = -log( T ) / z; // invert equation to to get A
 
 	// compute Emission
-	vec3 E = C / T; // invert equation to to get E
+	vec3 E = C / (1.0 - T); // invert equation to to get E
 
 	return vec4(E, A);
 }
@@ -139,7 +139,7 @@ vec4 beerLambertEmissionAbsorptionToColorTransmission(vec3 E, float A, float z)
 {
 	float T = exp( -A * z);
 
-	vec3 C = E * T;
+	vec3 C = E * (1.0 - T);
 
 	return vec4(C, T);
 }
@@ -169,9 +169,9 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// Transmission kappa( /inf ) used for normalization
 	float maxAlpha = 0.0;
 
-	float t = 0.001;
+	float t = 0.0;
 	#ifdef RANDOM_OFFSET 
-	t = t * 2.0 * rand(passUV);
+	t = 0.002 * 2.0 * rand(passUV);
 	#endif
 	while (t < 1.0 + (0.5 * parameterStepSize))
 	{
@@ -210,6 +210,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// declare some output variables (to get rid of if-else)
 	vec4 layerColor[4] = vec4[4](0.0);
 	float layerDepth[4] = float[4](0.0);
+	layerDepth[0] = endDistance;
+	layerDepth[1] = endDistance;
+	layerDepth[2] = endDistance;
+	layerDepth[3] = endDistance;
 
 	// TODO debug
 	//vec3 startUVW_ = result.firstHit.rgb; // skip ahead, because we can
@@ -220,15 +224,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	int numLayers = 4;    // total number of Layers (excluding first depth layer d_0)
 
 	float currentLayerThreshold = ( float(currentLayer) ) / float(numLayers); // y_i
-
-	t = 0.001;
+	float curDistance = startDistance;
+	t = 0.0;
 	#ifdef RANDOM_OFFSET 
-	t = t * 2.0 * rand(passUV);
+	t = 0.002 * 2.0 * rand(passUV);
 	#endif
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
-		float curDistance = mix(startDistance, endDistance, t); // distance on ray
+		curDistance = mix(startDistance, endDistance, t); // distance on ray
 
 		// retrieve current sample
 		VolumeSample curSample;
@@ -250,13 +254,13 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		curAlpha = (1.0 - curAlpha) * sampleColor.a + curAlpha;
 
 		// reached y_i?
-		if ( (curAlpha / maxAlpha) >= currentLayerThreshold) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
+		if ( (curAlpha / maxAlpha) >= currentLayerThreshold - (maxAlpha)/20.0 ) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
 		{		
 			//<<<< compute the Beer-Lambert equivalent values
-			vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, curDistance - lastDistance);
+			vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, abs(curDistance - lastDistance));
 
 			// DEBUG the full raycasting result
-			vec4 colorTransmission = beerLambertEmissionAbsorptionToColorTransmission(emissionAbsorption.rgb, emissionAbsorption.a, curDistance - lastDistance);
+			vec4 colorTransmission = beerLambertEmissionAbsorptionToColorTransmission(emissionAbsorption.rgb, emissionAbsorption.a, abs(curDistance - lastDistance));
 			curColor.rgb = (1.0 - curColor.a) * (colorTransmission.rgb) + curColor.rgb;
 			curColor.a =  (1.0 - (1.0 - colorTransmission.a)) * (1.0 - colorTransmission.a) + curColor.a;
 
@@ -277,11 +281,11 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// make sure last layer gets filled
 	if (layerDepth[3] == 0.0)
 	{
-		vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, endDistance - lastDistance);
+		vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, curDistance - lastDistance);
 
 		//<<<< write to layer
 		layerColor[3] = emissionAbsorption;
-		layerDepth[3] = endDistance;
+		layerDepth[3] = lastDistance;
 
 		// DEBUG the full raycasting result
 		curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
@@ -322,8 +326,8 @@ void main()
 	if (uvwStart.a == 0.0) { discard; } //invalid pixel
 
 	// linearize depth
-	float startDistance = abs(getViewCoord(vec3(passUV, uvwStart.a)).z);
-	float endDistance   = abs(getViewCoord(vec3(passUV, uvwEnd.a)).z);
+	float startDistance = length(getViewCoord(vec3(passUV, uvwStart.a)).xyz);
+	float endDistance   = length(getViewCoord(vec3(passUV, uvwEnd.a)).xyz);
 
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
