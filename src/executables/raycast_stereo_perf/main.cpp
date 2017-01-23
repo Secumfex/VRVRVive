@@ -52,14 +52,16 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
+	//"ALPHA_SCALE 40.0",
 	"AMBIENT_OCCLUSION",
 	"RANDOM_OFFSET",
 	//"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	//"SCENE_DEPTH",
 	"LEVEL_OF_DETAIL",
-	"FIRST_HIT"
+	"FIRST_HIT",
 	//"SCENE_DEPTH"
+	"SHADOW_SAMPLING"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -602,6 +604,11 @@ int main(int argc, char *argv[])
 
 		/************* update experimental  parameters ******************/
 		//stereoRaycastShader.update("uWriteStereo", s_writeStereo);
+
+		stereoRaycastShader.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+		stereoRaycastShader.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+		simpleRaycastShader.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+		simpleRaycastShader.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 
 		float s_zRayEnd   = abs(eye.z) + sqrt(2.0);
 		float s_zRayStart = abs(eye.z) - sqrt(2.0);
