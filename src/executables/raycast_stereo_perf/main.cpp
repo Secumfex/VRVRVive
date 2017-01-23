@@ -228,8 +228,8 @@ int main(int argc, char *argv[])
 
 	// create Volume and VertexGrid
 	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
-	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
-	VertexGrid vertexGrid_coarse(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
+	VertexGrid vertexGrid(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
+	VertexGrid vertexGrid_coarse(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
 	Quad quad;
 	Grid grid(100, 100, 0.1f, 0.1f);
 
