@@ -30,7 +30,8 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET_"
+	"RANDOM_OFFSET",
+	//"EMISSION_ABSORPTION_RAW"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -157,7 +158,7 @@ int main(int argc, char *argv[])
 	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	showTex.addRenderable(&quad);
 	showTex.setViewport(0,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	showTex.addEnable(GL_BLEND);
+	showTex.addDisable(GL_BLEND);
 
 	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE5, GL_TEXTURE_2D);

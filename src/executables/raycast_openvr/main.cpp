@@ -71,7 +71,7 @@ namespace Frame{
 	static SimpleDoubleBuffer<OpenGLTimings> Timings;
 }
 
-float s_near = 0.5f;
+float s_near = 0.25f;
 float s_far = 30.0f;
 float s_fovY = 45.0f;
 float s_nearH;

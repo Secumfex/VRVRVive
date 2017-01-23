@@ -312,7 +312,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 				#else
 					float shadow_alpha = transferFunction(shadow_value, curStepSize ).a;
 				#endif
-					shadow = (1.0 - shadow) * shadow_alpha + shadow;
+				
+				shadow = (1.0 - shadow) * shadow_alpha + shadow;
 			}
 			
 			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));

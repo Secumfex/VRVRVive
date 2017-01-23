@@ -327,8 +327,6 @@ int main(int argc, char *argv[])
 	ShaderProgram composeTexArrayShader("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", s_shaderDefines);
 	FrameBufferObject FBO_single_r(composeTexArrayShader.getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
 	OPENGLCONTEXT->bindTextureToUnit(FBO_single_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	RenderPass composeTexArray(&composeTexArrayShader, &FBO_single_r);
 	composeTexArray.addRenderable(&grid);
 	composeTexArray.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
