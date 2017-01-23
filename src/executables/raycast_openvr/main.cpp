@@ -48,11 +48,13 @@ static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (secon
 static glm::vec2 WINDOW_RESOLUTION(1400, 700.0f);
 
 const char* SHADER_DEFINES[] = {
+	//"AMBIENT_OCCLUSION",
 	"RANDOM_OFFSET",
 	"WARP_SET_FAR_PLANE",
 	"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
+	"SHADOW_SAMPLING",
 	"LEVEL_OF_DETAIL",
 	"FIRST_HIT",
 	"SCENE_DEPTH"
@@ -314,6 +316,9 @@ int main(int argc, char *argv[])
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	shaderProgram.update("uViewport", glm::vec4(0,0,WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y));	
 	shaderProgram.update("uResolution", glm::vec4(WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y,0,0));
+
+	shaderProgram.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+	shaderProgram.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 
 	// DEBUG
 	generateTransferFunction();
@@ -764,6 +769,9 @@ int main(int argc, char *argv[])
     	{
 			activateVolume(volumeData[s_activeModel]);
 			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+			static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
+			shadowDir.y = -shadowDir.y;
+			shaderProgram.update("uShadowRayDirection", shadowDir ); // full range of values in window
 			OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
 			s_transferFunction.loadPreset((TransferFunction::Preset) s_activeModel, s_minValue, s_maxValue);
     	}
@@ -919,6 +927,8 @@ int main(int argc, char *argv[])
 		// color mapping parameters
 		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
+		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
+
 		//////////////////////////////////////////////////////////////////////////////
 		
 		////////////////////////////////  RENDERING //// /////////////////////////////

@@ -65,7 +65,7 @@ const char* SHADER_DEFINES[] = {
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-static const int NUM_LAYERS = 16;
+static const int NUM_LAYERS = 32;
 const glm::vec2 TEXTURE_RESOLUTION = glm::vec2(800, 800);
 
 static std::vector<float> s_texData((int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, 0.0f);
@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, (SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE));
 
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH + std::string( "/volumes/CTHead/CThead");
@@ -708,19 +708,19 @@ int main(int argc, char *argv[])
 		Frame::Timings.getBack().timestamp("Finished");
 		// display fbo contents
 		showTexShader.updateAndBindTexture("tex", 7, FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)0, 0, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)0, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 8, FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)TEXTURE_RESOLUTION.x / 2, 0, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)getResolution(window).x / 2, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 9, FBO_single.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)0, (int)TEXTURE_RESOLUTION.y / 2, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)0, (int)getResolution(window).y / 2, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 10, FBO_single_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)getResolution(window).x / 2, (int)getResolution(window).y / 2, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		if (!s_showSingleLayer)
 		{
 			showTex.render();
