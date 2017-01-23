@@ -4,6 +4,7 @@
 ////////////////////////////////     DEFINES      ////////////////////////////////
 /*********** LIST OF POSSIBLE DEFINES ***********
 	ALPHA_SCALE <float>
+	AMBIENT_OCCLUSION
 	ERT_THRESHOLD <float>
 	EMISSION_ABSORPTION_RAW
 		EMISSION_SCALE <float>
@@ -259,6 +260,30 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			vec4 sampleColor = vec4(sampleEmissionAbsorption.rgb * (sampleAlpha), sampleAlpha);
 		#else
 			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
+		#endif
+
+		#ifdef AMBIENT_OCCLUSION
+			float occlusion = 0.0;	
+			float numSamples = 8.0;
+			for (int i = -1; i <= 1; i+= 2) {	for (int j = -1; j <= 1; j+= 2) { for (int k = -1; k <= 1; k+= 2)
+			{	
+				vec3 ao_uvw = curUVW + ( vec3(float(i), float(j), float(k)) ) * ( 2.0 * curStepSize );
+
+				#ifdef LEVEL_OF_DETAIL
+					float ao_value = textureLod(volume_texture, ao_uvw, curLod).r;
+				#else
+					float ao_value = texture(volume_texture, ao_uvw).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					occlusion += 1.0 - exp( - (pow(transferFunctionRaw( ao_value ).a * ABSORPTION_SCALE, 2.0) ) * distanceStepSize );
+				#else
+					occlusion += transferFunction(ao_value, curStepSize ).a;
+				#endif
+			}}}
+			occlusion -= sampleColor.a; // to remove "self-occlusion"
+
+			sampleColor.rgb *= max(0.0, min( 1.0, 1.0 - (occlusion / numSamples)));
 		#endif
 
 		#ifdef STEREO_SINGLE_PASS

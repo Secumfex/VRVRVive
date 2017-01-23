@@ -52,12 +52,13 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
+	"AMBIENT_OCCLUSION",
 	"RANDOM_OFFSET",
 	//"OCCLUSION_MAP",
-	//"EMISSION_ABSORPTION_RAW",
+	"EMISSION_ABSORPTION_RAW",
 	//"SCENE_DEPTH",
 	"LEVEL_OF_DETAIL",
-	"FIRST_HIT",
+	"FIRST_HIT"
 	//"SCENE_DEPTH"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
