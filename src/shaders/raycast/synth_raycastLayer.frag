@@ -190,7 +190,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	RaycastResult result;
 	result.color = vec4(0);
-	result.firstHit = vec4(startUVW, endDistance);
+	result.firstHit = vec4(endUVW, endDistance);
 	result.lastHit = vec4(endUVW, endDistance);
 
 	////////////////// FIRST PASS: Compute Normalization constant /////////////////
@@ -307,6 +307,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		#endif
 
+		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
+
+		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+
 		// ambient occlusion
 		#ifdef AMBIENT_OCCLUSION
 			float occlusion = 0.0;	
@@ -395,8 +399,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			currentLayerThreshold = ( float(currentLayer) ) / float(numLayers);
 			lastDistance = curDistance; // d_(i)
 		}
-
-		t += parameterStepSize;
 	}
 
 	// make sure last layer gets filled
@@ -406,7 +408,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		//<<<< write to layer
 		layerColor[3] = emissionAbsorption;
-		layerDepth[3] = lastDistance;
+		layerDepth[3] = endDistance;
 
 		// DEBUG the full raycasting result
 		curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;

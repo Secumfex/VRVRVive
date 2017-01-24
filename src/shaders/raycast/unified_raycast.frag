@@ -266,6 +266,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		#endif
 
+		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
+
+		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+
 		#ifdef AMBIENT_OCCLUSION
 			float occlusion = 0.0;	
 			float numSamples = 8.0;
@@ -360,8 +364,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		{
 			break;
 		}
-
-		t += parameterStepSize;
 	}
 
 	#ifdef STEREO_SINGLE_PASS
