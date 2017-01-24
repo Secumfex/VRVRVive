@@ -5,6 +5,7 @@
 
 #include <Core/Timer.h>
 #include <Core/DoubleBuffer.h>
+#include <Core/CSVWriter.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -23,6 +24,7 @@
 #include <glm/gtx/transform.hpp>
 
 #include <algorithm>
+#include <ctime>
 
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
@@ -61,7 +63,7 @@ const char* SHADER_DEFINES[] = {
 	"LEVEL_OF_DETAIL",
 	"FIRST_HIT",
 	//"SCENE_DEPTH"
-	"SHADOW_SAMPLING"
+	//"SHADOW_SAMPLING"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -122,18 +124,7 @@ void clearOutputTexture(GLuint texture)
 
 void generateTransferFunction()
 {
-	s_transferFunction.getValues().clear();
-	s_transferFunction.getColors().clear();
-	s_transferFunction.getValues().push_back(58);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f));
-	s_transferFunction.getValues().push_back(539);
-	s_transferFunction.getColors().push_back(glm::vec4(255.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f, 231.0 / 255.0f));
-	s_transferFunction.getValues().push_back(572);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 / 255.0f, 74.0 / 255.0f, 118.0 / 255.0f, 64.0 / 255.0f));
-	s_transferFunction.getValues().push_back(1356);
-	s_transferFunction.getColors().push_back(glm::vec4(0 / 255.0f, 11.0 / 255.0f, 112.0 / 255.0f, 0.0 / 255.0f));
-	s_transferFunction.getValues().push_back(1500);
-	s_transferFunction.getColors().push_back(glm::vec4(242.0 / 255.0, 212.0 / 255.0, 255.0 / 255.0, 255.0 / 255.0f));
+	s_transferFunction.loadPreset(TransferFunction::CT_Head, s_minValue, s_maxValue);
 }
 
 void updateTransferFunctionTex()
@@ -168,16 +159,55 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
+void loadShaderDefines(std::string fullExecutableName)
+{
+	DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
+	//std::string fullExecutableName = argv;
+	std::string justTheName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
+	justTheName = justTheName.substr(0, justTheName.find(".exe"));
+	DEBUGLOG->log("Executable name: " + justTheName);
+
+	std::string definitionsFile = justTheName + ".defs";
+	DEBUGLOG->log("Looking for shader definitions file: " + definitionsFile);
+
+	std::ifstream file( definitionsFile.c_str() );
+
+	// load data
+	if (file.is_open())
+	{
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		file.close();
+
+		while (buffer) // still good
+		{
+			std::string line;
+			std::getline(buffer, line);
+			if (line != "")
+			s_shaderDefines.push_back(line);
+		}
+	}
+	else
+	{
+		DEBUGLOG->log("ERROR: Could not find shader definitions file");
+	}
+
+	DEBUGLOG->outdent();
+
+}
+
+
 int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
-
+	
+	loadShaderDefines( argv[0] );
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, (SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE));
+	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, (SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN ));
 
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH + std::string( "/volumes/CTHead/CThead");
@@ -501,7 +531,8 @@ int main(int argc, char *argv[])
             ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
         	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
         }
-        
+		ImGui::PopItemWidth();
+
 		ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
 		ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
 		ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
@@ -556,10 +587,80 @@ int main(int argc, char *argv[])
 			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
 		}
 
+		
+		//DEBUG Output to profiler file
+		static CSVWriter csvWriter;
+		static int csvCounter = 0;
+		static int csvNumFramesToProfile = 300;
+		static bool csvDoRun = false;
+
+		ImGui::Separator();
+		if (ImGui::Button("Run CSV Profiling") && !csvDoRun)
+		{
+			csvDoRun = true;
+		}
+		ImGui::SameLine(); ImGui::Value("Running", csvDoRun);
+		ImGui::SameLine(); ImGui::Value("Frame",   csvCounter);
+		ImGui::SliderInt("Num Frames To Profile", &csvNumFramesToProfile, 1, 1000);
+		ImGui::Separator();
+
+		if ( csvDoRun && csvCounter == 0) // just not frame one, okay?
+		{
+			std::vector<std::string> headers;
+			for (auto e : Frame::Timings.getFront().m_timersElapsed)
+			{
+				headers.push_back(e.first);
+			}
+
+			// additional headers
+			headers.push_back("Total Stereo");
+			headers.push_back("Total Single");
+
+			csvWriter.setHeaders(headers);
+		}
+
+		if ( csvDoRun &&  csvCounter >= 0 && csvCounter < csvNumFramesToProfile ) // going to profile 1000 frames
+		{
+			std::vector<std::string> row;
+			float totalStereo = 0.0f;
+			float totalSingle = 0.0f;
+			for (auto e : Frame::Timings.getFront().m_timersElapsed )
+			{
+				row.push_back( std::to_string( e.second.lastTiming ) );
+
+				if( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos) // contains an L or R suffix --> from stereo rendering
+				{
+					totalStereo += e.second.lastTiming;
+				}
+				else
+				{
+					totalSingle += e.second.lastTiming;
+				}
+
+			}
+			
+			// additional values
+			row.push_back(std::to_string(totalStereo)); // total stereo rendering time
+			row.push_back(std::to_string(totalSingle)); // total single pass time
+
+			csvWriter.addRow(row);
+		}
+
+		if ( csvDoRun && csvCounter >= csvNumFramesToProfile ) // write when finished
+		{
+			csvWriter.writeToFile( "profile_" + std::to_string( (std::time(0) / 6) % 10000) + ".csv" );
+			csvCounter = 0;
+			csvDoRun = false;
+		}
+		
+		if( csvDoRun )
+		{
+			csvCounter++;
+		}
+
 		if (!pause_frame_profiler) Frame::Timings.swap();
 		Frame::Timings.getBack().timestamp("Frame Begin");
 
-		ImGui::PopItemWidth();
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -635,12 +736,6 @@ int main(int argc, char *argv[])
 		OPENGLCONTEXT->bindFBO(0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
-		// clear output texture
-		Frame::Timings.getBack().beginTimerElapsed("Clear Array");
-		clearOutputTexture( stereoOutputTextureArray );
-		Frame::Timings.getBack().stopTimerElapsed();
-
 		// reset atomic buffers
 		GLuint a[3] = {0,0,0};
 		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0 , sizeof(GLuint) * 3, a);
@@ -681,7 +776,12 @@ int main(int argc, char *argv[])
 		simpleRaycast.render();
 		Frame::Timings.getBack().stopTimerElapsed();
 
-		// render stereo images in a single pass
+		// clear output texture
+		Frame::Timings.getBack().beginTimerElapsed("Clear Array");
+		clearOutputTexture( stereoOutputTextureArray );
+		Frame::Timings.getBack().stopTimerElapsed();
+
+		// render stereo images in a single pass		
 		Frame::Timings.getBack().timestamp("Raycast Stereo");
 		Frame::Timings.getBack().beginTimerElapsed("UVW");
 		uvwShaderProgram.update("view", s_view);
