@@ -21,6 +21,7 @@
 #include <glm/gtx/transform.hpp>
 
 #include <Volume/TransferFunction.h>
+#include <Volume/SyntheticVolume.h>
 
 #include <Misc/TransferFunctionPresets.h>
 
@@ -39,7 +40,7 @@ static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
 static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
 
 static int 		 s_activeModel = 0;
-static const char* s_models[] = {"CT Head", "MRT Brain"};
+static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient"};
 
 static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
@@ -56,7 +57,7 @@ const char* SHADER_DEFINES[] = {
 	"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
-	"SHADOW_SAMPLING",
+	//"SHADOW_SAMPLING,"
 	"LEVEL_OF_DETAIL",
 	"FIRST_HIT",
 	"SCENE_DEPTH"
@@ -213,19 +214,39 @@ int main(int argc, char *argv[])
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH;
 	file += std::string( "/volumes/CTHead/CThead");
-	VolumeData<float> volumeData[2];
-	GLuint volumeTexture[2];
-	volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
-	volumeTexture[0] = loadTo3DTexture<float>(volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
-	
-	volumeData[1] = Importer::loadBruder<float>();
-	volumeTexture[1] =  loadTo3DTexture<float>(volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
+	VolumeData<float> volumeData0;
+	VolumeData<float> volumeData1;
+	VolumeData<float> volumeData2;
+	VolumeData<float> volumeData3;
 
+	GLuint volumeTexture[3];
+	volumeData0 = Importer::load3DData<float>(file, 256, 256, 113, 2);
+	volumeTexture[0] = loadTo3DTexture<float>(volumeData0, 5, GL_R16F, GL_RED, GL_FLOAT);
+	volumeData0.data.clear(); // set free	
+
+	volumeData1 = Importer::loadBruder<float>();
+	volumeTexture[1] =  loadTo3DTexture<float>(volumeData1, 5, GL_R16F, GL_RED, GL_FLOAT);
+	volumeData1.data.clear(); // set free
+
+	volumeData2 = SyntheticVolume::generateHomogeneousVolume<float>(32, 32, 32, 1000.0f);
+	volumeTexture[2] =  loadTo3DTexture<float>(volumeData2, 1, GL_R16F, GL_RED, GL_FLOAT);
+	volumeData2.data.clear(); // set free	
+
+	volumeData3 = SyntheticVolume::generateRadialGradientVolume<float>( 32,32,32,1000.0f,0.0f);
+	volumeTexture[3] =  loadTo3DTexture<float>(volumeData3, 3, GL_R16F, GL_RED, GL_FLOAT);
+	volumeData3.data.clear(); // set free	
+
+	// TODO wtf is going on here, why does it get corrupted?? 
+	VolumeData<float>* volumeData[5];
+	volumeData[0] = &volumeData0;
+	volumeData[1] = &volumeData1;
+	volumeData[2] = &volumeData2;
+	volumeData[3] = &volumeData3;
 
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
 
-	activateVolume<float>(volumeData[0]);
+	activateVolume<float>(volumeData0);
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// RENDERING  ///////////////////////////////////
@@ -767,7 +788,7 @@ int main(int argc, char *argv[])
 		
     	if (ImGui::ListBox("active model", &s_activeModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
     	{
-			activateVolume(volumeData[s_activeModel]);
+			activateVolume(*volumeData[s_activeModel]);
 			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 			static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
 			shadowDir.y = -shadowDir.y;
@@ -1289,6 +1310,6 @@ int main(int argc, char *argv[])
 	ovr.shutdown();
 	destroyWindow(window);
 	SDL_Quit();
-
+	
 	return 0;
 }
