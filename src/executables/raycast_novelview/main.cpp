@@ -18,7 +18,8 @@
 
 ////////////////////// PARAMETERS /////////////////////////////
 
-#include "Parameters.h" //<! static variables
+#include <Misc/Parameters.h> //<! static variables
+#include <Misc/TransferFunctionPresets.h> //<! static variables
 
 using namespace RaycastingParameters;
 using namespace ViewParameters;
@@ -118,8 +119,8 @@ int main(int argc, char *argv[])
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	
 	// DEBUG
-	generateTransferFunction();
-	updateTransferFunctionTex();
+	TransferFunctionPresets::generateTransferFunction();
+	TransferFunctionPresets::updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: synth ray casting layers"); DEBUGLOG->indent();
 	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
@@ -131,7 +132,7 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
+	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	// generate and bind right view image texture
@@ -301,6 +302,10 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	//++++++++++++++ DEBUG
+	float m22 = s_perspective[2][2]; 
+	float m32 = s_perspective[3][2];
+	float n = (2.0f*m32)/(2.0f*m22-2.0f);
+	float f = (m22-1.0f)*n/(m22+1.0);
 	//++++++++++++++ DEBUG
 
 	float elapsedTime = 0.0;
@@ -326,17 +331,17 @@ int main(int argc, char *argv[])
 			ImGui::Columns(2, "TFcontrol", true);
 			ImGui::Separator();
 			bool changed = false;
-			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, s_minValue, s_maxValue);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 				ImGui::NextColumn();
-				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
 			}
 
 			if(changed)
 			{
-				updateTransferFunctionTex();
+				TransferFunctionPresets::updateTransferFunctionTex();
 			}
 			ImGui::Columns(1);
 			ImGui::Separator();

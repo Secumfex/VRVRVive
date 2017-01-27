@@ -26,6 +26,8 @@
 #include <algorithm>
 #include <ctime>
 
+#include <Misc/TransferFunctionPresets.h>
+
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
 static float s_maxValue = (float) INT_MAX;  // maximal value in data set; to be overwitten after import
@@ -44,8 +46,6 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
-static TransferFunction s_transferFunction;
-
 static float s_lodMaxLevel = 2.5f;
 static float s_lodBegin = 0.3f;
 static float s_lodRange = 3.0f;
@@ -55,14 +55,13 @@ static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
 	//"ALPHA_SCALE 40.0",
-	"AMBIENT_OCCLUSION",
-	"RANDOM_OFFSET",
-	//"OCCLUSION_MAP",
+	//"AMBIENT_OCCLUSION",
 	"EMISSION_ABSORPTION_RAW",
-	//"SCENE_DEPTH",
-	"LEVEL_OF_DETAIL",
 	"FIRST_HIT",
-	//"SCENE_DEPTH"
+	//"LEVEL_OF_DETAIL",
+	//"OCCLUSION_MAP",
+	"RANDOM_OFFSET",
+	//"SCENE_DEPTH",
 	//"SHADOW_SAMPLING"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
@@ -124,12 +123,12 @@ void clearOutputTexture(GLuint texture)
 
 void generateTransferFunction()
 {
-	s_transferFunction.loadPreset(TransferFunction::CT_Head, s_minValue, s_maxValue);
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 }
 
 void updateTransferFunctionTex()
 {
-	s_transferFunction.updateTex((int)s_minValue, (int)s_maxValue);
+	TransferFunctionPresets::s_transferFunction.updateTex();
 }
 
 template <class T>
@@ -183,7 +182,7 @@ void loadShaderDefines(std::string fullExecutableName)
 		{
 			std::string line;
 			std::getline(buffer, line);
-			if (line != "")
+			if (line != "") // empty line or last line
 			s_shaderDefines.push_back(line);
 		}
 	}
@@ -226,12 +225,12 @@ int main(int argc, char *argv[])
 	s_nearH = s_near * std::tanf(glm::radians(s_fovY / 2.0f));
 	s_nearW = s_nearH * TEXTURE_RESOLUTION.x / (TEXTURE_RESOLUTION.y);
 
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -3.0f));
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -2.0f));
 	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	s_scale = glm::scale(glm::vec3(2.25f, 2.25f, 2.25f));
+	s_scale = glm::scale(glm::vec3(1.0f, 1.0f, 1.0f));
 
-	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
-	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
+	glm::vec4 eye(0.0f, 0.0f, 0.0f, 1.0f);
+	glm::vec4 center(s_translation[3]);
 	s_view   = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0,1,0));
 	s_view_r = glm::lookAt(glm::vec3(eye) + glm::vec3(s_eyeDistance, 0.0f, 0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	s_perspective = glm::perspective(glm::radians(45.f), TEXTURE_RESOLUTION.x / TEXTURE_RESOLUTION.y, s_near, s_far);
@@ -253,11 +252,11 @@ int main(int argc, char *argv[])
 		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
 		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
 		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
-		* glm::inverse(glm::scale(2.0f * s_volumeSize)) // moves origin to front left
-		* glm::translate(glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z));
+		* glm::inverse(glm::scale(s_volumeSize)) // moves origin to front left
+		* glm::translate(glm::vec3(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, -s_volumeSize.z * 0.5f));
 
 	// create Volume and VertexGrid
-	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
+	VolumeSubdiv volume(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, s_volumeSize.z * 0.5f, 3);
 	VertexGrid vertexGrid(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
 	VertexGrid vertexGrid_coarse(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
 	Quad quad;
@@ -312,7 +311,7 @@ int main(int argc, char *argv[])
 
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
+	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
@@ -509,11 +508,11 @@ int main(int argc, char *argv[])
 		ImGui::Columns(2, "mycolumns2", true);
         ImGui::Separator();
 		bool changed = false;
-		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+		for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 		{
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int)s_minValue, (int)s_maxValue);
+			changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 			ImGui::NextColumn();
-			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 			ImGui::NextColumn();
 		}
 

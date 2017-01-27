@@ -22,6 +22,8 @@
 
 #include <Volume/TransferFunction.h>
 
+#include <Misc/TransferFunctionPresets.h>
+
 // openvr includes
 #include <openvr.h>
 #include <VR/OpenVRTools.h>
@@ -60,8 +62,6 @@ const char* SHADER_DEFINES[] = {
 	"SCENE_DEPTH"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
-
-static TransferFunction s_transferFunction;
 
 static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
@@ -122,12 +122,12 @@ enum DebugViews{
 
 void generateTransferFunction()
 {
-	s_transferFunction.loadPreset(TransferFunction::Preset::CT_Head, s_minValue, s_maxValue);
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 }
 
 void updateTransferFunctionTex()
 {
-	s_transferFunction.updateTex((int) s_minValue,(int) s_maxValue);
+	TransferFunctionPresets::s_transferFunction.updateTex();
 }
 
 template <class T>
@@ -332,7 +332,7 @@ int main(int argc, char *argv[])
 
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
+	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
@@ -738,11 +738,11 @@ int main(int argc, char *argv[])
 			ImGui::Columns(2, "mycolumns2", true);
 			ImGui::Separator();
 			bool changed = false;
-			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 				ImGui::NextColumn();
-				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
 			}
 		
@@ -773,7 +773,7 @@ int main(int argc, char *argv[])
 			shadowDir.y = -shadowDir.y;
 			shaderProgram.update("uShadowRayDirection", shadowDir ); // full range of values in window
 			OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
-			s_transferFunction.loadPreset((TransferFunction::Preset) s_activeModel, s_minValue, s_maxValue);
+			TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) s_activeModel);
     	}
 
 		ImGui::PopItemWidth();
