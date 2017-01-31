@@ -56,11 +56,11 @@ static int s_curFPSidx = 0;
 const char* SHADER_DEFINES[] = {
 	//"ALPHA_SCALE 40.0",
 	//"AMBIENT_OCCLUSION",
-	"EMISSION_ABSORPTION_RAW",
+	//"EMISSION_ABSORPTION_RAW",
 	"FIRST_HIT",
 	//"LEVEL_OF_DETAIL",
 	//"OCCLUSION_MAP",
-	"RANDOM_OFFSET",
+	//"RANDOM_OFFSET",
 	//"SCENE_DEPTH",
 	//"SHADOW_SAMPLING"
 };
@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
 		* glm::translate(glm::vec3(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, -s_volumeSize.z * 0.5f));
 
 	// create Volume and VertexGrid
-	VolumeSubdiv volume(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, s_volumeSize.z * 0.5f, 3);
+	VolumeSubdiv volume(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, s_volumeSize.z * 0.5f, 6);
 	VertexGrid vertexGrid(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
 	VertexGrid vertexGrid_coarse(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
 	Quad quad;
@@ -708,8 +708,8 @@ int main(int argc, char *argv[])
 		simpleRaycastShader.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
 		simpleRaycastShader.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 
-		float s_zRayEnd   = abs(eye.z) + sqrt(2.0);
-		float s_zRayStart = abs(eye.z) - sqrt(2.0);
+		float s_zRayEnd   = abs(s_translation[3].z) + sqrt(2.0)*0.5f;
+		float s_zRayStart = abs(s_translation[3].z) - sqrt(2.0)*0.5f;
 		float e = s_eyeDistance;
 		float w = TEXTURE_RESOLUTION.x;
 		float t_near = (s_zRayStart) / s_near;
