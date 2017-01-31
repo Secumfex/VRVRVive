@@ -32,7 +32,8 @@ static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
-	//"EMISSION_ABSORPTION_RAW"
+	"EMISSION_ABSORPTION_RAW",
+	"SHADOW_SAMPLING"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -118,6 +119,12 @@ int main(int argc, char *argv[])
 	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	
+	
+	bool hasShadow = false; for (auto e : s_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+	shaderProgram.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+	shaderProgram.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary		//////////////////////////////////////////////////////////////////////////////
+	}
+
 	// DEBUG
 	TransferFunctionPresets::generateTransferFunction();
 	TransferFunctionPresets::updateTransferFunctionTex();
@@ -372,8 +379,6 @@ int main(int argc, char *argv[])
 			ViewParameters::updateView();
 		}
 
-		//////////////////////////////////////////////////////////////////////////////
-
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		if (s_isRotating) // update view matrix
 		{
@@ -384,8 +389,13 @@ int main(int argc, char *argv[])
 
 		//glm::vec4 warpCenter  = s_center + glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
 		glm::vec4 warpCenter  = s_center;
-		glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
-		s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+		static bool isCameraAnimated = false;
+		ImGui::Checkbox("Animate Camera", &isCameraAnimated);
+		if (isCameraAnimated)
+		{
+			glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+			s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));	
+		}
 	
 		//////////////////////////////////////////////////////////////////////////////
 				
@@ -435,8 +445,16 @@ int main(int argc, char *argv[])
 		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
 		uvwRenderPass.render();
 
-		novelView.render();
-		//debugRecompose.render();
+		static bool isDebugViewActive = false;
+		ImGui::Checkbox("Debug View Active", &isDebugViewActive);
+		if(isDebugViewActive)
+		{
+			debugRecompose.render();
+		}
+		else
+		{
+			novelView.render();
+		}
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers

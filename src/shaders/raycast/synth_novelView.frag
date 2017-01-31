@@ -65,12 +65,12 @@ vec4 accumulateFrontToBack(vec4 color, vec4 backColor)
 //!< DEBUG simple, but expensive update method to retrieve ea values
 vec4 getLayerEA(vec2 uv, int layer)
 {
-	if		( layer == 0 )  { return vec4(0.0,0.0,0.0,1.0); }
+	if		( layer == 0 )  { return vec4(0.0,0.0,0.0,0.0); }
 	else if ( layer == 1 )  { return texture(layer1, uv); }
 	else if ( layer == 2 )  { return texture(layer2, uv); }
 	else if ( layer == 3 )  { return texture(layer3, uv); }
 	else if ( layer == 4 )  { return texture(layer4, uv); }
-	else/*if( layer == 5 )*/{ return vec4(0.0,0.0,0.0,1.0); }
+	else/*if( layer == 5 )*/{ return vec4(0.0,0.0,0.0,0.0); }
 }
 
 //!< DEBUG simple, but expensive update method to retrieve ea values
