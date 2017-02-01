@@ -73,7 +73,7 @@ vec4 getLayerEA(vec2 uv, int layer)
 	else/*if( layer == 5 )*/{ return vec4(0.0,0.0,0.0,0.0); }
 }
 
-//!< DEBUG simple, but expensive update method to retrieve ea values
+//!< DEBUG simple, but expensive update method to retrieve depth values
 float getLayerDistance(vec2 uv, int layer)
 {
 	if		( layer == 0 )  { return depthToDistance(uv, texture(depth0, uv).x); }
@@ -153,7 +153,7 @@ void main()
 		samplePoint = startPoint + tNext * rayDir; // find next samplePoint
 		vec3 sampleView = samplePoint.z * normalize( screenToView( vec3(samplePoint.xy, 0.0) ).xyz );
 
-		float distanceBetweenPoints = abs( sampleView.z - lastSampleView.z ); // traveled distance // TODO THIS IS ONLY DEBUG!!
+		float distanceBetweenPoints = length( sampleView - lastSampleView ); // traveled distance // TODO THIS IS ONLY DEBUG!!
 
 		//<<<< accumulate currentSegmentEA for traversed segment length
 		vec4 segmentColor = beerLambertEmissionAbsorptionToColorTransmission( currentSegmentEA.rgb, currentSegmentEA.a, distanceBetweenPoints );
@@ -168,11 +168,28 @@ void main()
 		{
 
 			// update by finding corresponding layer
-			currentLayer = 0;
-			currentLayerDistance = getLayerDistance(samplePoint.xy, currentLayer);
-			while ( currentLayerDistance < samplePoint.z && currentLayer < 5){
-				currentLayer++;
+			//currentLayer = 0;
+			bool layerOK = false;
+			while ( !layerOK ){
+				
+				// check back layer distance, is it behind current sample point (as should be)?
 				currentLayerDistance = getLayerDistance(samplePoint.xy, currentLayer);
+				if (currentLayerDistance < samplePoint.z && currentLayer < 5) // is not behind current sample point
+				{
+					currentLayer++;
+					continue;
+				}
+
+				// check front layer distance, is it in front current sample point (as should be)?
+				float frontLayerDistance = getLayerDistance (samplePoint.xy, max(0, currentLayer - 1) );
+				if (frontLayerDistance >= samplePoint.z && currentLayer > 0) // is not in front of current sample point
+				{
+					currentLayer--;
+					continue;
+				}
+				
+				// if we get to this point, layerIdx is good
+				layerOK = true;
 			}
 			
 			// recompute tMax.z

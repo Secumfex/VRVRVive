@@ -326,7 +326,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		#ifdef STEREO_SINGLE_PASS
 			// reproject Coords, check whether image coords changed
 			ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
-			if ( curTexelCoord_r != texelCoord_r ) //changed
+			if ( curTexelCoord_r.x > texelCoord_r.x ) //changed
 			{
 				// reproject color, then reset segment color
 				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)

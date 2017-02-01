@@ -33,7 +33,7 @@ static int s_curFPSidx = 0;
 const char* SHADER_DEFINES[] = {
 	"RANDOM_OFFSET",
 	"EMISSION_ABSORPTION_RAW",
-	"SHADOW_SAMPLING"
+	//"SHADOW_SAMPLING",
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 

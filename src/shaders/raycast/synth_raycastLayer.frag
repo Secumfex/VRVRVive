@@ -213,6 +213,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			float curLod = max(0.0, min(1.0, ((curDistance - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
 			float curStepSize = stepSize * pow(2.0, curLod);
 			parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+			distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
 			curSample.value = textureLod(volume_texture, curUVW, curLod).r;
 		#else
 			float curStepSize = stepSize;
@@ -221,7 +222,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		// retrieve current sample
 		#ifdef EMISSION_ABSORPTION_RAW
-			float distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
 			float sampleAbsorption = transferFunctionRaw( curSample.value ).a;
 			sampleAbsorption = pow(sampleAbsorption * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
 			float sampleAlpha = 1.0 - exp( - sampleAbsorption * distanceStepSize );
@@ -255,10 +255,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// declare some output variables (to get rid of if-else)
 	vec4 layerColor[4] = vec4[4](0.0);
 	float layerDepth[4] = float[4](0.0);
-	layerDepth[0] = 0.0;
-	layerDepth[1] = 0.0;
-	layerDepth[2] = 0.0;
-	layerDepth[3] = 0.0;
+	layerDepth[0] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 3.0);
+	layerDepth[1] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 2.0);
+	layerDepth[2] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 1.0);
+	layerDepth[3] = endDistance;
 
 	// TODO debug
 	//vec3 startUVW_ = result.firstHit.rgb; // skip ahead, because we can
@@ -288,6 +288,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			float curLod = max(0.0, min(1.0, ((curDistance - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
 			float curStepSize = stepSize * pow(2.0, curLod);
 			parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+			distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
 			curSample.value = textureLod(volume_texture, curUVW, curLod).r;
 		#else
 			float curStepSize = stepSize;
@@ -296,7 +297,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		// retrieve current sample
 		#ifdef EMISSION_ABSORPTION_RAW
-			float distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
 			vec4 sampleEmissionAbsorption = transferFunctionRaw( curSample.value );
 			sampleEmissionAbsorption.rgb = sampleEmissionAbsorption.rgb * EMISSION_SCALE;
 			sampleEmissionAbsorption.a = pow(sampleEmissionAbsorption.a * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
@@ -379,7 +379,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		}
 
 		// reached y_i?
-		if ( (curAlpha / maxAlpha) >= currentLayerThreshold - (maxAlpha)/20.0 && currentLayer != 4) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
+		if ( (curAlpha / maxAlpha) >= currentLayerThreshold && currentLayer != 4) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
 		{		
 			//<<<< compute the Beer-Lambert equivalent values
 			vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, abs(curDistance - lastDistance));
@@ -402,18 +402,15 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	}
 
 	// make sure last layer gets filled
-	if (true)
-	{
-		vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, endDistance - layerDepth[2]);
+	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, lastNonZero - layerDepth[2]);
 
-		//<<<< write to layer
-		layerColor[3] = emissionAbsorption;
-		layerDepth[3] = endDistance;
+	//<<<< write to layer
+	layerColor[3] = emissionAbsorption;
+	layerDepth[3] = lastNonZero;
 
-		// DEBUG the full raycasting result
-		curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
-		curColor.a =  (1.0 - curColor.a) * segmentColor.a + curColor.a;
-	}
+	// DEBUG the full raycasting result
+	curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
+	curColor.a =  (1.0 - curColor.a) * segmentColor.a + curColor.a;
 
 	//<<<< write to outputs
 	fragColor1 = layerColor[0];
