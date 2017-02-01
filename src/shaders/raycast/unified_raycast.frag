@@ -402,14 +402,13 @@ void main()
 	
 	if( uvwStart.a == 0.0 ) // only back-uvws visible (camera inside volume)
 	{
-		uvwStart = uScreenToTexture * vec4(passUV, 0, 1); // clamp to near plane
-		uvwStart.a = 0.0;
+		uvwStart.xyz = (uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
 	}
 
 	#ifdef OCCLUSION_MAP
 		vec4 clipFrustumFront = texture(occlusion_clip_frustum_front, passUV);
 		clipFrustumFront.rgb = (uViewToTexture * getViewCoord( vec3(passUV, clipFrustumFront.a) ) ).xyz;
-		float firstHit = 0.0;
+		vec4 firstHit = vec4(0.0);
 		if ( clipFrustumFront.a > uvwStart.a ) // there is unknown volume space between proxy geom and frustum map
 		{
 			RaycastResult raycastResult = raycast( 
@@ -421,7 +420,7 @@ void main()
 			);
 
 			fragColor = raycastResult.color;
-			firstHit = raycastResult.firstHit.a;
+			firstHit = raycastResult.firstHit;
 		}
 
 		//vec4 clipFrustumBack = texture(occlusion_clip_frustum_back, passUV);
@@ -486,9 +485,9 @@ void main()
 
 	#ifdef FIRST_HIT
 		#ifdef OCCLUSION_MAP
-		if (firstHit != 0.0) // first hit happened even before raycasting within occlusion frustum
+		if (firstHit.a != 0.0) // first hit happened even before raycasting within occlusion frustum
 		{
-			raycastResult.firstHit.a = firstHit;
+			raycastResult.firstHit = firstHit;
 		}
 		#endif
 		if (raycastResult.firstHit.a > 0.0)

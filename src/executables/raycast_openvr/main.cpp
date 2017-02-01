@@ -41,8 +41,8 @@ static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_R
 
 const char* SHADER_DEFINES[] = {
 	//"AMBIENT_OCCLUSION",
-	"RANDOM_OFFSET",
-	"WARP_SET_FAR_PLANE",
+	//"RANDOM_OFFSET",
+	//"WARP_SET_FAR_PLANE"
 	"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
@@ -385,7 +385,7 @@ public:
 	{
 		DEBUGLOG->log("FrameBufferObject Creation: m_pVolume uvw coords"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA16F;
-		m_pUvwFBO = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x,(int) FRAMEBUFFER_RESOLUTION.y);
+		m_pUvwFBO   = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x,(int) FRAMEBUFFER_RESOLUTION.y);
 		m_pUvwFBO->addColorAttachments(2); // front UVRs and back UVRs
 		m_pUvwFBO_r = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x,(int)  FRAMEBUFFER_RESOLUTION.y);
 		m_pUvwFBO_r->addColorAttachments(2); // front UVRs and back UVRs
@@ -393,15 +393,58 @@ public:
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
-		m_pRaycastFBO = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		FrameBufferObject::s_internalFormat = GL_RGBA16F;
+		m_pRaycastFBO   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pRaycastFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_front = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_front   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pRaycastFBO_front_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
-		
 
+		// Add Stencil buffers
+		if (m_pOvr->m_pHMD)
+		{
+			checkGLError(true);
+			ShaderProgram stencilShader("/screenSpace/stencil.vert", "/screenSpace/stencil.frag");
+			stencilShader.use();
+			{
+				m_pRaycastFBO->bind();
+				GLuint stencil_rb;
+				glGenRenderbuffers(1, &stencil_rb);
+				glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO->getWidth(), m_pRaycastFBO->getHeight());
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				checkGLError(true);
+				
+				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Left);
+				auto model = CGLHiddenMeshModel("Hidden Mesh Model LEFT");
+				model.BInit( maskMesh );
+				// enable simple fragment shader
+				stencilShader.use();
+				model.Draw(); // fill stencil buffer
+				checkGLError(true);
+			}
+
+			{
+				m_pRaycastFBO_r->bind();
+				GLuint stencil_rb;
+				glGenRenderbuffers(1, &stencil_rb);
+				glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO_r->getWidth(), m_pRaycastFBO_r->getHeight());
+				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				checkGLError(true);
+
+				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Right);
+				auto model = CGLHiddenMeshModel("Hidden Mesh Model RIGHT");
+				model.BInit( maskMesh );
+				// enable simple fragment shader
+				stencilShader.use();
+				model.Draw(); // fill stencil buffer
+				checkGLError(true);
+			}
+		}	
 		DEBUGLOG->log("FrameBufferObject Creation: occlusion frustum"); DEBUGLOG->indent();
-		m_pOcclusionFrustumFBO = new FrameBufferObject(   m_pOcclusionFrustumShader->getOutputInfoMap(), m_pUvwFBO->getWidth(),   m_pUvwFBO->getHeight() );
+		m_pOcclusionFrustumFBO   = new FrameBufferObject(   m_pOcclusionFrustumShader->getOutputInfoMap(), m_pUvwFBO->getWidth(),   m_pUvwFBO->getHeight() );
 		m_pOcclusionFrustumFBO_r = new FrameBufferObject( m_pOcclusionFrustumShader->getOutputInfoMap(), m_pUvwFBO_r->getWidth(), m_pUvwFBO_r->getHeight() );
 		DEBUGLOG->outdent();
 
@@ -413,12 +456,12 @@ public:
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("FrameBufferObject Creation: quad warping"); DEBUGLOG->indent();
-		m_pWarpFBO = new FrameBufferObject(m_pQuadWarpShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pWarpFBO   = new FrameBufferObject(m_pQuadWarpShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pWarpFBO_r = new FrameBufferObject(m_pQuadWarpShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("FrameBufferObject Creation: scene depth"); DEBUGLOG->indent();
-		m_SceneDepthFBO = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y); // has only a depth buffer, no color attachments
+		m_SceneDepthFBO   = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y); // has only a depth buffer, no color attachments
 		m_SceneDepthFBO_r = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y); // has only a depth buffer, no color attachments
 		m_SceneDepthFBO->bind();
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -427,7 +470,7 @@ public:
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("FrameBufferObject Creation: DEBUG depth to texture"); DEBUGLOG->indent();
-		m_DebugDepthFBO = new FrameBufferObject(m_pDepthToTextureShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_DebugDepthFBO   = new FrameBufferObject(m_pDepthToTextureShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_DebugDepthFBO_r = new FrameBufferObject(m_pDepthToTextureShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		DEBUGLOG->outdent();
 	}
@@ -494,12 +537,14 @@ public:
 		m_pRaycast->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast->addRenderable(m_pQuad);
 		m_pRaycast->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
+		m_pRaycast->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
 		m_pRaycast->addDisable(GL_BLEND);
 
 		m_pRaycast_r = new RenderPass(m_pRaycastShader, m_pRaycastFBO_r);
 		m_pRaycast_r->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast_r->addRenderable(m_pQuad);
 		m_pRaycast_r->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
+		m_pRaycast_r->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
 		m_pRaycast_r->addDisable(GL_BLEND);
 
 		glm::ivec2 viewportSize = glm::ivec2((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
@@ -946,6 +991,16 @@ public:
 				s_view_r = m_pOvr->m_mat4eyePosRight * m_pOvr->m_mat4HMDPose;
 			}
 
+			s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
+			s_nearW = s_nearH * s_aspect;
+
+			// constant
+			s_screenToView = glm::scale(glm::vec3(s_nearW, s_nearH, s_near)) * 
+				glm::inverse( 
+					glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * 
+					glm::scale(glm::vec3(0.5f,0.5f,0.5f)) 
+				);
+
 			// Update Matrices
 			// compute current auxiliary matrices
 			glm::mat4 model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale;
@@ -960,7 +1015,7 @@ public:
 				glm::vec4 warpEye = s_eye;
 				if (animateTranslation) warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
 				s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
-				s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter) + glm::vec3(s_eyeDistance,0.0,0.0), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+				s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
 			}
 
 			ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
@@ -1155,7 +1210,7 @@ public:
 							glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
 							glm::vec4 warpEye = s_eye;
 							if (animateTranslation) warpEye = s_eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-							matrices[RIGHT][CURRENT].view = glm::lookAt(glm::vec3(warpEye) + glm::vec3(0.15, 0.0, 0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
+							matrices[RIGHT][CURRENT].view = glm::lookAt(glm::vec3(warpEye) + glm::vec3(s_eyeDistance, 0.0, 0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
 						}
 					}
 				}

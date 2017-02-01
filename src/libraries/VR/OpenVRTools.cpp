@@ -690,3 +690,82 @@ void CGLRenderModel::Draw()
 
 	OPENGLCONTEXT->bindVAO(0);
 }
+
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+//-----------------------------------------------------------------------------
+// Purpose: Create/destroy GL Render Models
+//-----------------------------------------------------------------------------
+CGLHiddenMeshModel::CGLHiddenMeshModel( const std::string & sRenderModelName )
+	: m_sModelName( sRenderModelName )
+{
+	m_glVertBuffer = 0;
+}
+
+
+CGLHiddenMeshModel::~CGLHiddenMeshModel()
+{
+	Cleanup();
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Allocates and populates the GL resources for a render model
+//-----------------------------------------------------------------------------
+bool CGLHiddenMeshModel::BInit( const vr::HiddenAreaMesh_t & vrModel )
+{
+	// Populate a vertex buffer
+	glGenBuffers( 1, &m_glVertBuffer );
+	glBindBuffer( GL_ARRAY_BUFFER, m_glVertBuffer );
+	glBufferData( GL_ARRAY_BUFFER, sizeof( vr::HmdVector2_t ) * vrModel.unTriangleCount * 3, vrModel.pVertexData, GL_STATIC_DRAW );
+
+	m_unVertexCount = vrModel.unTriangleCount * 3;
+
+	return true;
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Frees the GL resources for a render model
+//-----------------------------------------------------------------------------
+void CGLHiddenMeshModel::Cleanup()
+{
+	if( m_glVertBuffer )
+	{
+		glDeleteBuffers(1, &m_glVertBuffer);
+		m_glVertBuffer = 0;
+	}
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: Draws the hidden mesh model to the stencil buffer
+//-----------------------------------------------------------------------------
+void CGLHiddenMeshModel::Draw()
+{
+	// disable color and depth output
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	glDepthMask(GL_FALSE);
+
+	// set stencil properties
+	glStencilFunc(GL_ALWAYS, 1, 0xFF);
+	glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+	glStencilMask(0xFF);
+
+	// bind and draw
+	glBindBuffer( GL_ARRAY_BUFFER, m_glVertBuffer );
+	glDrawArrays( GL_TRIANGLES, 0, m_unVertexCount );
+	OPENGLCONTEXT->bindVAO(0);
+
+	// re-enable
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDepthMask(GL_TRUE);
+	
+	glStencilFunc(GL_EQUAL, 0, 0xFF); // Pass test if stencil value is 0
+    glStencilMask(0x00); // Don't write anything to stencil buffer from now on
+}
