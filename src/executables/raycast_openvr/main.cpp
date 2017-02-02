@@ -929,10 +929,10 @@ public:
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
-		if (profiler_visible) { m_pRaycastChunked[LEFT]->imguiInterface(&profiler_visible); };
+		if (profiler_visible) { m_pRaycastChunked[LEFT + 2 * (int) m_bIsSynthesisActive]->imguiInterface(&profiler_visible); };
 		ImGui::NextColumn();
 		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
-		if (profiler_visible_r) { m_pRaycastChunked[RIGHT]->imguiInterface(&profiler_visible_r); };
+		if (profiler_visible_r) { m_pRaycastChunked[RIGHT + 2 * (int) m_bIsSynthesisActive]->imguiInterface(&profiler_visible_r); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		
