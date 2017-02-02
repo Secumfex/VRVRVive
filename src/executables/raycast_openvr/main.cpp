@@ -394,13 +394,29 @@ public:
 
 		DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA16F;
+
+		FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
+		FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
+		FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
 		m_pRaycastFBO   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pRaycastFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		FrameBufferObject::s_depthType = GL_FLOAT;
+		FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
+		FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
 		m_pRaycastFBO_front   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_front_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_front_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
 		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
 
+		checkGLError(true);
+		m_pRaycastFBO->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO->getDepthTextureHandle(), 0);
+		m_pRaycastFBO_r->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO_r->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO_r->getDepthTextureHandle(), 0);			
+
+		checkGLError(true);
 		// Add Stencil buffers
 		if (m_pOvr->m_pHMD)
 		{
@@ -409,11 +425,11 @@ public:
 			stencilShader.use();
 			{
 				m_pRaycastFBO->bind();
-				GLuint stencil_rb;
-				glGenRenderbuffers(1, &stencil_rb);
-				glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO->getWidth(), m_pRaycastFBO->getHeight());
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				//GLuint stencil_rb;
+				//glGenRenderbuffers(1, &stencil_rb);
+				//glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				//glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO->getWidth(), m_pRaycastFBO->getHeight());
+				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
 				checkGLError(true);
 				
 				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Left);
@@ -427,11 +443,11 @@ public:
 
 			{
 				m_pRaycastFBO_r->bind();
-				GLuint stencil_rb;
-				glGenRenderbuffers(1, &stencil_rb);
-				glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO_r->getWidth(), m_pRaycastFBO_r->getHeight());
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				//GLuint stencil_rb;
+				//glGenRenderbuffers(1, &stencil_rb);
+				//glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				//glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO_r->getWidth(), m_pRaycastFBO_r->getHeight());
+				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
 				checkGLError(true);
 
 				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Right);

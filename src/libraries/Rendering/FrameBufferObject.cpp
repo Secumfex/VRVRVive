@@ -2,7 +2,9 @@
 
 #include "Core/DebugLog.h"
 #include "Rendering/OpenGLContext.h"
-
+GLenum FrameBufferObject::s_depthFormat		= GL_DEPTH_COMPONENT;
+GLenum FrameBufferObject::s_depthType		= GL_FLOAT;	// default
+GLenum FrameBufferObject::s_internalDepthFormat  = GL_DEPTH_COMPONENT24;	// default
 GLenum FrameBufferObject::s_internalFormat  = GL_RGBA;	// default
 GLenum FrameBufferObject::s_format 			= GL_RGBA;	// default
 GLenum FrameBufferObject::s_type 			= GL_UNSIGNED_BYTE;	// default
@@ -27,7 +29,7 @@ void FrameBufferObject::createDepthTexture()
 
 	glGenTextures(1, &m_depthTextureHandle);
 	OPENGLCONTEXT->bindTexture(m_depthTextureHandle);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, m_width, m_height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, s_internalDepthFormat, m_width, m_height, 0, s_depthFormat, s_depthType, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
