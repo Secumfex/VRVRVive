@@ -760,7 +760,7 @@ void CGLHiddenMeshModel::Draw()
 	// bind and draw
 	glBindBuffer( GL_ARRAY_BUFFER, m_glVertBuffer );
 	glDrawArrays( GL_TRIANGLES, 0, m_unVertexCount );
-	OPENGLCONTEXT->bindVAO(0);
+	glBindBuffer( GL_ARRAY_BUFFER, 0 );
 
 	// re-enable
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
