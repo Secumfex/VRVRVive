@@ -1,9 +1,11 @@
-#include <Volume/TransferFunction.h>
+#ifndef MISC_PARAMETERS_H
+#define MISC_PARAMETERS_H
+
+#include <algorithm>
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <algorithm>
 /**
 * NOTE: These variables are just for convenient, default accessibility. Updates MUST be performed manually.
 */
@@ -16,32 +18,13 @@ namespace RaycastingParameters
 	static bool  s_isRotating = false; 	// initial state for rotating animation
 	static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten after volume data import
 
-	static TransferFunction s_transferFunction;
-
 	static float s_windowingMinValue = -FLT_MAX / 2.0f;
 	static float s_windowingMaxValue = FLT_MAX / 2.0f;
 	static float s_windowingRange = FLT_MAX;
 
-	inline void generateTransferFunction()
-	{
-		s_transferFunction.getValues().clear();
-		s_transferFunction.getColors().clear();
-		s_transferFunction.getValues().push_back(58);
-		s_transferFunction.getColors().push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
-		s_transferFunction.getValues().push_back(539);
-		s_transferFunction.getColors().push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 150.0/255.0f));
-		s_transferFunction.getValues().push_back(572);
-		s_transferFunction.getColors().push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
-		s_transferFunction.getValues().push_back(1356);
-		s_transferFunction.getColors().push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
-		s_transferFunction.getValues().push_back(1500);
-		s_transferFunction.getColors().push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 240.0 /255.0f));
-	}
-
-	inline void updateTransferFunctionTex()
-	{
-		s_transferFunction.updateTex((int) s_minValue,(int) s_maxValue);
-	}
+	static float s_lodMaxLevel = 2.5f;
+	static float s_lodBegin  = 0.25f;
+	static float s_lodRange  = 3.0f;
 };
 
 namespace ViewParameters
@@ -81,6 +64,11 @@ namespace ViewParameters
 	static glm::mat4 s_scale = glm::scale(glm::vec3(0.5f)); // scalation part of model matrix
 	
 	static glm::mat4 s_model = s_translation * s_rotation * s_scale; // model matrix (discouraged to use if something else interferes (i.e. additional scalation/rotation etc)
+	//!< call when s_translation, s_rotation, or s_scale changed
+	inline void updateModel()
+	{
+		s_model = s_translation * s_rotation * s_scale;
+	}
 
 	static glm::vec4 s_eye = glm::vec4(0.0f, 0.0f, 1.5f, 1.0f); // (left) eye position
 	static glm::vec4 s_center = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // center point
@@ -120,3 +108,5 @@ namespace VolumeParameters
 		* glm:: inverse(glm::scale( 2.0f * s_volumeSize) ) // moves origin to front left
 		* glm::translate( glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z) );; // const from model coordinates to texture coordinates
 };
+
+#endif

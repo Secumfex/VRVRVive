@@ -26,7 +26,10 @@ protected:
 	std::unordered_map<std::string, GLuint> m_textureMap;
 	std::vector<GLenum > m_drawBuffers;
 public:
-
+	
+	static GLenum s_depthFormat; //!< used as parameter to allocate depth attachment texture memory
+	static GLenum s_depthType; //!< used as parameter to allocate depth attachment texture memory
+	static GLenum s_internalDepthFormat; //!< used as parameter to allocate depth attachment texture memory
 	static GLenum s_internalFormat; //!< used as parameter to allocate color attachment texture memory
 	static GLenum s_format; //!< used as parameter to allocate color attachment texture memory using glTexImage2D
 	static bool s_useTexStorage2D; //!< describes whether glTexStorage2D is used in favor of glTexImage2D (default: false)

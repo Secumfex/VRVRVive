@@ -18,7 +18,8 @@
 
 ////////////////////// PARAMETERS /////////////////////////////
 
-#include "Parameters.h" //<! static variables
+#include <Misc/Parameters.h> //<! static variables
+#include <Misc/TransferFunctionPresets.h> //<! static variables
 
 using namespace RaycastingParameters;
 using namespace ViewParameters;
@@ -30,7 +31,9 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET_"
+	"RANDOM_OFFSET",
+	"EMISSION_ABSORPTION_RAW",
+	//"SHADOW_SAMPLING",
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
@@ -116,9 +119,15 @@ int main(int argc, char *argv[])
 	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	
+	
+	bool hasShadow = false; for (auto e : s_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+	shaderProgram.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+	shaderProgram.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary		//////////////////////////////////////////////////////////////////////////////
+	}
+
 	// DEBUG
-	generateTransferFunction();
-	updateTransferFunctionTex();
+	TransferFunctionPresets::generateTransferFunction();
+	TransferFunctionPresets::updateTransferFunctionTex();
 
 	DEBUGLOG->log("FrameBufferObject Creation: synth ray casting layers"); DEBUGLOG->indent();
 	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
@@ -130,7 +139,7 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
+	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
 	// generate and bind right view image texture
@@ -157,7 +166,7 @@ int main(int argc, char *argv[])
 	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	showTex.addRenderable(&quad);
 	showTex.setViewport(0,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	showTex.addEnable(GL_BLEND);
+	showTex.addDisable(GL_BLEND);
 
 	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE5, GL_TEXTURE_2D);
@@ -300,6 +309,10 @@ int main(int argc, char *argv[])
 	//////////////////////////////////////////////////////////////////////////////
 
 	//++++++++++++++ DEBUG
+	float m22 = s_perspective[2][2]; 
+	float m32 = s_perspective[3][2];
+	float n = (2.0f*m32)/(2.0f*m22-2.0f);
+	float f = (m22-1.0f)*n/(m22+1.0);
 	//++++++++++++++ DEBUG
 
 	float elapsedTime = 0.0;
@@ -325,17 +338,17 @@ int main(int argc, char *argv[])
 			ImGui::Columns(2, "TFcontrol", true);
 			ImGui::Separator();
 			bool changed = false;
-			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, s_minValue, s_maxValue);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 				ImGui::NextColumn();
-				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
 			}
 
 			if(changed)
 			{
-				updateTransferFunctionTex();
+				TransferFunctionPresets::updateTransferFunctionTex();
 			}
 			ImGui::Columns(1);
 			ImGui::Separator();
@@ -366,8 +379,6 @@ int main(int argc, char *argv[])
 			ViewParameters::updateView();
 		}
 
-		//////////////////////////////////////////////////////////////////////////////
-
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		if (s_isRotating) // update view matrix
 		{
@@ -378,8 +389,13 @@ int main(int argc, char *argv[])
 
 		//glm::vec4 warpCenter  = s_center + glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
 		glm::vec4 warpCenter  = s_center;
-		glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
-		s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+		static bool isCameraAnimated = false;
+		ImGui::Checkbox("Animate Camera", &isCameraAnimated);
+		if (isCameraAnimated)
+		{
+			glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
+			s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));	
+		}
 	
 		//////////////////////////////////////////////////////////////////////////////
 				
@@ -429,8 +445,16 @@ int main(int argc, char *argv[])
 		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
 		uvwRenderPass.render();
 
-		novelView.render();
-		//debugRecompose.render();
+		static bool isDebugViewActive = false;
+		ImGui::Checkbox("Debug View Active", &isDebugViewActive);
+		if(isDebugViewActive)
+		{
+			debugRecompose.render();
+		}
+		else
+		{
+			novelView.render();
+		}
 		
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers

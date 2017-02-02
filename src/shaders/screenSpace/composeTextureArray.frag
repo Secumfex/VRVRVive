@@ -27,7 +27,8 @@ void main()
 	float xRight = ceil( passPosition.x * float(texSize.x) ) + uPixelOffsetNear; // identify rightmost ray-coordinate that could write to this pixel
 
 	int numLayersToBlend = int(xRight) - int(xLeft);
-	int initialLayerIdx = texSize.z - (int(xLeft)  % texSize.z ) - 1; // this defines the "entry" layer for this pixel
+	//int initialLayerIdx = texSize.z - (int(xLeft)  % texSize.z ) - 1; // this defines the "entry" layer for this pixel
+	int initialLayerIdx = texSize.z - ( (int(passPosition.x * texSize.x) - int(ceil(uPixelOffsetNear))) % texSize.z ) - 1; // this defines the "entry" layer for this pixel
 	int endLayerIdx     = texSize.z - (int(xRight) % texSize.z ) - 1; // this defines the "exit"  layer for this pixel
 
 	fragColor = vec4(0.0);
@@ -38,12 +39,18 @@ void main()
 		fragColor = vec4(0.1,0.0,0.0,0.1);
 	}
 
-	// blend layers
+	// blend layers (front to back)
 	//for (int i = initialLayerIdx; i != endLayerIdx; i = (i-1) % texSize.z)
 	for (int i = 0; i < texSize.z; i ++)
 	{
-		vec4 texColor = texture(tex, vec3(passPosition.xy, (initialLayerIdx - i) % texSize.z) ); // blend
-		fragColor.rgb = texColor.rgb + (1.0 - texColor.a) * fragColor.rgb;
-		fragColor.a   = texColor.a   + (1.0 - texColor.a) * fragColor.a;
+		// BACK TO FRONT
+		//vec4 texColor = texture(tex, vec3(passPosition.xy, (initialLayerIdx - i) % texSize.z) ); // blend
+		//fragColor.rgb = texColor.rgb + (1.0 - texColor.a) * fragColor.rgb;
+		//fragColor.a   = texColor.a   + (1.0 - texColor.a) * fragColor.a;
+
+		// FRONT TO BACK
+		vec4 texColor = texture(tex, vec3(passPosition.xy, (initialLayerIdx + i) % texSize.z) ); // blend
+		fragColor.rgb = (1.0 - fragColor.a) * (texColor.rgb) + fragColor.rgb;
+		fragColor.a = (1.0 - fragColor.a) * texColor.a + fragColor.a;
 	}
 }

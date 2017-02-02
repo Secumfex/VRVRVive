@@ -14,10 +14,10 @@ GLuint TransferFunction::getTextureHandle()
 	return m_textureHandle;
 }
 
-void TransferFunction::updateTex(int minValue, int maxValue)
+void TransferFunction::updateTex(float minValue, float maxValue)
 {
-	int currentMin = minValue;
-	int currentMax = minValue+1;
+	float currentMin = minValue;
+	float currentMax = minValue;
 	glm::vec4 currentMinCol( 0.0f, 0.0f, 0.0f, 0.0f );
 	glm::vec4 currentMaxCol( 0.0f, 0.0f, 0.0f, 0.0f );
 
@@ -26,7 +26,7 @@ void TransferFunction::updateTex(int minValue, int maxValue)
 	{
 		glm::vec4 c( 0.0f, 0.0f, 0.0f, 0.0f );
 		float relVal = (float) i / (float) (m_transferFunctionTexData.size() / 4);
-		int v = relVal * (maxValue - minValue) + minValue;
+		float v = relVal * (maxValue - minValue) + minValue;
 
 		if (currentMax < v)
 		{
@@ -36,7 +36,7 @@ void TransferFunction::updateTex(int minValue, int maxValue)
 				currentMin = currentMax;
 				currentMinCol = currentMaxCol;
 
-				currentMax = (int) m_values[currentPoint];
+				currentMax = m_values[currentPoint];
 				currentMaxCol = m_colors[currentPoint];
 			}
 			else {
@@ -79,39 +79,4 @@ void TransferFunction::updateTex(int minValue, int maxValue)
 	OPENGLCONTEXT->bindTexture(m_textureHandle, GL_TEXTURE_1D);
 	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, m_transferFunctionTexData.size() / 4, GL_RGBA, GL_FLOAT, &m_transferFunctionTexData[0]);
 	OPENGLCONTEXT->bindTexture(0);
-}
-
-void TransferFunction::loadPreset(Preset preset, int s_minValue, int s_maxValue)
-{
-	m_values.clear();
-	m_colors.clear();
-	
-	if ( preset == Preset::CT_Head )
-	{
-		m_values.push_back(58);
-		m_colors.push_back(glm::vec4(0.0/255.0f, 0.0/255.0f, 0.0/255.0f, 0.0/255.0f));
-		m_values.push_back(539);
-		m_colors.push_back(glm::vec4(255.0/255.0f, 0.0/255.0f, 0.0/255.0f, 231.0/255.0f));
-		m_values.push_back(572);
-		m_colors.push_back(glm::vec4(0.0 /255.0f, 74.0 /255.0f, 118.0 /255.0f, 64.0 /255.0f));
-		m_values.push_back(1356);
-		m_colors.push_back(glm::vec4(0/255.0f, 11.0/255.0f, 112.0/255.0f, 0.0 /255.0f));
-		m_values.push_back(1500);
-		m_colors.push_back(glm::vec4( 242.0/ 255.0, 212.0/ 255.0, 255.0/ 255.0, 255.0 /255.0f));
-	}
-	else if( preset == Preset::MRT_Brain )
-	{
-		m_values.push_back(0);
-		m_colors.push_back(glm::vec4(255.0f/255.0f, 0.0f/255.0f, 0.0f/255.0f, 32.0f/255.0f));
-		m_values.push_back(2655);
-		m_colors.push_back(glm::vec4(0.0f/255.0f, 0.0f/255.0f, 0.0f/255.0f, 80.0f/255.0f));
-		m_values.push_back(2729);
-		m_colors.push_back(glm::vec4(126.0f /255.0f, 156.0f /255.0f, 213.0f /255.0f, 80.0f /255.0f));
-		m_values.push_back(2821);
-		m_colors.push_back(glm::vec4(255.0f/255.0f, 120.0f/255.0f, 0.0f/255.0f, 49.0f /255.0f));
-		m_values.push_back(2933);
-		m_colors.push_back(glm::vec4(117.0f/255.0f, 119.0f/255.0, 255.0f/255.0f, 7.0f/255.0f));
-	}
-	
-	updateTex(s_minValue, s_maxValue);
 }

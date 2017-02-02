@@ -21,112 +21,51 @@
 #include <glm/gtx/transform.hpp>
 
 #include <Volume/TransferFunction.h>
+#include <Volume/SyntheticVolume.h>
+
+#include <Misc/TransferFunctionPresets.h>
+#include <Misc/Parameters.h>
 
 // openvr includes
 #include <openvr.h>
 #include <VR/OpenVRTools.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
-static float s_maxValue = (float) INT_MAX;  // maximal value in data set; to be overwitten after import
-
-static bool  s_isRotating = false; 	// initial state for rotating animation
-static float s_rayStepSize = 0.1f;  // ray sampling step size; to be overwritten after volume data import
-
-static float s_rayParamEnd  = 1.0f; // parameter of uvw ray start in volume
-static float s_rayParamStart= 0.0f; // parameter of uvw ray end   in volume
-
-static int 		 s_activeModel = 0;
-static const char* s_models[] = {"CT Head", "MRT Brain"};
-
-static float s_windowingMinValue = -FLT_MAX / 2.0f;
-static float s_windowingMaxValue = FLT_MAX / 2.0f;
-static float s_windowingRange = FLT_MAX;
+static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient"};
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static glm::vec2 WINDOW_RESOLUTION(1400, 700.0f);
+static float FRAMEBUFFER_SCALE = 1.0f;
+static glm::vec2 FRAMEBUFFER_RESOLUTION(700.f,700.f);
+static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_RESOLUTION.y);
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET",
-	"WARP_SET_FAR_PLANE",
+	//"AMBIENT_OCCLUSION",
+	//"RANDOM_OFFSET",
+	//"WARP_SET_FAR_PLANE"
 	"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
+	//"SHADOW_SAMPLING,"
 	"LEVEL_OF_DETAIL",
-	"FIRST_HIT",
-	"SCENE_DEPTH"
+	"LAST_RESULT",
+	"FIRST_HIT"
 };
-static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-static TransferFunction s_transferFunction;
-
-static std::vector<float> s_fpsCounter = std::vector<float>(120);
-static int s_curFPSidx = 0;
-
-namespace Frame{
-	static Profiler FrameProfiler;
-	static SimpleDoubleBuffer<OpenGLTimings> Timings;
-}
-
-float s_near = 0.5f;
-float s_far = 30.0f;
-float s_fovY = 45.0f;
-float s_nearH;
-float s_nearW;
-
-// matrices
-glm::mat4 s_view;
-glm::mat4 s_view_r;
-glm::mat4 s_perspective;
-glm::mat4 s_perspective_r;
-
-glm::mat4 s_screenToView;   // const
-glm::mat4 s_modelToTexture; // const
-
-glm::mat4 s_translation;
-glm::mat4 s_rotation;
-glm::mat4 s_scale;
-
-glm::vec3 s_volumeSize(1.0f, 0.886f, 1.0);
-
-struct MatrixSet
-{
-	glm::mat4 model;
-	glm::mat4 view;
-	glm::mat4 perspective;
-} matrices[2][2]; // left, right, firsthit, current
-const int FIRST_HIT = 0;
+const int LAST_RESULT = 0;
 const int CURRENT = 1;
 const int LEFT = vr::Eye_Left;
 const int RIGHT = vr::Eye_Right;
 
-enum DebugViews{
-	UVW_BACK,
-	UVW_FRONT,
-	FIRST_HIT_,
-	OCCLUSION,
-	CURRENT_,
-	FRONT,
-	WARPED,
-	OCCLUSION_CLIP_FRUSTUM_FRONT,
-	OCCLUSION_CLIP_FRUSTUM_BACK,
-	NUM_VIEWS // auxiliary
-};
+const string STR_SUFFIX[2] = {" LEFT", " RIGHT"};
+
+using namespace RaycastingParameters;
+using namespace ViewParameters;
+using namespace VolumeParameters;
+
 //////////////////////////////////////////////////////////////////////////////
 ////////////////////////////// MISC //////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
-
-
-void generateTransferFunction()
-{
-	s_transferFunction.loadPreset(TransferFunction::Preset::CT_Head, s_minValue, s_maxValue);
-}
-
-void updateTransferFunctionTex()
-{
-	s_transferFunction.updateTex((int) s_minValue,(int) s_maxValue);
-}
 
 template <class T>
 void activateVolume(VolumeData<T>& volumeData ) // set static variables
@@ -140,7 +79,7 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 		DEBUGLOG->log("res. z   : ", volumeData.size_z);
 	DEBUGLOG->outdent();
 
-	// set volume specific parameters
+	// set m_pVolume specific parameters
 	s_minValue = volumeData.min;
 	s_maxValue = volumeData.max;
 	s_rayStepSize = 1.0f / (2.0f * volumeData.size_x); // this seems a reasonable size
@@ -149,583 +88,763 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	s_windowingRange = s_windowingMaxValue - s_windowingMinValue;
 }
 
-void profileFPS(float fps)
-{
-	s_fpsCounter[s_curFPSidx] = fps;
-	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
-}
-
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
-
-int main(int argc, char *argv[])
+class CMainApplication 
 {
-	DEBUGLOG->setAutoPrint(true);
+private: 
+	// SDL bookkeeping
+	SDL_Window	 *m_pWindow;
+	SDL_GLContext m_pContext;
 
-	// create window and opengl context
-	auto window = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-	SDL_DisplayMode currentDisplayMode;
-	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
+	// OpenVR bookkeeping
+	OpenVRSystem* m_pOvr;
 
-	DEBUGLOG->log("SDL Display Mode");
-	{ DEBUGLOG->indent();
-	DEBUGLOG->log("w: ", currentDisplayMode.w);
-	DEBUGLOG->log("h: ", currentDisplayMode.h);
-	DEBUGLOG->log("refresh rate: ", currentDisplayMode.refresh_rate);
-	} DEBUGLOG ->outdent();
+	// Render objects bookkeeping
+	VolumeData<float> m_volumeData[4];
+	GLuint m_volumeTexture[4];
+	Quad*	m_pQuad;
+	Grid*	m_pGrid;
+	VertexGrid* m_pVertexGrid;
+	Volume*		  m_pNdcCube;
+	VolumeSubdiv* m_pVolume;
 
-	// set refresh rate higher
-	currentDisplayMode.refresh_rate = 90;
-	SDL_SetWindowDisplayMode(window, &currentDisplayMode);
+	// Shader bookkeeping
+	ShaderProgram* m_pUvwShader;
+	ShaderProgram* m_pRaycastShader;
+	ShaderProgram* m_pOcclusionFrustumShader;
+	ShaderProgram* m_pOcclusionClipFrustumShader;
+	ShaderProgram* m_pQuadWarpShader;
+	ShaderProgram* m_pGridWarpShader;
+	ShaderProgram* m_pShowTexShader;
+	ShaderProgram* m_pDepthToTextureShader;
 
-	// check
-	SDL_GetWindowDisplayMode(window, &currentDisplayMode);
-	DEBUGLOG->log("updated refresh rate: ", currentDisplayMode.refresh_rate);
+	// m_pRaycastFBO bookkeeping
+	FrameBufferObject* m_pOcclusionFrustumFBO[2];
+	FrameBufferObject* m_pUvwFBO[2];
+	FrameBufferObject* m_pRaycastFBO[2];
+	FrameBufferObject* m_pRaycastFBO_front[2];
+	FrameBufferObject* m_pOcclusionClipFrustumFBO[2];
+	FrameBufferObject* m_pWarpFBO[2];
+	FrameBufferObject* m_pSceneDepthFBO[2];
+	FrameBufferObject* m_pDebugDepthFBO[2];
+
+	// Renderpass bookkeeping
+	RenderPass* m_pUvw; 		
+	RenderPass* m_pRaycast[2]; 		
+	ChunkedAdaptiveRenderPass* m_pRaycastChunked[2]; 
+	RenderPass* m_pOcclusionFrustum; 		
+	RenderPass* m_pOcclusionClipFrustum; 		
+	RenderPass* m_pWarpQuad; 		
+	RenderPass* m_pWarpGrid; 		
+	RenderPass* m_pShowTex; 		
+	RenderPass* m_pDebugDepthToTexture; 	
+
+	// Event handler bookkeeping
+	std::function<bool(SDL_Event*)> m_sdlEventFunc;
+	std::function<bool(const vr::VREvent_t&)> m_vrEventFunc;
+	std::function<void(bool, int)> m_trackpadEventFunc;
+	std::function<void(int)> m_setDebugViewFunc;
+
+	// Frame profiling
+	struct Frame{
+		Profiler FrameProfiler;
+		SimpleDoubleBuffer<OpenGLTimings> Timings;
+	} m_frame;
+
+	//========== MISC ================
+	std::vector<std::string> m_shaderDefines;
+
+	Turntable m_turntable;
+
+	int m_iActiveModel;
+
+	bool m_bUseGridWarp;
+	int m_iOcclusionBlockSize;
+	int m_iVertexGridWidth;
+	int m_iVertexGridHeight;
+	
+	enum DebugViews{
+		UVW_BACK,
+		UVW_FRONT,
+		FIRST_HIT_,
+		OCCLUSION,
+		CURRENT_,
+		FRONT,
+		WARPED,
+		OCCLUSION_CLIP_FRUSTUM_FRONT,
+		OCCLUSION_CLIP_FRUSTUM_BACK,
+		NUM_VIEWS // auxiliary
+	};
+	int m_iActiveView;
+	int  m_iLeftDebugView;
+	int m_iRightDebugView;
+
+	bool m_bPredictPose;
+	
+	bool m_bAnimateView;
+	bool m_bAnimateTranslation;
+
+	bool  m_bIsTouchpadTouched;
+	int   m_iTouchpadTrackedDeviceIdx;
+	float m_fOldTouchX;
+	float m_fOldTouchY;
+
+	float m_fOldX;
+	float m_fOldY;
+
+	std::vector<float> m_fpsCounter;
+	int m_iCurFpsIdx;
+
+	float m_fElapsedTime;
+	float m_fMirrorScreenTimer;
+
+	struct MatrixSet
+	{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 perspective;
+	} matrices[2][2]; // left, right, firsthit, current
+
+
+public:
+	CMainApplication( int argc, char *argv[] )
+		: m_bUseGridWarp(false)
+		, m_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES))
+		, m_fpsCounter(120)
+		, m_iCurFpsIdx(0)
+		, m_iActiveModel(0)
+		, m_iActiveView(WARPED)
+		, m_iLeftDebugView(14)
+		, m_iRightDebugView(15)
+		, m_fOldX(0.0f)
+		, m_fOldY(0.0f)
+		, m_fOldTouchX(0.5f)
+		, m_fOldTouchY(0.5f)
+		, m_iTouchpadTrackedDeviceIdx(-1)
+		, m_bIsTouchpadTouched(false)
+		, m_bPredictPose(true)
+		, m_iOcclusionBlockSize(6)
+		, m_fMirrorScreenTimer(0.f)
+		, m_fElapsedTime(0.f)
+		, m_bAnimateView(false)
+		, m_bAnimateTranslation(false)
+	{
+		DEBUGLOG->setAutoPrint(true);
+
+		// create m_pWindow and opengl context
+		m_pWindow = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+
+		printOpenGLInfo();
+		printSDLRenderDriverInfo();
+
+		// init imgui
+		ImGui_ImplSdlGL3_Init(m_pWindow);
+	}
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// INITIALIZE OPENVR   //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	
-	OpenVRSystem ovr(s_near, s_far);
-	
-	if ( ovr.initialize() )
+	void initOpenVR()
 	{
-		DEBUGLOG->log("Alright! OpenVR up and running!");
-		ovr.initializeHMDMatrices();
+		m_pOvr = new OpenVRSystem(s_near, s_far);
+	
+		if ( m_pOvr->initialize() )
+		{
+			DEBUGLOG->log("Alright! OpenVR up and running!");
+			m_pOvr->initializeHMDMatrices();
 
-		ovr.CreateShaders();
-		ovr.SetupRenderModels();
+			m_pOvr->CreateShaders();
+			m_pOvr->SetupRenderModels();
 
-		s_fovY = ovr.getFovY();
+			s_fovY = m_pOvr->getFovY();
 
-		unsigned int width, height;
-		ovr.m_pHMD->GetRecommendedRenderTargetSize(&width, &height);
-		WINDOW_RESOLUTION = glm::vec2(width * 2, height);
+			unsigned int width, height;
+			m_pOvr->m_pHMD->GetRecommendedRenderTargetSize(&width, &height);
+			FRAMEBUFFER_RESOLUTION = glm::vec2(width, height) * FRAMEBUFFER_SCALE;
+		}
 	}
+
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-
-	// load data set: CT of a Head	// load into 3d texture
-	std::string file = RESOURCES_PATH;
-	file += std::string( "/volumes/CTHead/CThead");
-	VolumeData<float> volumeData[2];
-	GLuint volumeTexture[2];
-	volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
-	volumeTexture[0] = loadTo3DTexture<float>(volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
-	
-	volumeData[1] = Importer::loadBruder<float>();
-	volumeTexture[1] =  loadTo3DTexture<float>(volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
-
-
-	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
-	DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
-
-	activateVolume<float>(volumeData[0]);
-
-	//////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////// RENDERING  ///////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-	
-	/////////////////////     Scene / View Settings     //////////////////////////
-	if (ovr.m_pHMD)
+	void loadVolumes()
 	{
-		s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
-		s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
-	}
-	else
-	{	
-		s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
-		s_scale = glm::scale(glm::vec3(1.0f,1.0f,1.0f));
-	}
-	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-
-
-	//glm::mat4 model(1.0f)
-	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
-	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
-
-	// use waitgetPoses to update matrices
-	s_view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-	s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-	if (!ovr.m_pHMD)
-	{
-		s_perspective = glm::perspective(glm::radians(45.f), WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y), s_near, 10.f);
-		s_perspective_r = glm::perspective(glm::radians(45.f), WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y), s_near, 10.f);
-	}
-	else
-	{
-		s_view = ovr.m_mat4eyePosLeft * s_view;
-		s_view_r = ovr.m_mat4eyePosRight * s_view_r;
-		s_perspective = ovr.m_mat4ProjectionLeft; 
-		s_perspective_r = ovr.m_mat4ProjectionRight;
-	}
-	
-	s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
-	s_nearW = s_nearH * WINDOW_RESOLUTION.x / (2.0f * WINDOW_RESOLUTION.y);
-
-	// constant
-	s_screenToView = glm::scale(glm::vec3(s_nearW, s_nearH, s_near)) * 
-		glm::inverse( 
-			glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * 
-			glm::scale(glm::vec3(0.5f,0.5f,0.5f)) 
-			);
-    
-	// constant
-	s_modelToTexture = glm::mat4( // swap components
-		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
-		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
-		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
-		* glm:: inverse(glm::scale( 2.0f * s_volumeSize) ) // moves origin to front left
-		* glm::translate( glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z) );
-
-	// create Volume and VertexGrid
-	VolumeSubdiv volume(s_volumeSize.x, s_volumeSize.y, s_volumeSize.z, 3);
-	Quad quad;
-
-	///////////////////////     UVW Map Renderpass     ///////////////////////////
-	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
-	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", s_shaderDefines); DEBUGLOG->outdent();
-	uvwShaderProgram.update("model", s_translation * s_rotation * s_scale);
-	uvwShaderProgram.update("view", s_view);
-	uvwShaderProgram.update("projection", s_perspective);
-
-	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
-	FrameBufferObject uvwFBO((int) WINDOW_RESOLUTION.x/2,(int) WINDOW_RESOLUTION.y);
-	uvwFBO.addColorAttachments(2); // front UVRs and back UVRs
-	FrameBufferObject uvwFBO_r((int) WINDOW_RESOLUTION.x/2,(int)  WINDOW_RESOLUTION.y);
-	uvwFBO_r.addColorAttachments(2); // front UVRs and back UVRs
-	FrameBufferObject::s_internalFormat = GL_RGBA;
-	DEBUGLOG->outdent();
-	
-	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
-	uvwRenderPass.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	uvwRenderPass.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
-	uvwRenderPass.addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
-	uvwRenderPass.addRenderable(&volume);
-
-	///////////////////////   Ray-Casting Renderpass    //////////////////////////
-	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", s_shaderDefines); DEBUGLOG->outdent();
-	shaderProgram.update("uStepSize", s_rayStepSize);
-	shaderProgram.update("uViewport", glm::vec4(0,0,WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y));	
-	shaderProgram.update("uResolution", glm::vec4(WINDOW_RESOLUTION.x/2, WINDOW_RESOLUTION.y,0,0));
-
-	// DEBUG
-	generateTransferFunction();
-
-	DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
-	FrameBufferObject FBO(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_r(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_front(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_front_r(shaderProgram.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	DEBUGLOG->outdent();
-
-	// bind volume texture, back uvw textures, front uvws
-	OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle()						   , GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
-
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
-
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE3, GL_TEXTURE_2D); // right uvw back
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
-
-	OPENGLCONTEXT->bindTextureToUnit(FBO.getDepthTextureHandle(), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
-	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getDepthTextureHandle(), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
-
-	OPENGLCONTEXT->bindTextureToUnit(FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
-	OPENGLCONTEXT->bindTextureToUnit(FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D);// right raycasting result
-	
-	OPENGLCONTEXT->bindTextureToUnit(FBO_front.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D); // left  raycasting result (for display)
-	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE13, GL_TEXTURE_2D);// right raycasting result (for display)
-
-	OPENGLCONTEXT->bindTextureToUnit(FBO_front.getDepthTextureHandle(), GL_TEXTURE24, GL_TEXTURE_2D); // left  raycasting first hit map  (for display)
-	OPENGLCONTEXT->bindTextureToUnit(FBO_front_r.getDepthTextureHandle(), GL_TEXTURE25, GL_TEXTURE_2D);// right  raycasting first hit map (for display)
-
-
-	shaderProgram.update("volume_texture", 0); // volume texture
-	shaderProgram.update("transferFunctionTex", 1);
-
-	RenderPass renderPass(&shaderProgram, &FBO);
-	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	//renderPass.setClearColor(0.1f,0.12f,0.15f,0.0f);
-	renderPass.addRenderable(&quad);
-	renderPass.addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
-	renderPass.addDisable(GL_BLEND);
-
-	RenderPass renderPass_r(&shaderProgram, &FBO_r);
-	renderPass_r.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	//renderPass_r.setClearColor(0.1f,0.12f,0.15f,0.0f);
-	renderPass_r.addRenderable(&quad);
-	renderPass_r.addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
-	renderPass_r.addDisable(GL_BLEND);
-	
-	///////////////////////   Chunked RenderPasses    //////////////////////////
-	glm::ivec2 viewportSize = glm::ivec2((int) WINDOW_RESOLUTION.x / 2, (int) WINDOW_RESOLUTION.y);
-	glm::ivec2 chunkSize = glm::ivec2(96,96);
-	ChunkedAdaptiveRenderPass chunkedRenderPass(
-		&renderPass,
-		viewportSize,
-		chunkSize,
-		8,
-		6.0f
-		);
-	ChunkedAdaptiveRenderPass chunkedRenderPass_r(
-		&renderPass_r,
-		viewportSize,
-		chunkSize,
-		8,
-		6.0f
-		);
-
-	//DEBUG
-	//chunkedRenderPass.activateClearbits();
-	//chunkedRenderPass_r.activateClearbits();
-
-	///////////////////////   Occlusion Frustum Renderpass    //////////////////////////
-	int occlusionBlockSize = 6;
-	int vertexGridWidth  = (int) WINDOW_RESOLUTION.x/2 / occlusionBlockSize;
-	int vertexGridHeight = (int) WINDOW_RESOLUTION.y   / occlusionBlockSize;
-	VertexGrid vertexGrid(vertexGridWidth, vertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
-	ShaderProgram occlusionFrustumShader("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", s_shaderDefines);
-	FrameBufferObject occlusionFrustumFBO(   occlusionFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
-	FrameBufferObject occlusionFrustumFBO_r( occlusionFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
-	RenderPass occlusionFrustum(&occlusionFrustumShader, &occlusionFrustumFBO);
-	occlusionFrustum.addRenderable(&vertexGrid);
-	occlusionFrustum.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	occlusionFrustum.addEnable(GL_DEPTH_TEST);
-	occlusionFrustum.addDisable(GL_BLEND);
-	occlusionFrustumShader.update("uOcclusionBlockSize", occlusionBlockSize);
-	occlusionFrustumShader.update("uGridSize", glm::vec4(vertexGridWidth, vertexGridHeight, 1.0f / (float) vertexGridWidth, 1.0f / vertexGridHeight));
-
-	ShaderProgram occlusionClipFrustumShader("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", s_shaderDefines);
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
-	FrameBufferObject occlusionClipFrustumFBO(   occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO.getWidth(),   uvwFBO.getHeight() );
-	FrameBufferObject occlusionClipFrustumFBO_r( occlusionClipFrustumShader.getOutputInfoMap(), uvwFBO_r.getWidth(), uvwFBO_r.getHeight() );
-	FrameBufferObject::s_internalFormat = GL_RGBA;
-	RenderPass occlusionClipFrustum(&occlusionClipFrustumShader, &occlusionClipFrustumFBO);
-	Volume ndcCube(1.0f); // a cube that spans -1 .. 1 
-	occlusionClipFrustum.addRenderable(&ndcCube);	
-	occlusionClipFrustum.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	occlusionClipFrustum.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
-	occlusionClipFrustum.addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
-
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO.getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
-	OPENGLCONTEXT->bindTextureToUnit(occlusionFrustumFBO_r.getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
-
-	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE26, GL_TEXTURE_2D); // left occlusion clip map back
-	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // right occlusion clip map back
-	
-	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // left occlusion clip map front
-	OPENGLCONTEXT->bindTextureToUnit(occlusionClipFrustumFBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE29, GL_TEXTURE_2D); // right occlusion clip map front
-	
-	///////////////////////   Simple Warp Renderpass    //////////////////////////
-	DEBUGLOG->log("Render Configuration: Warp Rendering"); DEBUGLOG->indent();
-	ShaderProgram quadWarpShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", s_shaderDefines);
-	quadWarpShader.update( "blendColor", 1.0f );
-	quadWarpShader.update( "uFarPlane", s_far );
-
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_warp(quadWarpShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_warp_r(quadWarpShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-
-	RenderPass quadWarp(&quadWarpShader, &FBO_warp);
-	quadWarp.addRenderable(&quad);
-	//quadWarp.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	DEBUGLOG->outdent();
-
-	OPENGLCONTEXT->bindTextureToUnit(FBO_warp.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
-	OPENGLCONTEXT->bindTextureToUnit(FBO_warp_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE15, GL_TEXTURE_2D);// right raycasting result (for display)
-	
-	///////////////////////   Grid Warp Renderpass    //////////////////////////
-	Grid grid(400, 400, 0.0025f, 0.0025f, false);
-	ShaderProgram gridWarpShader("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", s_shaderDefines);
-	RenderPass gridWarp(&gridWarpShader, &FBO_warp);
-	gridWarp.addEnable(GL_DEPTH_TEST);
-	gridWarp.addRenderable(&grid);
-	static bool useGridWarp = false;
-
-	///////////////////////   Show Texture Renderpass    //////////////////////////
-	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
-	RenderPass showTex(&showTexShader,0);
-	showTex.addRenderable(&quad);
-
-	///////////////////////   Depth To TextureCoords Renderpass    //////////////////////////
-	ShaderProgram depthToTextureShader("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_debug_depth(depthToTextureShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	FrameBufferObject FBO_debug_depth_r(depthToTextureShader.getOutputInfoMap(), (int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y);
-	RenderPass depthToTexture(&depthToTextureShader, &FBO_debug_depth);
-	depthToTexture.addClearBit(GL_COLOR_BUFFER_BIT);
-	depthToTexture.addDisable(GL_DEPTH_TEST);
-	depthToTexture.addRenderable(&quad);
-
-	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE16, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(FBO_debug_depth_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE17, GL_TEXTURE_2D);
-
-	///////////////////////   Scene Depth FBO //////////////////////////
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-	FrameBufferObject FBO_scene_depth((int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y); // has only a depth buffer, no color attachments
-	FrameBufferObject FBO_scene_depth_r((int) WINDOW_RESOLUTION.x/2, (int) WINDOW_RESOLUTION.y); // has only a depth buffer, no color attachments
-	FBO_scene_depth.bind();
-	glClear(GL_DEPTH_BUFFER_BIT);
-	FBO_scene_depth_r.bind();
-	glClear(GL_DEPTH_BUFFER_BIT);
-	OPENGLCONTEXT->bindTextureToUnit(FBO_scene_depth.getDepthTextureHandle(), GL_TEXTURE18, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(FBO_scene_depth_r.getDepthTextureHandle(), GL_TEXTURE19, GL_TEXTURE_2D);
-	//////////////////////////////////////////////////////////////////////////////
-	///////////////////////    GUI / USER INPUT   ////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-
-	// Setup ImGui binding
-	ImGui_ImplSdlGL3_Init(window);
-
-	Turntable turntable;
-	float old_x;
-    float old_y;
-	
-	int activeView = WARPED;
-
-	//handles all the sdl events
-	auto sdlEventHandler = [&](SDL_Event *event)
-	{
-		bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
-		switch(event->type)
-		{
-			case SDL_KEYDOWN:
-			{
-				int k = event->key.keysym.sym;
-				switch (k)
-				{
-					case SDLK_w:
-						s_translation = glm::translate( glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f))) * s_translation;
-						break;
-					case SDLK_a:
-						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f))) * s_translation;
-						break;
-					case SDLK_s:
-						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f))) * s_translation;
-						break;
-					case SDLK_d:
-						s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
-						break;
-					case SDLK_SPACE:
-						activeView = (activeView + 1) % NUM_VIEWS;
-						break;
-					default:
-						break;
-				}
-				break;
-			}
-			case SDL_MOUSEMOTION:
-			{
-				ImGuiIO& io = ImGui::GetIO();
-				if ( io.WantCaptureMouse )
-				{ break; } // ImGUI is handling this
-
-				float d_x = event->motion.x - old_x;
-				float d_y = event->motion.y - old_y;
-
-				if ( turntable.getDragActive() )
-				{
-					turntable.dragBy(d_x, d_y, s_view);
-				}
-
-				old_x = (float) event->motion.x;
-				old_y = (float) event->motion.y;
-				break;
-			}
-			case SDL_MOUSEBUTTONDOWN:
-			{
-				if (event->button.button == SDL_BUTTON_LEFT)
-				{
-					turntable.setDragActive(true);
-				}
-				if (event->button.button == SDL_BUTTON_RIGHT)
-				{
-					unsigned char pick_col[20];
-					glReadPixels((int) old_x - 2, (int) WINDOW_RESOLUTION.y - (int) old_y, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
-
-					for (int i = 0; i < 20; i += 4)
-					{
-						DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i+2], pick_col[i+3]));
-					}
-				}
-				break;
-			}
-			case SDL_MOUSEBUTTONUP:
-			{
-				if (event->button.button == SDL_BUTTON_LEFT)
-				{
-					turntable.setDragActive(false);
-				}
-				break;
-			}
-		}
-		return true;
-	};
-
-	static int  leftDebugView = 14;
-	static int rightDebugView = 15;
-	static bool predictPose = true;
-	
-	// coordinates of the touch pad
-	static bool  is_touchpad_touched = false;
-	static int   touchpad_tracked_device_index = -1;
-	float old_touch_x = 0.5f;
-	float old_touch_y = 0.5f;
-
-	auto vrEventHandler = [&](const vr::VREvent_t & event)
-	{
-		switch( event.eventType )
-		{
-			case vr::VREvent_ButtonPress:
-			{
-				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				
-				switch(event.data.controller.button)
-				{
-				case vr::k_EButton_Axis0: // touchpad
-						activeView = (activeView + 1) % NUM_VIEWS;
-					break;
-				case vr::k_EButton_Axis1: // trigger
-						activeView = (activeView <= 0) ? NUM_VIEWS - 1 : activeView - 1;
-					break;
-				case vr::k_EButton_Grip: // grip
-					//TODO do something with the model matrix
-					useGridWarp = !useGridWarp; // DEBUG
-					break;
-				}
-
-				DEBUGLOG->log("button press: ", event.data.controller.button);
-				break;
-			}
-			case vr::VREvent_ButtonTouch: // generated for touchpad
-				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
-				{ 
-					touchpad_tracked_device_index = event.trackedDeviceIndex;
-					is_touchpad_touched = true;
-					turntable.setDragActive(is_touchpad_touched);
-
-					vr::VRControllerState_t state_;
-					if (ovr.m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
-
-					old_touch_x = state_.rAxis[0].x;
-					old_touch_y = state_.rAxis[0].y;
-				}
-				break;
-			case vr::VREvent_ButtonUntouch:
-				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
-				{
-					touchpad_tracked_device_index = -1;
-					is_touchpad_touched = false;
-					turntable.setDragActive(is_touchpad_touched);
-				}
-				break;
-			//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
-			//	break;
-		}
-		return false;
-	};
-
-	// seperate handler for touchpad, since no event will be generated for touch-movement
-	auto handleTrackpad = [&](bool isTouched, int deviceIdx)
-	{
-		if (isTouched && deviceIdx != -1)
-		{
-			vr::VRControllerState_t state;
-			ovr.m_pHMD->GetControllerState(deviceIdx, &state);
-
-			float d_x = state.rAxis[0].x - old_touch_x;
-			float d_y = state.rAxis[0].y - old_touch_y;
-
-			if (turntable.getDragActive())
-			{
-				turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
-			}
-
-			old_touch_x = state.rAxis[0].x;
-			old_touch_y = state.rAxis[0].y;
-		}
-	};
-
-	auto setDebugView = [&](int view)
-	{
-		switch (view)
-		{
-			// regular textures -> show directly
-			default:	
-			case UVW_BACK:
-			case UVW_FRONT:
-			case CURRENT_:
-			case FRONT:
-			case WARPED:
-				leftDebugView = view * 2 + 2;
-				if (leftDebugView >= 16 ) leftDebugView = 2;
-				rightDebugView = leftDebugView + 1;
-				break;
-			case OCCLUSION:
-			case FIRST_HIT_:
-				leftDebugView = 16;
-				rightDebugView = leftDebugView + 1;
-				// convert left
-				depthToTextureShader.update("depth_texture", view * 2 + 2);
-				depthToTextureShader.update("uProjection", s_perspective);
-				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
-				depthToTexture.setFrameBufferObject(&FBO_debug_depth);
-				depthToTexture.render();
-
-				// convert right
-				depthToTextureShader.update("depth_texture", view * 2 + 3);
-				depthToTextureShader.update("uProjection", s_perspective_r);
-				depthToTextureShader.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
-				depthToTexture.setFrameBufferObject(&FBO_debug_depth_r);
-				depthToTexture.render();
-				break;
-			case OCCLUSION_CLIP_FRUSTUM_BACK:
-				leftDebugView = 26;
-				rightDebugView = leftDebugView + 1;
-				break;
-			case OCCLUSION_CLIP_FRUSTUM_FRONT:
-				leftDebugView = 28;
-				rightDebugView = leftDebugView + 1;
-				break;
-		}
-	};
-
-	std::string window_header = "Volume Renderer - OpenVR";
-	SDL_SetWindowTitle(window, window_header.c_str() );
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-
-	//////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////// RENDER LOOP /////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-
-	float elapsedTime = 0.0;
-	float mirrorScreenTimer = 0.0f;
-	while (!shouldClose(window))
-	{
-		////////////////////////////////    EVENTS    ////////////////////////////////
-		pollSDLEvents(window, sdlEventHandler);
-		ovr.PollVREvents(vrEventHandler);
-		handleTrackpad(is_touchpad_touched, touchpad_tracked_device_index); // handle trackpad touch seperately
+		// load data set: CT of a Head	// load into 3d texture
+		std::string file = RESOURCES_PATH;
+		file += std::string( "/volumes/CTHead/CThead");
 		
-		////////////////////////////////     GUI      ////////////////////////////////
-        ImGuiIO& io = ImGui::GetIO();
+		m_volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
+		m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData[0].data.clear(); // set free	
+
+		m_volumeData[1] = Importer::loadBruder<float>();
+		m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData[1].data.clear(); // set free
+
+		m_volumeData[2] = SyntheticVolume::generateHomogeneousVolume<float>(32, 32, 32, 1000.0f);
+		m_volumeTexture[2] =  loadTo3DTexture<float>(m_volumeData[2], 1, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData[2].data.clear(); // set free	
+
+		m_volumeData[3] = SyntheticVolume::generateRadialGradientVolume<float>( 32,32,32,1000.0f,0.0f);
+		m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 3, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData[3].data.clear(); // set free	
+
+		// TODO wtf is going on here, why does it get corrupted?? 
+		DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
+		DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
+
+		activateVolume<float>(m_volumeData[0]);
+		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
+	}
+
+	void initSceneVariables()
+	{
+		/////////////////////     Scene / View Settings     //////////////////////////
+		if (m_pOvr->m_pHMD)
+		{
+			s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
+			s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
+		}
+		else
+		{	
+			s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
+			s_scale = glm::scale(glm::vec3(1.0f,1.0f,1.0f));
+		}
+		s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+
+		// use waitgetPoses to update matrices
+		if (!m_pOvr->m_pHMD)
+		{
+			s_aspect = FRAMEBUFFER_RESOLUTION.x / (FRAMEBUFFER_RESOLUTION.y);
+			updatePerspective();
+		}
+		else
+		{
+			s_view = m_pOvr->m_mat4eyePosLeft * s_view;
+			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
+			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
+			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
+		}
+	
+		updateNearHeightWidth();
+		updateScreenToViewMatrix();
+	}
+
+	void loadGeometries()
+	{
+		m_pQuad = new Quad();
+	
+		m_pVolume = new VolumeSubdiv(s_volumeSize.x, s_volumeSize.y, s_volumeSize.z, 4);
+	
+		m_pGrid = new Grid(400, 400, 0.0025f, 0.0025f, false);
+
+		m_iVertexGridWidth = (int) FRAMEBUFFER_RESOLUTION.x / m_iOcclusionBlockSize;
+		m_iVertexGridHeight = (int) FRAMEBUFFER_RESOLUTION.y   / m_iOcclusionBlockSize;
+		
+		m_pVertexGrid = new VertexGrid(m_iVertexGridWidth, m_iVertexGridHeight, false, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(96, 96)); //dunno what is a good group size?
+
+		m_pNdcCube = new Volume(1.0f); // a cube that spans -1 .. 1 
+	}
+
+	void loadShaders()
+	{
+		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines);
+		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
+		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines);
+		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
+		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
+		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
+		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
+		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
+	}
+
+	void initUniforms()
+	{
+		m_pUvwShader->update("model", s_translation * s_rotation * s_scale);
+		m_pUvwShader->update("view", s_view);
+		m_pUvwShader->update("projection", s_perspective);
+
+		m_pRaycastShader->update("uStepSize", s_rayStepSize);
+		m_pRaycastShader->update("uViewport", glm::vec4(0,0,FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y));	
+		m_pRaycastShader->update("uResolution", glm::vec4(FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y,0,0));
+
+		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+		m_pRaycastShader->update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+		m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+		}}
+
+		m_pQuadWarpShader->update( "blendColor", 1.0f );
+		m_pQuadWarpShader->update( "uFarPlane", s_far );
+
+		m_pOcclusionFrustumShader->update("uOcclusionBlockSize", m_iOcclusionBlockSize);
+		m_pOcclusionFrustumShader->update("uGridSize", glm::vec4(m_iVertexGridWidth, m_iVertexGridHeight, 1.0f / (float) m_iVertexGridWidth, 1.0f / m_iVertexGridHeight));
+
+	}
+
+	void initFramebuffers()
+	{
+		DEBUGLOG->log("FrameBufferObject Creation: m_pVolume uvw coords"); DEBUGLOG->indent();
+		FrameBufferObject::s_internalFormat = GL_RGBA16F;
+		m_pUvwFBO[LEFT]   = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x,(int) FRAMEBUFFER_RESOLUTION.y);
+		m_pUvwFBO[LEFT]->addColorAttachments(2); // front UVRs and back UVRs
+		m_pUvwFBO[RIGHT] = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x,(int)  FRAMEBUFFER_RESOLUTION.y);
+		m_pUvwFBO[RIGHT]->addColorAttachments(2); // front UVRs and back UVRs
+		FrameBufferObject::s_internalFormat = GL_RGBA;
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
+		FrameBufferObject::s_internalFormat = GL_RGBA16F;
+
+		FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
+		FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
+		FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
+		m_pRaycastFBO   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		FrameBufferObject::s_depthType = GL_FLOAT;
+		FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
+		FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
+		m_pRaycastFBO_front   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_front_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
+		FrameBufferObject::s_internalFormat = GL_RGBA;
+		DEBUGLOG->outdent();
+
+		checkGLError(true);
+		m_pRaycastFBO->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO->getDepthTextureHandle(), 0);
+		m_pRaycastFBO_r->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO_r->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO_r->getDepthTextureHandle(), 0);			
+
+		checkGLError(true);
+		// Add Stencil buffers
+		if (m_pOvr->m_pHMD)
+		{
+			checkGLError(true);
+			ShaderProgram stencilShader("/screenSpace/stencil.vert", "/screenSpace/stencil.frag");
+			stencilShader.use();
+			{
+				m_pRaycastFBO[LEFT]->bind();
+				//GLuint stencil_rb;
+				//glGenRenderbuffers(1, &stencil_rb);
+				//glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				//glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO->getWidth(), m_pRaycastFBO->getHeight());
+				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				checkGLError(true);
+				
+				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Left);
+				auto model = CGLHiddenMeshModel("Hidden Mesh Model LEFT");
+				model.BInit( maskMesh );
+				// enable simple fragment shader
+				stencilShader.use();
+				model.Draw(); // fill stencil buffer
+				checkGLError(true);
+			}
+
+			{
+				m_pRaycastFBO[RIGHT]->bind();
+				//GLuint stencil_rb;
+				//glGenRenderbuffers(1, &stencil_rb);
+				//glBindRenderbuffer(GL_RENDERBUFFER, stencil_rb);
+				//glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, m_pRaycastFBO[RIGHT]->getWidth(), m_pRaycastFBO[RIGHT]->getHeight());
+				//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, stencil_rb);
+				checkGLError(true);
+
+				auto maskMesh = m_pOvr->m_pHMD->GetHiddenAreaMesh(vr::Eye_Right);
+				auto model = CGLHiddenMeshModel("Hidden Mesh Model RIGHT");
+				model.BInit( maskMesh );
+				// enable simple fragment shader
+				stencilShader.use();
+				model.Draw(); // fill stencil buffer
+				checkGLError(true);
+			}
+		}	
+		DEBUGLOG->log("FrameBufferObject Creation: occlusion frustum"); DEBUGLOG->indent();
+		m_pOcclusionFrustumFBO[LEFT]   = new FrameBufferObject(   m_pOcclusionFrustumShader->getOutputInfoMap(), m_pUvwFBO[LEFT]->getWidth(),   m_pUvwFBO[LEFT]->getHeight() );
+		m_pOcclusionFrustumFBO[RIGHT] = new FrameBufferObject( m_pOcclusionFrustumShader->getOutputInfoMap(), m_pUvwFBO[RIGHT]->getWidth(), m_pUvwFBO[RIGHT]->getHeight() );
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("FrameBufferObject Creation: occlusion clip frustum"); DEBUGLOG->indent();
+		FrameBufferObject::s_internalFormat = GL_RGBA16F;
+		m_pOcclusionClipFrustumFBO[LEFT] = new FrameBufferObject(   m_pOcclusionClipFrustumShader->getOutputInfoMap(), m_pUvwFBO[LEFT]->getWidth(),   m_pUvwFBO[LEFT]->getHeight() );
+		m_pOcclusionClipFrustumFBO[RIGHT] = new FrameBufferObject( m_pOcclusionClipFrustumShader->getOutputInfoMap(), m_pUvwFBO[RIGHT]->getWidth(), m_pUvwFBO[RIGHT]->getHeight() );
+		FrameBufferObject::s_internalFormat = GL_RGBA;
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("FrameBufferObject Creation: quad warping"); DEBUGLOG->indent();
+		m_pWarpFBO[LEFT]   = new FrameBufferObject(m_pQuadWarpShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pWarpFBO[RIGHT] = new FrameBufferObject(m_pQuadWarpShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("FrameBufferObject Creation: scene depth"); DEBUGLOG->indent();
+		m_pSceneDepthFBO[LEFT]   = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y); // has only a depth buffer, no color attachments
+		m_pSceneDepthFBO[RIGHT] = new FrameBufferObject((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y); // has only a depth buffer, no color attachments
+		m_pSceneDepthFBO[LEFT]->bind();
+		glClear(GL_DEPTH_BUFFER_BIT);
+		m_pSceneDepthFBO[RIGHT]->bind();
+		glClear(GL_DEPTH_BUFFER_BIT);
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("FrameBufferObject Creation: DEBUG depth to texture"); DEBUGLOG->indent();
+		m_pDebugDepthFBO[LEFT]   = new FrameBufferObject(m_pDepthToTextureShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pDebugDepthFBO[RIGHT] = new FrameBufferObject(m_pDepthToTextureShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		DEBUGLOG->outdent();
+	}
+
+	void initTextureUnits()
+	{
+		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+		OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[LEFT]->getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
+		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[LEFT]->getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE3, GL_TEXTURE_2D); // right uvw back
+		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE5, GL_TEXTURE_2D); // right uvw front
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT]->getDepthTextureHandle(), GL_TEXTURE6, GL_TEXTURE_2D); // left first hit map
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT]->getDepthTextureHandle(), GL_TEXTURE7, GL_TEXTURE_2D); // right first hit map
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); // left  raycasting result
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D);// right raycasting result
+	
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D); // left  raycasting result (for display)
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE13, GL_TEXTURE_2D);// right raycasting result (for display)
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[LEFT]->getDepthTextureHandle(), GL_TEXTURE24, GL_TEXTURE_2D); // left  raycasting first hit map  (for display)
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[RIGHT]->getDepthTextureHandle(), GL_TEXTURE25, GL_TEXTURE_2D);// right  raycasting first hit map (for display)
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionFrustumFBO[LEFT]->getDepthTextureHandle(), GL_TEXTURE8, GL_TEXTURE_2D); // left occlusion map
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionFrustumFBO[RIGHT]->getDepthTextureHandle(), GL_TEXTURE9, GL_TEXTURE_2D); // right occlusion map
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE26, GL_TEXTURE_2D); // left occlusion clip map back
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // right occlusion clip map back
+	
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // left occlusion clip map front
+		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE29, GL_TEXTURE_2D); // right occlusion clip map front
+	
+		OPENGLCONTEXT->bindTextureToUnit(m_pWarpFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE14, GL_TEXTURE_2D); // left  raycasting result (for display)
+		OPENGLCONTEXT->bindTextureToUnit(m_pWarpFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE15, GL_TEXTURE_2D);// right raycasting result (for display)
+	
+		OPENGLCONTEXT->bindTextureToUnit(m_pDebugDepthFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE16, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pDebugDepthFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE17, GL_TEXTURE_2D);
+
+		OPENGLCONTEXT->bindTextureToUnit(m_pSceneDepthFBO[LEFT]->getDepthTextureHandle(), GL_TEXTURE18, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pSceneDepthFBO[RIGHT]->getDepthTextureHandle(), GL_TEXTURE19, GL_TEXTURE_2D);
+		
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
+	}
+
+	void updateTextureUniforms()
+	{
+		m_pRaycastShader->update("volume_texture", 0); // m_pVolume texture
+		m_pRaycastShader->update("transferFunctionTex", 1);
+	}
+
+	void initRenderPasses()
+	{
+		m_pUvw = new RenderPass(m_pUvwShader, m_pUvwFBO[LEFT]);
+		m_pUvw->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		m_pUvw->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
+		m_pUvw->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+		m_pUvw->addRenderable(m_pVolume);
+
+		m_pRaycast[LEFT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[LEFT]);
+		m_pRaycast[LEFT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		m_pRaycast[LEFT]->addRenderable(m_pQuad);
+		m_pRaycast[LEFT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
+		//m_pRaycast[LEFT]->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
+		m_pRaycast[LEFT]->addDisable(GL_BLEND);
+
+		m_pRaycast[RIGHT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[RIGHT]);
+		m_pRaycast[RIGHT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		m_pRaycast[RIGHT]->addRenderable(m_pQuad);
+		m_pRaycast[RIGHT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
+		//m_pRaycast[RIGHT]->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
+		m_pRaycast[RIGHT]->addDisable(GL_BLEND);
+
+		glm::ivec2 viewportSize = glm::ivec2((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		glm::ivec2 chunkSize = glm::ivec2(96,96);
+		m_pRaycastChunked[LEFT] = new ChunkedAdaptiveRenderPass(
+			m_pRaycast[LEFT],
+			viewportSize,
+			chunkSize,
+			8,
+			6.0f
+			);
+		m_pRaycastChunked[RIGHT] = new ChunkedAdaptiveRenderPass(
+			m_pRaycast[RIGHT],
+			viewportSize,
+			chunkSize,
+			8,
+			6.0f
+			);
+		
+		//m_pRaycastChunked->activateClearbits();
+		//m_pRaycastChunked[RIGHT]->activateClearbits();
+
+		m_pOcclusionFrustum = new RenderPass(m_pOcclusionFrustumShader, m_pOcclusionFrustumFBO[LEFT]);
+		m_pOcclusionFrustum->addRenderable(m_pVertexGrid);
+		m_pOcclusionFrustum->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		m_pOcclusionFrustum->addEnable(GL_DEPTH_TEST);
+		m_pOcclusionFrustum->addDisable(GL_BLEND);
+
+		m_pOcclusionClipFrustum = new RenderPass(m_pOcclusionClipFrustumShader, m_pOcclusionClipFrustumFBO[LEFT]);
+		m_pOcclusionClipFrustum->addRenderable(m_pNdcCube);	
+		m_pOcclusionClipFrustum->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+		m_pOcclusionClipFrustum->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
+		m_pOcclusionClipFrustum->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+
+		m_pWarpQuad = new RenderPass(m_pQuadWarpShader, m_pWarpFBO[LEFT]);
+		m_pWarpQuad->addRenderable(m_pQuad);
+
+		m_pWarpGrid = new RenderPass(m_pGridWarpShader, m_pWarpFBO[LEFT]);
+		m_pWarpGrid->addEnable(GL_DEPTH_TEST);
+		m_pWarpGrid->addRenderable(m_pGrid);
+
+		m_pShowTex = new RenderPass(m_pShowTexShader,0);
+		m_pShowTex->addRenderable(m_pQuad);
+
+		m_pDebugDepthToTexture = new RenderPass(m_pDepthToTextureShader, m_pDebugDepthFBO[LEFT]);
+		m_pDebugDepthToTexture->addClearBit(GL_COLOR_BUFFER_BIT);
+		m_pDebugDepthToTexture->addDisable(GL_DEPTH_TEST);
+		m_pDebugDepthToTexture->addRenderable(m_pQuad);
+	}
+
+	void initGUI()
+	{
+		// Setup ImGui binding
+		ImGui_ImplSdlGL3_Init(m_pWindow);
+	}
+
+
+	void initEventHandlers()
+	{
+		//////////////////////////////////////////////////////////////////////////////
+		///////////////////////    GUI / USER INPUT   ////////////////////////////////
+		//////////////////////////////////////////////////////////////////////////////	
+		//handles all the sdl events
+		m_sdlEventFunc = [&](SDL_Event *event)
+		{
+			bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
+			switch(event->type)
+			{
+				case SDL_KEYDOWN:
+				{
+					int k = event->key.keysym.sym;
+					switch (k)
+					{
+						case SDLK_w:
+							s_translation = glm::translate( glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f))) * s_translation;
+							break;
+						case SDLK_a:
+							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f))) * s_translation;
+							break;
+						case SDLK_s:
+							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f))) * s_translation;
+							break;
+						case SDLK_d:
+							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
+							break;
+						case SDLK_SPACE:
+							m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
+							break;
+						default:
+							break;
+					}
+					break;
+				}
+				case SDL_MOUSEMOTION:
+				{
+					ImGuiIO& io = ImGui::GetIO();
+					if ( io.WantCaptureMouse )
+					{ break; } // ImGUI is handling this
+
+					float d_x = event->motion.x - m_fOldX;
+					float d_y = event->motion.y - m_fOldY;
+
+					if ( m_turntable.getDragActive() )
+					{
+						m_turntable.dragBy(d_x, d_y, s_view);
+					}
+
+					m_fOldX = (float) event->motion.x;
+					m_fOldY = (float) event->motion.y;
+					break;
+				}
+				case SDL_MOUSEBUTTONDOWN:
+				{
+					if (event->button.button == SDL_BUTTON_LEFT)
+					{
+						m_turntable.setDragActive(true);
+					}
+					if (event->button.button == SDL_BUTTON_RIGHT)
+					{
+						unsigned char pick_col[20];
+						glReadPixels((int) m_fOldX - 2, (int) WINDOW_RESOLUTION.y - (int) m_fOldY, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+
+						for (int i = 0; i < 20; i += 4)
+						{
+							DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i+2], pick_col[i+3]));
+						}
+					}
+					break;
+				}
+				case SDL_MOUSEBUTTONUP:
+				{
+					if (event->button.button == SDL_BUTTON_LEFT)
+					{
+						m_turntable.setDragActive(false);
+					}
+					break;
+				}
+			}
+			return true;
+		};
+
+		m_vrEventFunc = [&](const vr::VREvent_t & event)
+		{
+			switch( event.eventType )
+			{
+				case vr::VREvent_ButtonPress:
+				{
+					if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
+				
+					switch(event.data.controller.button)
+					{
+					case vr::k_EButton_Axis0: // touchpad
+							m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
+						break;
+					case vr::k_EButton_Axis1: // trigger
+							m_iActiveView = (m_iActiveView <= 0) ? NUM_VIEWS - 1 : m_iActiveView - 1;
+						break;
+					case vr::k_EButton_Grip: // grip
+						//TODO do something with the model matrix
+						m_bUseGridWarp = !m_bUseGridWarp; // DEBUG
+						break;
+					}
+
+					DEBUGLOG->log("button press: ", event.data.controller.button);
+					break;
+				}
+				case vr::VREvent_ButtonTouch: // generated for touchpad
+					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+					{ 
+						m_iTouchpadTrackedDeviceIdx = event.trackedDeviceIndex;
+						m_bIsTouchpadTouched = true;
+						m_turntable.setDragActive(m_bIsTouchpadTouched);
+
+						vr::VRControllerState_t state_;
+						if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
+
+						m_fOldTouchX = state_.rAxis[0].x;
+						m_fOldTouchY = state_.rAxis[0].y;
+					}
+					break;
+				case vr::VREvent_ButtonUntouch:
+					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+					{
+						m_iTouchpadTrackedDeviceIdx = -1;
+						m_bIsTouchpadTouched = false;
+						m_turntable.setDragActive(m_bIsTouchpadTouched);
+					}
+					break;
+				//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
+				//	break;
+			}
+			return false;
+		};
+
+		// seperate handler for touchpad, since no event will be generated for touch-movement
+		m_trackpadEventFunc = [&](bool isTouched, int deviceIdx)
+		{
+			if (isTouched && deviceIdx != -1)
+			{
+				vr::VRControllerState_t state;
+				m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state);
+
+				float d_x = state.rAxis[0].x - m_fOldTouchX;
+				float d_y = state.rAxis[0].y - m_fOldTouchY;
+
+				if (m_turntable.getDragActive())
+				{
+					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
+				}
+
+				m_fOldTouchX = state.rAxis[0].x;
+				m_fOldTouchY = state.rAxis[0].y;
+			}
+		};
+
+		m_setDebugViewFunc = [&](int view)
+		{
+			switch (view)
+			{
+				// regular textures -> show directly
+				default:	
+				case UVW_BACK:
+				case UVW_FRONT:
+				case CURRENT_:
+				case FRONT:
+				case WARPED:
+					m_iLeftDebugView = view * 2 + 2;
+					if (m_iLeftDebugView >= 16 ) m_iLeftDebugView = 2;
+					m_iRightDebugView = m_iLeftDebugView + 1;
+					break;
+				case OCCLUSION:
+				case FIRST_HIT_:
+					m_iLeftDebugView = 16;
+					m_iRightDebugView = m_iLeftDebugView + 1;
+					// convert left
+					m_pDepthToTextureShader->update("depth_texture", view * 2 + 2);
+					m_pDepthToTextureShader->update("uProjection", s_perspective);
+					m_pDepthToTextureShader->update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
+					m_pDebugDepthToTexture->setFrameBufferObject(m_pDebugDepthFBO[LEFT]);
+					m_pDebugDepthToTexture->render();
+
+					// convert right
+					m_pDepthToTextureShader->update("depth_texture", view * 2 + 3);
+					m_pDepthToTextureShader->update("uProjection", s_perspective_r);
+					m_pDepthToTextureShader->update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
+					m_pDebugDepthToTexture->setFrameBufferObject(m_pDebugDepthFBO[RIGHT]);
+					m_pDebugDepthToTexture->render();
+					break;
+				case OCCLUSION_CLIP_FRUSTUM_BACK:
+					m_iLeftDebugView = 26;
+					m_iRightDebugView = m_iLeftDebugView + 1;
+					break;
+				case OCCLUSION_CLIP_FRUSTUM_FRONT:
+					m_iLeftDebugView = 28;
+					m_iRightDebugView = m_iLeftDebugView + 1;
+					break;
+			}
+		};
+	}
+	
+	////////////////////////////////    EVENTS    ////////////////////////////////
+	void pollEvents()
+	{
+		pollSDLEvents(m_pWindow, m_sdlEventFunc);
+		m_pOvr->PollVREvents(m_vrEventFunc);
+		m_trackpadEventFunc(m_bIsTouchpadTouched, m_iTouchpadTrackedDeviceIdx); // handle trackpad touch seperately
+	}
+	
+	////////////////////////////////     GUI      ////////////////////////////////
+	void updateGui()
+	{
+		ImGui_ImplSdlGL3_NewFrame(m_pWindow);
+		ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
-		ImGui_ImplSdlGL3_NewFrame(window);
 
 		ImGui::Value("FPS", io.Framerate);
-		mirrorScreenTimer += io.DeltaTime;
-		elapsedTime += io.DeltaTime;
+		m_fMirrorScreenTimer += io.DeltaTime;
+		m_fElapsedTime += io.DeltaTime;
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f) );
-		ImGui::PlotLines("FPS", &s_fpsCounter[0], s_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 	
 		if (ImGui::CollapsingHeader("Transfer Function Settings"))
@@ -733,17 +852,17 @@ int main(int argc, char *argv[])
 			ImGui::Columns(2, "mycolumns2", true);
 			ImGui::Separator();
 			bool changed = false;
-			for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int) s_minValue, (int) s_maxValue);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 				ImGui::NextColumn();
-				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
 			}
 		
 			if(changed)
 			{
-				updateTransferFunctionTex();
+				TransferFunctionPresets::updateTransferFunctionTex();
 			}
 			ImGui::Columns(1);
 			ImGui::Separator();
@@ -752,49 +871,49 @@ int main(int argc, char *argv[])
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
     	{
-            ImGui::Text("Parameters related to volume rendering");
-            ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
+			ImGui::Text("Parameters related to m_pVolume rendering");
+			ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
         	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
-        }
+		}
         
-		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
+		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
 		
-    	if (ImGui::ListBox("active model", &s_activeModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
+    	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
     	{
-			activateVolume(volumeData[s_activeModel]);
+			activateVolume(m_volumeData[m_iActiveModel]);
 			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-			OPENGLCONTEXT->bindTextureToUnit(volumeTexture[s_activeModel], GL_TEXTURE0, GL_TEXTURE_3D);
-			s_transferFunction.loadPreset((TransferFunction::Preset) s_activeModel, s_minValue, s_maxValue);
+			static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
+			shadowDir.y = -shadowDir.y;
+			m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+			OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+			TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
     	}
 
 		ImGui::PopItemWidth();
 		
 		ImGui::Separator();
 
-		static float lodMaxLevel = 4.0f;
-		static float lodBegin  = 0.3f;
-		static float lodRange  = 4.0f;
-		ImGui::DragFloat("Lod Max Level",   &lodMaxLevel,   0.1f, 0.0f, 8.0f);
-		ImGui::DragFloat("Lod Begin", &lodBegin, 0.01f,0.0f, s_far);
-		ImGui::DragFloat("Lod Range", &lodRange, 0.01f,0.0f, std::max(0.1f, s_far-lodBegin) );
+		ImGui::DragFloat("Lod Max Level",   &s_lodMaxLevel,   0.1f, 0.0f, 8.0f);
+		ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
+		ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(s_near, s_far - s_lodBegin) );
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
-		if (profiler_visible) { chunkedRenderPass.imguiInterface(&profiler_visible); };
+		if (profiler_visible) { m_pRaycastChunked[LEFT]->imguiInterface(&profiler_visible); };
 		ImGui::NextColumn();
 		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
-		if (profiler_visible_r) { chunkedRenderPass_r.imguiInterface(&profiler_visible_r); };
+		if (profiler_visible_r) { m_pRaycastChunked[RIGHT]->imguiInterface(&profiler_visible_r); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		
 		ImGui::Separator();
 		ImGui::Columns(2);
-		ImGui::SliderInt("Left Debug View", &leftDebugView, 2, 15);
+		ImGui::SliderInt("Left Debug View", &m_iLeftDebugView, 2, 15);
 		ImGui::NextColumn();
-		ImGui::SliderInt("Right Debug View", &rightDebugView, 2, 15);
+		ImGui::SliderInt("Right Debug View", &m_iRightDebugView, 2, 15);
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		ImGui::Separator();
@@ -802,7 +921,7 @@ int main(int argc, char *argv[])
 		static float warpFarPlane = s_far;
 		if (ImGui::SliderFloat("Far", &warpFarPlane, s_near, s_far))
 		{
-			quadWarpShader.update( "uFarPlane", warpFarPlane ); 
+			m_pQuadWarpShader->update( "uFarPlane", warpFarPlane ); 
 		}
 
 		{
@@ -823,43 +942,42 @@ int main(int argc, char *argv[])
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
 		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
-		Frame::Timings.getFront().setEnabled(!pause_frame_profiler);
-		Frame::Timings.getBack().setEnabled(!pause_frame_profiler);
+		m_frame.Timings.getFront().setEnabled(!pause_frame_profiler);
+		m_frame.Timings.getBack().setEnabled(!pause_frame_profiler);
 		
 		// update whatever is finished
-		Frame::Timings.getFront().updateReadyTimings();
-		Frame::Timings.getBack().updateReadyTimings();
+		m_frame.Timings.getFront().updateReadyTimings();
+		m_frame.Timings.getBack().updateReadyTimings();
 
 		float frame_begin = 0.0;
 		float frame_end = 17.0;
-		if (Frame::Timings.getFront().m_timestamps.find("Frame Begin") != Frame::Timings.getFront().m_timestamps.end())
+		if (m_frame.Timings.getFront().m_timestamps.find("Frame Begin") != m_frame.Timings.getFront().m_timestamps.end())
 		{
-			frame_begin = (float) Frame::Timings.getFront().m_timestamps.at("Frame Begin").lastTime;
+			frame_begin = (float) m_frame.Timings.getFront().m_timestamps.at("Frame Begin").lastTime;
 		}
-		if (Frame::Timings.getFront().m_timestamps.find("Frame End") != Frame::Timings.getFront().m_timestamps.end())
+		if (m_frame.Timings.getFront().m_timestamps.find("Frame End") != m_frame.Timings.getFront().m_timestamps.end())
 		{
-			frame_end = (float) Frame::Timings.getFront().m_timestamps.at("Frame End").lastTime;
+			frame_end = (float) m_frame.Timings.getFront().m_timestamps.at("Frame End").lastTime;
 		}
 
 		if (frame_profiler_visible) 
 		{ 
-			for (auto e : Frame::Timings.getFront().m_timers)
+			for (auto e : m_frame.Timings.getFront().m_timers)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
+				m_frame.FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings.getFront().m_timersElapsed)
+			for (auto e : m_frame.Timings.getFront().m_timersElapsed)
 			{
-				Frame::FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
+				m_frame.FrameProfiler.setRangeByTag(e.first, (float) e.second.lastTime - frame_begin, (float) e.second.lastTime - frame_begin + (float) e.second.lastTiming);
 			}
-			for (auto e : Frame::Timings.getFront().m_timestamps)
+			for (auto e : m_frame.Timings.getFront().m_timestamps)
 			{
-				Frame::FrameProfiler.setMarkerByTag(e.first, (float) e.second.lastTime - frame_begin);
+				m_frame.FrameProfiler.setMarkerByTag(e.first, (float) e.second.lastTime - frame_begin);
 			}
 
-			Frame::FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
+			m_frame.FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
 		}
-		if(!pause_frame_profiler) Frame::Timings.swap();
-		Frame::Timings.getBack().timestamp("Frame Begin");
+		if(!pause_frame_profiler) m_frame.Timings.swap();
 		//////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -869,416 +987,484 @@ int main(int argc, char *argv[])
 		}
 
 		// use waitgetPoses to update matrices, or just use regular stuff
-		if (!ovr.m_pHMD)
+		if (!m_pOvr->m_pHMD)
 		{
-			s_view = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
-			s_view_r = glm::lookAt(glm::vec3(eye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(center), glm::vec3(0.0f, 1.0f, 0.0f));
+			updateView();
 		}
 		else
 		{
-			ovr.updateTrackedDevicePoses();
-			s_view = ovr.m_mat4eyePosLeft * ovr.m_mat4HMDPose;
-			s_view_r = ovr.m_mat4eyePosRight * ovr.m_mat4HMDPose;
+			m_pOvr->updateTrackedDevicePoses();
+			s_view = m_pOvr->m_mat4eyePosLeft * m_pOvr->m_mat4HMDPose;
+			s_view_r = m_pOvr->m_mat4eyePosRight * m_pOvr->m_mat4HMDPose;
 		}
+
+		s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
+		s_nearW = s_nearH * s_aspect;
+
+		// constant
+		s_screenToView = glm::scale(glm::vec3(s_nearW, s_nearH, s_near)) * 
+			glm::inverse( 
+				glm::translate(glm::vec3(0.5f, 0.5f, 0.5f)) * 
+				glm::scale(glm::vec3(0.5f,0.5f,0.5f)) 
+			);
 
 		// Update Matrices
-		// compute current auxiliary matrices
-		glm::mat4 model = s_translation * turntable.getRotationMatrix() * s_rotation * s_scale;
 
 		//++++++++++++++ DEBUG
-		static bool animateView = false;
-		static bool animateTranslation = false;
-		ImGui::Checkbox("Animate View", &animateView); ImGui::SameLine(); ImGui::Checkbox("Animate Translation", &animateTranslation);
-		if (animateView)
+		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Animate Translation", &m_bAnimateTranslation);
+		if (m_bAnimateView)
 		{
-			glm::vec4 warpCenter  = glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
-			glm::vec4 warpEye = eye;
-			if (animateTranslation) warpEye = eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 1.0f);
-			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
-			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(0.15,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));
+			glm::vec4 warpCenter  = glm::vec4(sin(m_fElapsedTime*2.0)*0.25f, cos(m_fElapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			glm::vec4 warpEye = s_eye;
+			if (m_bAnimateTranslation) warpEye = s_eye + glm::vec4(-sin(m_fElapsedTime*1.0)*0.125f, -cos(m_fElapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(m_fElapsedTime)*0.25f, 1.0f, 0.0f)));
+			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(m_fElapsedTime)*0.25f, 1.0f, 0.0f)));
 		}
 
-		ImGui::Checkbox("Predict HMD Pose", &predictPose);
+		ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
 		//++++++++++++++ DEBUG
 
 		//++++++++++++++ DEBUG
-		ImGui::Checkbox("Use Grid Warp", &useGridWarp);
+		ImGui::Checkbox("Use Grid Warp", &m_bUseGridWarp);
 		//++++++++++++++ DEBUG
+	}
 
-		//////////////////////////////////////////////////////////////////////////////
-				
-		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
-
+	////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
+	void updateCommonUniforms()
+	{
 		/************* update color mapping parameters ******************/
 		// ray start/end parameters
-		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
-		shaderProgram.update("uLodMaxLevel", lodMaxLevel);
-		shaderProgram.update("uLodBegin", lodBegin);
-		shaderProgram.update("uLodRange", lodRange);  
+		m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
+		m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
+		m_pRaycastShader->update("uLodBegin", s_lodBegin);
+		m_pRaycastShader->update("uLodRange", s_lodRange);  
 
 		// color mapping parameters
-		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
-		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		//////////////////////////////////////////////////////////////////////////////
-		
-		////////////////////////////////  RENDERING //// /////////////////////////////
-		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
-		
-		// check for finished left/right images, copy to Front FBOs
-		if (chunkedRenderPass.isFinished())
+		m_pRaycastShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
+		m_pRaycastShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
+		m_pRaycastShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
+	}
+
+	void predictPose(int eye)
+	{
+		static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
+		//float predictSecondsAhead = ((float)m_pRaycastChunked->getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
+		float predictSecondsAhead = (m_pRaycastChunked[eye]->getLastTotalRenderTime() + m_pRaycastChunked[eye]->getLastTotalRenderTime()) / 1000.0f; // absolutely arbitrary
+
+		if (m_pOvr->m_pHMD)
 		{
-			Frame::Timings.getBack().beginTimerElapsed("Copy Result LEFT");
-			copyFBOContent(&FBO, &FBO_front, GL_COLOR_BUFFER_BIT);
-			copyFBOContent(&FBO, &FBO_front, GL_DEPTH_BUFFER_BIT);
-			Frame::Timings.getBack().stopTimerElapsed();
+			m_pOvr->m_pHMD->GetDeviceToAbsoluteTrackingPose(
+				vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
+				predictSecondsAhead,
+				predictedDevicePose,
+				vr::k_unMaxTrackedDeviceCount
+				);
+
+			if (predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
+			{
+				glm::mat4 predictedHMDPose = glm::inverse(m_pOvr->ConvertSteamVRMatrixToGLMMat4(predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
+				matrices[eye][CURRENT].view = ( (eye == LEFT) ? m_pOvr->m_mat4eyePosLeft : m_pOvr->m_mat4eyePosRight) * predictedHMDPose;
+			}
 		}
-		if (chunkedRenderPass_r.isFinished())
+		else
 		{
-			Frame::Timings.getBack().beginTimerElapsed("Copy Result RIGHT");
-			copyFBOContent(&FBO_r, &FBO_front_r, GL_COLOR_BUFFER_BIT);
-			copyFBOContent(&FBO_r, &FBO_front_r, GL_DEPTH_BUFFER_BIT);
-			Frame::Timings.getBack().stopTimerElapsed();
+			if (m_bAnimateView)
+			{
+				glm::vec4 warpCenter = glm::vec4(sin((m_fElapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((m_fElapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+				glm::vec4 warpEye = s_eye;
+				if (m_bAnimateTranslation) warpEye = s_eye + glm::vec4(-sin((m_fElapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((m_fElapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+				matrices[eye][CURRENT].view = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((m_fElapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
+			}
 		}
-		//%%%%%%%%%%%% render left image
-		if (chunkedRenderPass.isFinished())
+	}
+
+	void copyResult(int eye)
+	{
+		m_frame.Timings.getBack().beginTimerElapsed("Copy Result" + STR_SUFFIX[eye]);
+		copyFBOContent(m_pRaycastFBO[eye], m_pRaycastFBO_front[eye], GL_COLOR_BUFFER_BIT);
+		copyFBOContent(m_pRaycastFBO[eye], m_pRaycastFBO_front[eye], GL_DEPTH_BUFFER_BIT);
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
+
+	void renderModelsDepth(int eye)
+	{
+		m_frame.Timings.getBack().beginTimerElapsed("Depth Models" + STR_SUFFIX[eye]);
+		m_pSceneDepthFBO[eye]->bind();
+		glClear(GL_DEPTH_BUFFER_BIT);
+		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+		m_pOvr->renderModels( (vr::Hmd_Eye) eye );
+		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
+
+	void renderUVWs(int eye, MatrixSet& matrixSet )
+	{
+		// uvw maps
+		m_frame.Timings.getBack().beginTimerElapsed("UVW" + STR_SUFFIX[eye]);
+		m_pUvw->setFrameBufferObject( m_pUvwFBO[eye] );
+		m_pUvwShader->update("view", matrixSet.view);
+		m_pUvwShader->update("model", matrixSet.model);
+		m_pUvwShader->update("projection", matrixSet.perspective);
+		m_pUvw->render();
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
+
+	void renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last)
+	{
+		//update raycasting matrices for next iteration	// for occlusion frustum
+		glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(last.model)) * glm::inverse(last.view);
+		glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(last.model) * glm::inverse(last.view);
+
+		// occlusion maps
+		m_frame.Timings.getBack().beginTimerElapsed("Occlusion Frustum" + STR_SUFFIX[eye]);
+		m_pOcclusionFrustum->setFrameBufferObject( m_pOcclusionFrustumFBO[eye] );
+		m_pOcclusionFrustumShader->update("first_hit_map", 6 + eye); // left first hit map
+		m_pOcclusionFrustumShader->update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
+		m_pOcclusionFrustumShader->update("uFirstHitViewToTexture", firstHitViewToTexture);
+		m_pOcclusionFrustumShader->update("uProjection", current.perspective);
+		m_pOcclusionFrustum->render();
+
+		// occlusion clip frustum
+		m_pOcclusionClipFrustumShader->update("uProjection", current.perspective);
+		m_pOcclusionClipFrustum->setFrameBufferObject( m_pOcclusionClipFrustumFBO[eye] );
+		m_pOcclusionClipFrustumShader->update("uView", current.view);
+		m_pOcclusionClipFrustumShader->update("uModel", glm::inverse(last.view) );
+		m_pOcclusionClipFrustumShader->update("uWorldToTexture", s_modelToTexture * glm::inverse(last.model) );
+		m_pOcclusionClipFrustum->render();
+
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
+
+	void renderVolumeIteration(int eye, MatrixSet& matrixSet)
+	{
+		// raycasting (chunked)
+		m_pRaycastShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrixSet.model ) * glm::inverse( matrixSet.view ) * s_screenToView );
+		m_pRaycastShader->update( "uViewToTexture", s_modelToTexture * glm::inverse( matrixSet.model) * glm::inverse( matrixSet.view) );
+		m_pRaycastShader->update( "uProjection", matrices[eye][CURRENT].perspective);
+		m_pRaycastShader->update( "back_uvw_map",  2 + eye );
+		m_pRaycastShader->update( "front_uvw_map", 4 + eye );
+		m_pRaycastShader->update( "scene_depth_map", 18 + eye );
+		m_pRaycastShader->update( "occlusion_map", 8 + eye );
+		//m_pRaycastShader->update( "occlusion_clip_frustum_back", 26 );
+		m_pRaycastShader->update( "occlusion_clip_frustum_front", 28 + eye );
+
+		m_frame.Timings.getBack().beginTimer("Chunked Raycast" + STR_SUFFIX[eye]);
+		m_pRaycastChunked[eye]->render();
+		m_frame.Timings.getBack().stopTimer("Chunked Raycast" + STR_SUFFIX[eye]);
+	}
+
+
+	void renderImage(int eye)
+	{
+		if (m_pRaycastChunked[eye]->isFinished())
 		{
-			matrices[LEFT][FIRST_HIT] = matrices[LEFT][CURRENT]; // first hit map was rendered with last "current" matrices
-			
-			matrices[LEFT][CURRENT].model = model; // overwrite with current  matrices
-			matrices[LEFT][CURRENT].view = s_view;
-			matrices[LEFT][CURRENT].perspective = s_perspective; 
+			// first hit map was rendered with last "current" matrices
+			matrices[eye][LAST_RESULT] = matrices[eye][CURRENT]; 
+
+			// overwrite with current matrices
+			matrices[eye][CURRENT].model = s_model; 
+			matrices[eye][CURRENT].view = (eye == LEFT) ? s_view : s_view_r;
+			matrices[eye][CURRENT].perspective = (eye == LEFT) ? s_perspective : s_perspective_r; 
 
 			//++++++++++++++ DEBUG +++++++++++//
-			if (predictPose)
+			if (m_bPredictPose)
 			{
-				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-				//float predictSecondsAhead = ((float)chunkedRenderPass.getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
-				float predictSecondsAhead = (chunkedRenderPass.getLastTotalRenderTime() + chunkedRenderPass_r.getLastTotalRenderTime()) / 1000.0f;
-
-				if (ovr.m_pHMD)
-				{
-					ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
-						vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
-						predictSecondsAhead,
-						predictedDevicePose,
-						vr::k_unMaxTrackedDeviceCount
-						);
-
-					if (predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-					{
-						glm::mat4 predictedHMDPose = glm::inverse(ovr.ConvertSteamVRMatrixToGLMMat4(predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
-						matrices[LEFT][CURRENT].view = ovr.m_mat4eyePosLeft * predictedHMDPose;
-					}
-				}
-				else
-				{
-					if (animateView)
-					{
-						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						glm::vec4 warpEye = eye;
-						if (animateTranslation) warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						matrices[LEFT][CURRENT].view = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
-					}
-				}
+				predictPose(eye);
 			}
 			//++++++++++++++++++++++++++++++++//
 
 			//++++++++++++++ DEBUG +++++++++++//
 			// quickly do a depth pass of the models
-			if ( ovr.m_pHMD )
+			if ( m_pOvr->m_pHMD )
 			{
-				Frame::Timings.getBack().beginTimerElapsed("Depth Models");
-				FBO_scene_depth.bind();
-				glClear(GL_DEPTH_BUFFER_BIT);
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				ovr.renderModels(vr::Eye_Left);
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-				Frame::Timings.getBack().stopTimerElapsed();
+				renderModelsDepth(eye);
 			}
 			//++++++++++++++++++++++++++++++++//
-
-			MatrixSet& firstHit = matrices[LEFT][FIRST_HIT]; /// convenient access
-			MatrixSet& current = matrices[LEFT][CURRENT];
 			
-			//update raycasting matrices for next iteration	// for occlusion frustum
-			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
-			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
-			
-			// uvw maps
-			Frame::Timings.getBack().beginTimerElapsed("UVW LEFT");
-			uvwRenderPass.setFrameBufferObject( &uvwFBO );
-			uvwShaderProgram.update("view", current.view);
-			uvwShaderProgram.update("model", current.model);
-			uvwShaderProgram.update("projection", current.perspective);
-			uvwRenderPass.render();
-			Frame::Timings.getBack().stopTimerElapsed();
+			renderUVWs(eye, matrices[eye][CURRENT]);
 
-			// occlusion maps
-			Frame::Timings.getBack().beginTimerElapsed("Occlusion Frustum LEFT");
-			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO );
-			occlusionFrustumShader.update("first_hit_map", 6); // left first hit map
-			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
-			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
-			occlusionFrustumShader.update("uProjection", current.perspective);
-			occlusionFrustum.render();
-
-			occlusionClipFrustumShader.update("uProjection", current.perspective);
-			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO);
-			occlusionClipFrustumShader.update("uView", current.view);
-			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
-			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(firstHit.model) );
-			occlusionClipFrustum.render();
-
-			Frame::Timings.getBack().stopTimerElapsed();
+			renderOcclusionMap(eye, matrices[eye][CURRENT], matrices[eye][LAST_RESULT]);
 		}
 
-		// raycasting (chunked)
-		shaderProgram.update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrices[LEFT][CURRENT].model ) * glm::inverse( matrices[LEFT][CURRENT].view ) * s_screenToView );
-		shaderProgram.update( "uViewToTexture", s_modelToTexture * glm::inverse(matrices[LEFT][CURRENT].model) * glm::inverse(matrices[LEFT][CURRENT].view) );
-		shaderProgram.update( "uProjection", matrices[LEFT][CURRENT].perspective);
-		shaderProgram.update( "back_uvw_map",  2 );
-		shaderProgram.update( "front_uvw_map", 4 );
-		shaderProgram.update( "scene_depth_map", 18 );
-		shaderProgram.update( "occlusion_map", 8 );
-		//shaderProgram.update( "occlusion_clip_frustum_back", 26 );
-		shaderProgram.update( "occlusion_clip_frustum_front", 28 );
-
-		Frame::Timings.getBack().beginTimer("Chunked Raycast LEFT");
-		chunkedRenderPass.render(); 
-		Frame::Timings.getBack().stopTimer("Chunked Raycast LEFT");
+		renderVolumeIteration(eye, matrices[eye][CURRENT]);
 		
 		//+++++++++ DEBUG  +++++++++++++++++++++++++++++++++++++++++++ 
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-		
-		//%%%%%%%%%%%% render right image
-		// uvw maps
-		if (chunkedRenderPass_r.isFinished())
-		{
-			matrices[RIGHT][FIRST_HIT] = matrices[RIGHT][CURRENT]; // first hit map was rendered with last "current" matrices
-			
-			matrices[RIGHT][CURRENT].model = model; // overwrite with current  matrices
-			matrices[RIGHT][CURRENT].view = s_view_r;
-			matrices[RIGHT][CURRENT].perspective = s_perspective_r; 
+	}
 
-			//++++++++++++++ DEBUG +++++++++++//
-			if (predictPose)
-			{
-				static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
-				//float predictSecondsAhead = ((float)chunkedRenderPass_r.getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
-				float predictSecondsAhead = (chunkedRenderPass.getLastTotalRenderTime() + chunkedRenderPass_r.getLastTotalRenderTime() )/ 1000.0f;
-				if (ovr.m_pHMD)
-				{ 
-					ovr.m_pHMD->GetDeviceToAbsoluteTrackingPose(
-						vr::ETrackingUniverseOrigin::TrackingUniverseStanding,
-						predictSecondsAhead,
-						predictedDevicePose,
-						vr::k_unMaxTrackedDeviceCount
-						);
-					if (predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)
-					{
-						glm::mat4 predictedHMDPose = glm::inverse(ovr.ConvertSteamVRMatrixToGLMMat4(predictedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].mDeviceToAbsoluteTracking));
-						matrices[RIGHT][CURRENT].view = ovr.m_mat4eyePosRight * predictedHMDPose;
-					}
-				}
-				else
-				{
-					if (animateView)
-					{
-						glm::vec4 warpCenter = glm::vec4(sin((elapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						glm::vec4 warpEye = eye;
-						if (animateTranslation) warpEye = eye + glm::vec4(-sin((elapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((elapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-						matrices[RIGHT][CURRENT].view = glm::lookAt(glm::vec3(warpEye) + glm::vec3(0.15, 0.0, 0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((elapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
-					}
-				}
-			}
+	void renderModels(int eye)
+	{
+		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
+		m_pWarpFBO[eye]->bind();
+		m_pOvr->renderModels((vr::Hmd_Eye) eye);
+		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+	}
 
-			// quickly do a depth pass of the models
-			if ( ovr.m_pHMD )
-			{
-				FBO_scene_depth_r.bind();
-				glClear(GL_DEPTH_BUFFER_BIT);
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-				ovr.renderModels(vr::Eye_Right);
-				OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-			}
-
-			//++++++++++++++++++++++++++++++++//
-
-			MatrixSet& firstHit = matrices[RIGHT][FIRST_HIT]; /// convenient access
-			MatrixSet& current = matrices[RIGHT][CURRENT];
-
-			//update raycasting matrices for next iteration	// for occlusion frustum
-			glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(firstHit.model)) * glm::inverse(firstHit.view);
-			glm::mat4 firstHitViewToTexture = s_modelToTexture * glm::inverse(firstHit.model) * glm::inverse(firstHit.view);
-			
-			Frame::Timings.getBack().beginTimerElapsed("UVW RIGHT");
-			uvwRenderPass.setFrameBufferObject( &uvwFBO_r );
-			uvwShaderProgram.update( "view", current.view );
-			uvwShaderProgram.update( "model", current.model );
-			uvwShaderProgram.update( "projection", current.perspective );
-			uvwRenderPass.render();
-			Frame::Timings.getBack().stopTimerElapsed();
-		
-			// occlusion maps 
-			Frame::Timings.getBack().beginTimerElapsed("Occlusion Frustum RIGHT");
-			occlusionFrustum.setFrameBufferObject( &occlusionFrustumFBO_r );
-			occlusionFrustumShader.update("first_hit_map", 7); // right first hit map
-			occlusionFrustumShader.update("uFirstHitViewToCurrentView", firstHitViewToCurrentView);
-			occlusionFrustumShader.update("uFirstHitViewToTexture", firstHitViewToTexture);
-			occlusionFrustumShader.update("uProjection", current.perspective);
-			occlusionFrustum.render();
-
-			occlusionClipFrustumShader.update("uProjection", current.perspective);
-			occlusionClipFrustum.setFrameBufferObject(&occlusionClipFrustumFBO_r);
-			occlusionClipFrustumShader.update("uView", current.view);
-			occlusionClipFrustumShader.update("uModel", glm::inverse(firstHit.view) );
-			occlusionClipFrustumShader.update("uWorldToTexture", s_modelToTexture * glm::inverse(current.model));
-			occlusionClipFrustum.render();
-
-			Frame::Timings.getBack().stopTimerElapsed();
-		}
-
-		// raycasting (chunked)
-		shaderProgram.update("uScreenToTexture", s_modelToTexture * glm::inverse( matrices[RIGHT][CURRENT].model ) * glm::inverse( matrices[RIGHT][CURRENT].view ) * s_screenToView );
-		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(matrices[RIGHT][CURRENT].model) * glm::inverse(matrices[RIGHT][CURRENT].view) );
-		shaderProgram.update("uProjection", matrices[RIGHT][CURRENT].perspective);
-		shaderProgram.update("back_uvw_map",  3);
-		shaderProgram.update("front_uvw_map", 5);
-		shaderProgram.update("scene_depth_map", 19 );
-		shaderProgram.update("occlusion_map", 9);
-		//shaderProgram.update( "occlusion_clip_frustum_back", 27 );
-		shaderProgram.update( "occlusion_clip_frustum_front", 29 );
-
-		//renderPass_r.render();
-		Frame::Timings.getBack().beginTimer("Chunked Raycast RIGHT");
-		chunkedRenderPass_r.render();
-		Frame::Timings.getBack().stopTimer("Chunked Raycast RIGHT");
-
-		//%%%%%%%%%%%% Image Warping		
-		glClearColor(0.0f,0.0f,0.0f,0.0f);
-		FBO_warp.bind();
+	void clearWarpFBO(int eye)
+	{
+		// clear 
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		m_pWarpFBO[eye]->bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		FBO_warp_r.bind();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glClearColor(0.f,0.f,0.f,0.f);
-		if (ovr.m_pHMD) // render controller models if possible
-		{
-			Frame::Timings.getBack().beginTimerElapsed("Render Models");
-			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-			FBO_warp.bind();
-			ovr.renderModels(vr::Eye_Left);
+	}
 
-			FBO_warp_r.bind();
-			ovr.renderModels(vr::Eye_Right);
-			OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
-			Frame::Timings.getBack().stopTimerElapsed();
-		}
+	void renderQuadWarp(int eye)
+	{
+		// warp left
+		m_pWarpQuad->setFrameBufferObject( m_pWarpFBO[eye] );
+		m_pQuadWarpShader->update( "tex", 12 + eye ); // last result
+		m_pQuadWarpShader->update( "oldView", matrices[eye][LAST_RESULT].view ); // update with old view
+		m_pQuadWarpShader->update( "newView", (eye == LEFT) ? s_view : s_view_r ); // most current view
+		m_pQuadWarpShader->update( "projection",  matrices[eye][LAST_RESULT].perspective ); 
+		m_pWarpQuad->render();
+	}
 
+	void renderGridWarp(int eye)
+	{
+		glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
+		m_pWarpGrid->setFrameBufferObject(m_pWarpFBO[eye]);
+		m_pGridWarpShader->update( "tex", 12 + eye ); // last result left
+		m_pGridWarpShader->update( "depth_map", 24 + eye); // last first hit map
+		m_pGridWarpShader->update( "uViewOld", matrices[eye][LAST_RESULT].view ); // update with old view
+		m_pGridWarpShader->update( "uViewNew", (eye == LEFT) ? s_view : s_view_r); // most current view
+		m_pGridWarpShader->update( "uProjection",  matrices[eye][LAST_RESULT].perspective ); 
+		m_pWarpGrid->render();
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
+	}
+
+	void renderWarpedImages()
+	{
+		m_frame.Timings.getBack().beginTimerElapsed("Warping");
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
-		Frame::Timings.getBack().beginTimerElapsed("Warping");
-		if (!useGridWarp)
+		if (!m_bUseGridWarp)
 		{
-			// warp left
-			quadWarp.setFrameBufferObject( &FBO_warp );
-			quadWarpShader.update( "tex", 12 ); // last result left
-			quadWarpShader.update( "oldView", matrices[LEFT][FIRST_HIT].view ); // update with old view
-			quadWarpShader.update( "newView", s_view ); // most current view
-			quadWarpShader.update( "projection",  matrices[LEFT][FIRST_HIT].perspective ); 
-			quadWarp.render();
-
-			// warp right
-			quadWarp.setFrameBufferObject( &FBO_warp_r );
-			quadWarpShader.update( "tex", 13 ); // last result right
-			quadWarpShader.update( "oldView", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-			quadWarpShader.update( "newView", s_view_r); // most current view
-			quadWarpShader.update( "projection",  matrices[RIGHT][FIRST_HIT].perspective ); 
-			quadWarp.render();
-		}
-		else
+			renderQuadWarp(LEFT);
+			renderQuadWarp(RIGHT);
+		} 
+		else 
 		{
-			glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
-			gridWarp.setFrameBufferObject(&FBO_warp);
-			gridWarpShader.update( "tex", 12 ); // last result left
-			gridWarpShader.update( "depth_map", 24); // last first hit map
-			gridWarpShader.update( "uViewOld", matrices[LEFT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "uViewNew", s_view ); // most current view
-			gridWarpShader.update( "uProjection",  matrices[LEFT][FIRST_HIT].perspective ); 
-			gridWarp.render();
-
-			gridWarp.setFrameBufferObject(&FBO_warp_r);
-			gridWarpShader.update( "tex", 13 ); // last result left
-			gridWarpShader.update( "depth_map", 25); // last first hit map
-			gridWarpShader.update( "uViewOld", matrices[RIGHT][FIRST_HIT].view ); // update with old view
-			gridWarpShader.update( "uViewNew", s_view_r ); // most current view
-			gridWarpShader.update( "uProjection",  matrices[RIGHT][FIRST_HIT].perspective );
-			gridWarp.render();
-			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
+			renderGridWarp(LEFT);
+			renderGridWarp(RIGHT);
 		}
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
-		Frame::Timings.getBack().stopTimerElapsed();
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
 
-		//%%%%%%%%%%%% Submit/Display images
-		setDebugView(activeView);
+	void renderDisplayImages()
+	{
+		clearWarpFBO(LEFT);
+		clearWarpFBO(RIGHT);
 
-		if ( ovr.m_pHMD ) // submit images only when finished
+		if (m_pOvr->m_pHMD) // render controller models if possible
 		{
-			//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
-			//FBO_warp.bind();
-			//ovr.renderModels(vr::Eye_Left);
+			m_frame.Timings.getBack().beginTimerElapsed("Render Models");
+			renderModels(LEFT);
 
-			//FBO_warp_r.bind();
-			//ovr.renderModels(vr::Eye_Right);
-			//OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
+			renderModels(RIGHT);
+			m_frame.Timings.getBack().stopTimerElapsed();
+		}
 
-			//OPENGLCONTEXT->setEnabled(GL_BLEND, true);
-			//showTexShader.update("tex", 14);
-			//showTex.setFrameBufferObject(&FBO_warp);
-			//showTex.setViewport(0, 0, FBO_warp.getWidth(), FBO_warp.getHeight());
-			//showTex.render();
+		// render warping results ontop
+		renderWarpedImages();
+	}
 
-			//showTexShader.update("tex", 15);
-			//showTex.setFrameBufferObject(&FBO_warp_r);
-			//showTex.setViewport(0, 0, FBO_warp_r.getWidth(), FBO_warp_r.getHeight());
-			//showTex.render();
-			//OPENGLCONTEXT->setEnabled(GL_BLEND, false);
+	void renderToScreen()
+	{
+		{
+			m_pShowTexShader->update("tex", m_iLeftDebugView);
+			m_pShowTex->setViewport(0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y);
+			m_pShowTex->render();
+		}
+		{
+			m_pShowTexShader->update("tex", m_iRightDebugView);
+			m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y);
+			m_pShowTex->render();
+		}
+		//////////////////////////////////////////////////////////////////////////////
 
-			showTex.setFrameBufferObject(0);
+		m_fMirrorScreenTimer = 0.0f;
+	}
 
-			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + leftDebugView ], vr::Eye_Left);
-			ovr.submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + rightDebugView], vr::Eye_Right);
+	void renderGui()
+	{
+		ImGui::Render();
+		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
+	}
+
+	void submitView(int eye)
+	{
+		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + m_iLeftDebugView + eye], (vr::Hmd_Eye) eye);
+	}
+
+
+	////////////////////////////////  RENDERING //// /////////////////////////////
+	void renderViews()
+	{
+		// check for finished left/right images, copy to Front FBOs
+		if (m_pRaycastChunked[LEFT]->isFinished())
+		{
+			copyResult(LEFT);
+		}
+		if (m_pRaycastChunked[RIGHT]->isFinished())
+		{
+			copyResult(RIGHT);
 		}
 		
-		Frame::Timings.getBack().timestamp("Frame End");
-		if (mirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !ovr.m_pHMD)
-		{
-			{
-				showTexShader.update("tex", leftDebugView);
-				showTex.setViewport(0, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
-				showTex.render();
-			}
-			{
-				showTexShader.update("tex", rightDebugView);
-				showTex.setViewport((int)getResolution(window).x / 2, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y);
-				showTex.render();
-			}
-			//////////////////////////////////////////////////////////////////////////////
-			ImGui::Render();
-			SDL_GL_SwapWindow( window ); // swap buffers
+		//%%%%%%%%%%%% render left image
+		renderImage(LEFT);
+		
+		//%%%%%%%%%%%% render right image
+		renderImage(RIGHT);
 
-			mirrorScreenTimer = 0.0f;
+		//%%%%%%%%%%%% render display images
+		renderDisplayImages();
+
+		//%%%%%%%%%%%% Submit/Display images
+		m_setDebugViewFunc(m_iActiveView);
+
+		if ( m_pOvr->m_pHMD ) // submit images
+		{
+			submitView(LEFT);
+			submitView(RIGHT);
+		}
+
+		if (m_fMirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !m_pOvr->m_pHMD)
+		{
+			renderToScreen();
+
+			renderGui();
+
+			SDL_GL_SwapWindow( m_pWindow ); // swap buffers
 		}
 		else
 		{
 			glFlush(); // just Flush
 		}
-
 	}
+
+	//////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////// RENDER LOOP /////////////////////////////////
+	//////////////////////////////////////////////////////////////////////////////
+	void loop()
+	{
+		std::string window_header = "Volume Renderer - OpenVR";
+		SDL_SetWindowTitle(m_pWindow, window_header.c_str() );
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
+		
+
+		while (!shouldClose(m_pWindow))
+		{
+			//////////////////////////////////////////////////////////////////////////////
+			pollEvents();
+		
+			//////////////////////////////////////////////////////////////////////////////
+			updateGui();
+			
+			//////////////////////////////////////////////////////////////////////////////
+			//updateModel(); 
+			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale;
+			
+			//////////////////////////////////////////////////////////////////////////////
+			m_frame.Timings.getBack().timestamp("Frame Begin");
+			
+			//////////////////////////////////////////////////////////////////////////////
+			updateCommonUniforms();
+			
+			//////////////////////////////////////////////////////////////////////////////			
+			renderViews();
+
+			//////////////////////////////////////////////////////////////////////////////
+			m_frame.Timings.getBack().timestamp("Frame End");
+		}
 	
-	ImGui_ImplSdlGL3_Shutdown();
-	ovr.shutdown();
-	destroyWindow(window);
-	SDL_Quit();
+		ImGui_ImplSdlGL3_Shutdown();
+		m_pOvr->shutdown();
+		destroyWindow(m_pWindow);
+		SDL_Quit();
+	
+	}
+
+	void profileFPS(float fps)
+	{
+		m_fpsCounter[m_iCurFpsIdx] = fps;
+		m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
+	}
+
+	virtual ~CMainApplication()
+	{
+		delete m_pOvr;
+		delete m_pVolume;
+		delete m_pQuad;
+		delete m_pVertexGrid;
+		delete m_pGrid;
+		delete m_pNdcCube;
+
+		delete m_pUvwShader;
+		delete m_pRaycastShader;
+		delete m_pOcclusionFrustumShader;
+		delete m_pOcclusionClipFrustumShader;
+		delete m_pQuadWarpShader;
+		delete m_pGridWarpShader;
+		delete m_pShowTexShader;
+		delete m_pDepthToTextureShader;
+
+		delete m_pOcclusionFrustumFBO;
+		delete m_pUvwFBO;
+		delete m_pRaycastFBO;
+		delete m_pRaycastFBO_front;
+		delete m_pOcclusionClipFrustumFBO;
+		delete m_pWarpFBO;
+		delete m_pSceneDepthFBO;
+		delete m_pDebugDepthFBO;
+
+		delete m_pUvw;
+		delete m_pRaycast;
+		delete m_pRaycastChunked;
+		delete m_pOcclusionFrustum;
+		delete m_pOcclusionClipFrustum;
+		delete m_pWarpQuad;
+		delete m_pWarpGrid;
+		delete m_pShowTex;
+		delete m_pDebugDepthToTexture;
+	}
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+int main(int argc, char *argv[])
+{
+	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
+
+	pMainApplication->initOpenVR();
+
+	pMainApplication->initSceneVariables();
+
+	pMainApplication->loadVolumes();
+
+	pMainApplication->loadGeometries();
+
+	pMainApplication->loadShaders();
+
+	pMainApplication->initFramebuffers();
+
+	pMainApplication->initRenderPasses();
+	
+	pMainApplication->initTextureUnits();
+
+	pMainApplication->updateTextureUniforms();
+
+	pMainApplication->initUniforms();
+
+	pMainApplication->initGUI();
+
+	pMainApplication->initEventHandlers();
+
+	pMainApplication->loop();
 
 	return 0;
 }

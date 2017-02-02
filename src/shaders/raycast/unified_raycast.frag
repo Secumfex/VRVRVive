@@ -97,6 +97,10 @@ uniform mat4 uViewToTexture;
 uniform mat4 uScreenToTexture;
 uniform mat4 uProjection;
 
+#ifdef SHADOW_SAMPLING
+	uniform vec3 uShadowRayDirection; // simplified: in texture space
+	uniform int uShadowRayNumSteps;
+#endif
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -262,6 +266,10 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
 		#endif
 
+		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
+
+		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+
 		#ifdef AMBIENT_OCCLUSION
 			float occlusion = 0.0;	
 			float numSamples = 8.0;
@@ -286,10 +294,39 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			sampleColor.rgb *= max(0.0, min( 1.0, 1.0 - (occlusion / numSamples)));
 		#endif
 
+		#ifdef SHADOW_SAMPLING
+			float shadow = 0.0;
+			for (int i = 1; i < uShadowRayNumSteps; i++)
+			{	
+				#ifdef LEVEL_OF_DETAIL
+					float shadow_lod = max(1.0, min(uLodMaxLevel, curLod + 0.5 ) );
+					float shadow_stepSize = stepSize * pow(2.0, shadow_lod + 1.0);
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = textureLod(volume_texture, shadow_sampleUVW, shadow_lod).r;
+				#else
+					float shadow_stepSize = curStepSize * 2.5;
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = texture(volume_texture, shadow_sampleUVW).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					float shadow_parameterStepSize = shadow_stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+					float shadow_distanceStepSize = shadow_parameterStepSize * (endDepth - startDepth); // distance of a step
+					float shadow_alpha = (1.0 - exp( - (pow(transferFunctionRaw( shadow_value ).a * ABSORPTION_SCALE, 2.0) ) * shadow_distanceStepSize  * 2.0 ));
+				#else
+					float shadow_alpha = transferFunction(shadow_value, curStepSize ).a;
+				#endif
+				
+				shadow = (1.0 - shadow) * shadow_alpha + shadow;
+			}
+			
+			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
+		#endif
+
 		#ifdef STEREO_SINGLE_PASS
 			// reproject Coords, check whether image coords changed
 			ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
-			if ( curTexelCoord_r != texelCoord_r ) //changed
+			if ( curTexelCoord_r.x > texelCoord_r.x ) //changed
 			{
 				// reproject color, then reset segment color
 				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)
@@ -327,8 +364,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		{
 			break;
 		}
-
-		t += parameterStepSize;
 	}
 
 	#ifdef STEREO_SINGLE_PASS
@@ -367,14 +402,13 @@ void main()
 	
 	if( uvwStart.a == 0.0 ) // only back-uvws visible (camera inside volume)
 	{
-		uvwStart = uScreenToTexture * vec4(passUV, 0, 1); // clamp to near plane
-		uvwStart.a = 0.0;
+		uvwStart.xyz = (uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
 	}
 
 	#ifdef OCCLUSION_MAP
 		vec4 clipFrustumFront = texture(occlusion_clip_frustum_front, passUV);
 		clipFrustumFront.rgb = (uViewToTexture * getViewCoord( vec3(passUV, clipFrustumFront.a) ) ).xyz;
-		float firstHit = 0.0;
+		vec4 firstHit = vec4(0.0);
 		if ( clipFrustumFront.a > uvwStart.a ) // there is unknown volume space between proxy geom and frustum map
 		{
 			RaycastResult raycastResult = raycast( 
@@ -386,7 +420,7 @@ void main()
 			);
 
 			fragColor = raycastResult.color;
-			firstHit = raycastResult.firstHit.a;
+			firstHit = raycastResult.firstHit;
 		}
 
 		//vec4 clipFrustumBack = texture(occlusion_clip_frustum_back, passUV);
@@ -451,9 +485,9 @@ void main()
 
 	#ifdef FIRST_HIT
 		#ifdef OCCLUSION_MAP
-		if (firstHit != 0.0) // first hit happened even before raycasting within occlusion frustum
+		if (firstHit.a != 0.0) // first hit happened even before raycasting within occlusion frustum
 		{
-			raycastResult.firstHit.a = firstHit;
+			raycastResult.firstHit = firstHit;
 		}
 		#endif
 		if (raycastResult.firstHit.a > 0.0)

@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
 		bool changed = false;
 		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
         {
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0, s_minValue, s_maxValue);
+			changed |= ImGui::DragFloat(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 0.0f, 1.0);
 			ImGui::NextColumn();
 			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
             ImGui::NextColumn();

@@ -18,6 +18,21 @@ float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noi
 	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
 #endif
+
+#ifndef ERT_THRESHOLD
+#define ERT_THRESHOLD 0.99
+#endif
+
+#ifdef EMISSION_ABSORPTION_RAW
+	#ifndef EMISSION_SCALE
+	#define EMISSION_SCALE 1.0
+	#endif
+
+	#ifndef ABSORPTION_SCALE
+	#define ABSORPTION_SCALE 10.0
+	#endif
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 // in-variables
@@ -35,12 +50,23 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 uniform float uWindowingRange;  // windowing value range
 uniform float uWindowingMinVal; // windowing lower bound
 
+#ifdef LEVEL_OF_DETAIL
+	uniform float uLodMaxLevel; // factor with wich depth influences sampled LoD and step size 
+	uniform float uLodBegin;    // depth at which lod begins to degrade
+	uniform float uLodRange;    // depth at which lod begins to degrade
+#endif
+
 // ray traversal related uniforms
 uniform float uStepSize;		// ray sampling step size
 
 uniform mat4 uProjection;
 uniform mat4 uViewToTexture;
 uniform mat4 uScreenToView; 
+
+#ifdef SHADOW_SAMPLING
+	uniform vec3 uShadowRayDirection; // simplified: in texture space
+	uniform int uShadowRayNumSteps;
+#endif
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -71,17 +97,19 @@ struct RaycastResult
 	vec4 lastHit; // position of last non-zero alpha hit
 };
 
-/**
-* @brief 'transfer-function' applied to value, no premultiplied alpha
-*/
-vec4 transferFunctionRaw(float value)
-{
-	// linear mapping to grayscale color [0,1]
-	float rel = (value - uWindowingMinVal) / uWindowingRange;
-	float clamped =	max(0.0, min(1.0, rel));
-	vec4 color = texture(transferFunctionTex, clamped);
-	return color;
-}
+#ifdef EMISSION_ABSORPTION_RAW
+	/**
+	* @brief 'transfer-function' applied to value, no premultiplied alpha
+	*/
+	vec4 transferFunctionRaw(float value)
+	{
+		// linear mapping to grayscale color [0,1]
+		float rel = (value - uWindowingMinVal) / uWindowingRange;
+		float clamped =	max(0.0, min(1.0, rel));
+		vec4 color = texture(transferFunctionTex, clamped);
+		return color;
+	}
+#endif
 
 /**
 * @brief 'transfer-function' applied to value
@@ -162,7 +190,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	RaycastResult result;
 	result.color = vec4(0);
-	result.firstHit = vec4(startUVW, endDistance);
+	result.firstHit = vec4(endUVW, endDistance);
 	result.lastHit = vec4(endUVW, endDistance);
 
 	////////////////// FIRST PASS: Compute Normalization constant /////////////////
@@ -178,11 +206,28 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		vec3 curUVW = mix(startUVW, endUVW, t);
 		float curDistance = mix(startDistance, endDistance, t); // distance on ray
 
-		float sampleAbsorption = transferFunctionRaw(texture(volume_texture, curUVW).r).a; // scale to 0..10, then pow
-		sampleAbsorption = pow(sampleAbsorption * ABSORPTION_SCALE, 2.0);
+		VolumeSample curSample;
+		curSample.uvw   = curUVW;
 
-		float sampleTransmittance = 1.0 - exp( - sampleAbsorption * distanceStepSize );
-		float sampleAlpha = sampleTransmittance;
+		#ifdef LEVEL_OF_DETAIL
+			float curLod = max(0.0, min(1.0, ((curDistance - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
+			float curStepSize = stepSize * pow(2.0, curLod);
+			parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+			distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
+			curSample.value = textureLod(volume_texture, curUVW, curLod).r;
+		#else
+			float curStepSize = stepSize;
+			curSample.value = texture(volume_texture, curUVW).r;
+		#endif
+
+		// retrieve current sample
+		#ifdef EMISSION_ABSORPTION_RAW
+			float sampleAbsorption = transferFunctionRaw( curSample.value ).a;
+			sampleAbsorption = pow(sampleAbsorption * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
+			float sampleAlpha = 1.0 - exp( - sampleAbsorption * distanceStepSize );
+		#else
+			float sampleAlpha = transferFunction(curSample.value, curStepSize ).a;
+		#endif
 
 		maxAlpha = (1.0 - maxAlpha) * sampleAlpha + maxAlpha;
 
@@ -194,7 +239,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		}
 
 		// early ray-termination
-		if (maxAlpha > 0.99)
+		if (maxAlpha > ERT_THRESHOLD)
 		{
 			break;
 		}
@@ -210,9 +255,9 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	// declare some output variables (to get rid of if-else)
 	vec4 layerColor[4] = vec4[4](0.0);
 	float layerDepth[4] = float[4](0.0);
-	layerDepth[0] = endDistance;
-	layerDepth[1] = endDistance;
-	layerDepth[2] = endDistance;
+	layerDepth[0] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 3.0);
+	layerDepth[1] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 2.0);
+	layerDepth[2] = endDistance - ((endDistance - startDistance) * parameterStepSize * 0.33 * 1.0);
 	layerDepth[3] = endDistance;
 
 	// TODO debug
@@ -220,6 +265,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	//parameterStepSize = stepSize / length(endUVW - startUVW_); // necessary parametric steps to get from start to end
 	float lastDistance = result.firstHit.a; // distance where last layer ended d_(i-1)
 	float lastAlpha = 0.0;
+	float lastNonZero = 0.0;
 	int currentLayer = 1; // to identify fbo output to write to
 	int numLayers = 4;    // total number of Layers (excluding first depth layer d_0)
 
@@ -236,15 +282,89 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		// retrieve current sample
 		VolumeSample curSample;
-		curSample.value = texture(volume_texture, curUVW).r;
 		curSample.uvw   = curUVW;
 
-		vec4 sampleEmissionAbsorption = transferFunctionRaw(texture(volume_texture, curUVW).r);
-		sampleEmissionAbsorption.rgb = sampleEmissionAbsorption.rgb * EMISSION_SCALE;
-		sampleEmissionAbsorption.a = pow(sampleEmissionAbsorption.a * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
+		#ifdef LEVEL_OF_DETAIL
+			float curLod = max(0.0, min(1.0, ((curDistance - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
+			float curStepSize = stepSize * pow(2.0, curLod);
+			parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+			distanceStepSize = parameterStepSize * (endDistance - startDistance); // distance of a step
+			curSample.value = textureLod(volume_texture, curUVW, curLod).r;
+		#else
+			float curStepSize = stepSize;
+			curSample.value = texture(volume_texture, curUVW).r;
+		#endif
 
-		float sampleTransmittance = 1.0 - exp( - sampleEmissionAbsorption.a * distanceStepSize );
-		vec4 sampleColor = vec4(sampleEmissionAbsorption.rgb * (sampleTransmittance), sampleTransmittance);
+		// retrieve current sample
+		#ifdef EMISSION_ABSORPTION_RAW
+			vec4 sampleEmissionAbsorption = transferFunctionRaw( curSample.value );
+			sampleEmissionAbsorption.rgb = sampleEmissionAbsorption.rgb * EMISSION_SCALE;
+			sampleEmissionAbsorption.a = pow(sampleEmissionAbsorption.a * ABSORPTION_SCALE, 2.0); // to scale a bit within real numbers
+			float sampleAlpha = 1.0 - exp( - sampleEmissionAbsorption.a * distanceStepSize );
+
+			vec4 sampleColor = vec4(sampleEmissionAbsorption.rgb * (sampleAlpha), sampleAlpha);
+		#else
+			vec4 sampleColor = transferFunction(curSample.value, curStepSize );
+		#endif
+
+		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
+
+		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+
+		// ambient occlusion
+		#ifdef AMBIENT_OCCLUSION
+			float occlusion = 0.0;	
+			float numSamples = 8.0;
+			for (int i = -1; i <= 1; i+= 2) {	for (int j = -1; j <= 1; j+= 2) { for (int k = -1; k <= 1; k+= 2)
+			{	
+				vec3 ao_uvw = curUVW + ( vec3(float(i), float(j), float(k)) ) * ( 2.0 * curStepSize );
+
+				#ifdef LEVEL_OF_DETAIL
+					float ao_value = textureLod(volume_texture, ao_uvw, curLod).r;
+				#else
+					float ao_value = texture(volume_texture, ao_uvw).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					occlusion += 1.0 - exp( - (pow(transferFunctionRaw( ao_value ).a * ABSORPTION_SCALE, 2.0) ) * distanceStepSize );
+				#else
+					occlusion += transferFunction(ao_value, curStepSize ).a;
+				#endif
+			}}}
+			occlusion -= sampleColor.a; // to remove "self-occlusion"
+
+			sampleColor.rgb *= max(0.0, min( 1.0, 1.0 - (occlusion / numSamples)));
+		#endif
+
+		// shadow ray sampling
+		#ifdef SHADOW_SAMPLING
+			float shadow = 0.0;
+			for (int i = 1; i < uShadowRayNumSteps; i++)
+			{	
+				#ifdef LEVEL_OF_DETAIL
+					float shadow_lod = max(1.0, min(uLodMaxLevel, curLod + 0.5 ) );
+					float shadow_stepSize = stepSize * pow(2.0, shadow_lod + 1.0);
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = textureLod(volume_texture, shadow_sampleUVW, shadow_lod).r;
+				#else
+					float shadow_stepSize = curStepSize * 2.5;
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = texture(volume_texture, shadow_sampleUVW).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					float shadow_parameterStepSize = shadow_stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+					float shadow_distanceStepSize = shadow_parameterStepSize * (endDistance - startDistance); // distance of a step
+					float shadow_alpha = (1.0 - exp( - (pow(transferFunctionRaw( shadow_value ).a * ABSORPTION_SCALE, 2.0) ) * shadow_distanceStepSize  * 2.0 ));
+				#else
+					float shadow_alpha = transferFunction(shadow_value, curStepSize ).a;
+				#endif
+				
+				shadow = (1.0 - shadow) * shadow_alpha + shadow;
+			}
+			
+			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
+		#endif
 
 		// update segment color
 		segmentColor.rgb = (1.0 - segmentColor.a) * (sampleColor.rgb) + segmentColor.rgb;
@@ -253,8 +373,13 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		//update kappa(d)
 		curAlpha = (1.0 - curAlpha) * sampleColor.a + curAlpha;
 
+		if (sampleColor.a > 0.0)
+		{
+			lastNonZero = curDistance;
+		}
+
 		// reached y_i?
-		if ( (curAlpha / maxAlpha) >= currentLayerThreshold - (maxAlpha)/20.0 ) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
+		if ( (curAlpha / maxAlpha) >= currentLayerThreshold && currentLayer != 4) // F(d) = kappa(d) / kappa( /inf )   >= y_i ? 
 		{		
 			//<<<< compute the Beer-Lambert equivalent values
 			vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, abs(curDistance - lastDistance));
@@ -262,7 +387,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			// DEBUG the full raycasting result
 			vec4 colorTransmission = beerLambertEmissionAbsorptionToColorTransmission(emissionAbsorption.rgb, emissionAbsorption.a, abs(curDistance - lastDistance));
 			curColor.rgb = (1.0 - curColor.a) * (colorTransmission.rgb) + curColor.rgb;
-			curColor.a =  (1.0 - (1.0 - colorTransmission.a)) * (1.0 - colorTransmission.a) + curColor.a;
+			curColor.a =  (1.0 - curColor.a) * (1.0 - colorTransmission.a) + curColor.a;
 
 			//<<<< write to layer
 			layerColor[currentLayer - 1] = emissionAbsorption;
@@ -274,23 +399,18 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			currentLayerThreshold = ( float(currentLayer) ) / float(numLayers);
 			lastDistance = curDistance; // d_(i)
 		}
-
-		t += parameterStepSize;
 	}
 
 	// make sure last layer gets filled
-	if (layerDepth[3] == 0.0)
-	{
-		vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, curDistance - lastDistance);
+	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, lastNonZero - layerDepth[2]);
 
-		//<<<< write to layer
-		layerColor[3] = emissionAbsorption;
-		layerDepth[3] = lastDistance;
+	//<<<< write to layer
+	layerColor[3] = emissionAbsorption;
+	layerDepth[3] = lastNonZero;
 
-		// DEBUG the full raycasting result
-		curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
-		curColor.a =  (1.0 - curAlpha) * segmentColor.a + curColor.a;
-	}
+	// DEBUG the full raycasting result
+	curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
+	curColor.a =  (1.0 - curColor.a) * segmentColor.a + curColor.a;
 
 	//<<<< write to outputs
 	fragColor1 = layerColor[0];

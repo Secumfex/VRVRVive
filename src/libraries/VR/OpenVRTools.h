@@ -27,6 +27,24 @@ private:
 	std::string m_sModelName;
 };
 
+///////// helper class for opengl stencil mask rendering
+class CGLHiddenMeshModel
+{
+public:
+	CGLHiddenMeshModel( const std::string & sRenderModelName );
+	~CGLHiddenMeshModel();
+
+	bool BInit( const vr::HiddenAreaMesh_t & vrModel );
+	void Cleanup();
+	void Draw();
+	const std::string & GetName() const { return m_sModelName; }
+
+private:
+	GLuint m_glVertBuffer;
+	GLsizei m_unVertexCount;
+	std::string m_sModelName;
+};
+
 /**
 * @brief Recommended process while Running:
 *    WaitGetPoses

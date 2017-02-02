@@ -9,27 +9,9 @@
 #include <glm/glm.hpp>
 
 #include <Core/DebugLog.h>
+#include <Core/VolumeData.h>
 
 #include <algorithm>
-
-template<class T>
-struct VolumeData
-{
-	unsigned int size_x; //!< x: left
-	unsigned int size_y; //!< y: forward
-	unsigned int size_z; //!< z: up
-
-	std::vector<T> data; //!< size: x
-
-	//std::vector<T> midSlice;
-
-	float real_size_x; // actual step size in mm
-	float real_size_y; // acutal step size in mm
-	float real_size_z; // acutal step size in mm
-
-	T min;
-	T max;
-};
 
 namespace Importer {
 	/**

@@ -5,6 +5,7 @@
 
 #include <Core/Timer.h>
 #include <Core/DoubleBuffer.h>
+#include <Core/CSVWriter.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -23,6 +24,9 @@
 #include <glm/gtx/transform.hpp>
 
 #include <algorithm>
+#include <ctime>
+
+#include <Misc/TransferFunctionPresets.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
 static float s_minValue = (float) INT_MIN; // minimal value in data set; to be overwitten after import
@@ -42,8 +46,6 @@ static float s_windowingMinValue = -FLT_MAX / 2.0f;
 static float s_windowingMaxValue = FLT_MAX / 2.0f;
 static float s_windowingRange = FLT_MAX;
 
-static TransferFunction s_transferFunction;
-
 static float s_lodMaxLevel = 2.5f;
 static float s_lodBegin = 0.3f;
 static float s_lodRange = 3.0f;
@@ -52,18 +54,19 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"AMBIENT_OCCLUSION",
-	"RANDOM_OFFSET",
+	//"ALPHA_SCALE 40.0",
+	//"AMBIENT_OCCLUSION",
+	//"EMISSION_ABSORPTION_RAW",
+	"FIRST_HIT",
+	//"LEVEL_OF_DETAIL",
 	//"OCCLUSION_MAP",
-	"EMISSION_ABSORPTION_RAW",
+	//"RANDOM_OFFSET",
 	//"SCENE_DEPTH",
-	"LEVEL_OF_DETAIL",
-	"FIRST_HIT"
-	//"SCENE_DEPTH"
+	//"SHADOW_SAMPLING"
 };
 static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-static const int NUM_LAYERS = 16;
+static const int NUM_LAYERS = 32;
 const glm::vec2 TEXTURE_RESOLUTION = glm::vec2(800, 800);
 
 static std::vector<float> s_texData((int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, 0.0f);
@@ -120,23 +123,12 @@ void clearOutputTexture(GLuint texture)
 
 void generateTransferFunction()
 {
-	s_transferFunction.getValues().clear();
-	s_transferFunction.getColors().clear();
-	s_transferFunction.getValues().push_back(58);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f));
-	s_transferFunction.getValues().push_back(539);
-	s_transferFunction.getColors().push_back(glm::vec4(255.0 / 255.0f, 0.0 / 255.0f, 0.0 / 255.0f, 231.0 / 255.0f));
-	s_transferFunction.getValues().push_back(572);
-	s_transferFunction.getColors().push_back(glm::vec4(0.0 / 255.0f, 74.0 / 255.0f, 118.0 / 255.0f, 64.0 / 255.0f));
-	s_transferFunction.getValues().push_back(1356);
-	s_transferFunction.getColors().push_back(glm::vec4(0 / 255.0f, 11.0 / 255.0f, 112.0 / 255.0f, 0.0 / 255.0f));
-	s_transferFunction.getValues().push_back(1500);
-	s_transferFunction.getColors().push_back(glm::vec4(242.0 / 255.0, 212.0 / 255.0, 255.0 / 255.0, 255.0 / 255.0f));
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 }
 
 void updateTransferFunctionTex()
 {
-	s_transferFunction.updateTex((int)s_minValue, (int)s_maxValue);
+	TransferFunctionPresets::s_transferFunction.updateTex();
 }
 
 template <class T>
@@ -166,16 +158,55 @@ void profileFPS(float fps)
 	s_curFPSidx = (s_curFPSidx + 1) % s_fpsCounter.size(); 
 }
 
+void loadShaderDefines(std::string fullExecutableName)
+{
+	DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
+	//std::string fullExecutableName = argv;
+	std::string justTheName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
+	justTheName = justTheName.substr(0, justTheName.find(".exe"));
+	DEBUGLOG->log("Executable name: " + justTheName);
+
+	std::string definitionsFile = justTheName + ".defs";
+	DEBUGLOG->log("Looking for shader definitions file: " + definitionsFile);
+
+	std::ifstream file( definitionsFile.c_str() );
+
+	// load data
+	if (file.is_open())
+	{
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		file.close();
+
+		while (buffer) // still good
+		{
+			std::string line;
+			std::getline(buffer, line);
+			if (line != "") // empty line or last line
+			s_shaderDefines.push_back(line);
+		}
+	}
+	else
+	{
+		DEBUGLOG->log("ERROR: Could not find shader definitions file");
+	}
+
+	DEBUGLOG->outdent();
+
+}
+
+
 int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
-
+	
+	loadShaderDefines( argv[0] );
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 
 	// create window and opengl context
-	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	auto window = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, (SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN ));
 
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH + std::string( "/volumes/CTHead/CThead");
@@ -194,12 +225,12 @@ int main(int argc, char *argv[])
 	s_nearH = s_near * std::tanf(glm::radians(s_fovY / 2.0f));
 	s_nearW = s_nearH * TEXTURE_RESOLUTION.x / (TEXTURE_RESOLUTION.y);
 
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -3.0f));
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -2.0f));
 	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	s_scale = glm::scale(glm::vec3(2.25f, 2.25f, 2.25f));
+	s_scale = glm::scale(glm::vec3(1.0f, 1.0f, 1.0f));
 
-	glm::vec4 eye(0.0f, 0.0f, 3.0f, 1.0f);
-	glm::vec4 center(0.0f,0.0f,0.0f,1.0f);
+	glm::vec4 eye(0.0f, 0.0f, 0.0f, 1.0f);
+	glm::vec4 center(s_translation[3]);
 	s_view   = glm::lookAt(glm::vec3(eye), glm::vec3(center), glm::vec3(0,1,0));
 	s_view_r = glm::lookAt(glm::vec3(eye) + glm::vec3(s_eyeDistance, 0.0f, 0.0f), glm::vec3(center) + glm::vec3(s_eyeDistance, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	s_perspective = glm::perspective(glm::radians(45.f), TEXTURE_RESOLUTION.x / TEXTURE_RESOLUTION.y, s_near, s_far);
@@ -221,13 +252,13 @@ int main(int argc, char *argv[])
 		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
 		glm::vec4(0.0f, -1.0f, 0.0f, 0.0f),//column 3
 		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
-		* glm::inverse(glm::scale(2.0f * s_volumeSize)) // moves origin to front left
-		* glm::translate(glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z));
+		* glm::inverse(glm::scale(s_volumeSize)) // moves origin to front left
+		* glm::translate(glm::vec3(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, -s_volumeSize.z * 0.5f));
 
 	// create Volume and VertexGrid
-	VolumeSubdiv volume(1.0f, 0.886f, 1.0f, 3);
-	VertexGrid vertexGrid(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
-	VertexGrid vertexGrid_coarse(getResolution(window).x/2, getResolution(window).y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
+	VolumeSubdiv volume(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, s_volumeSize.z * 0.5f, 6);
+	VertexGrid vertexGrid(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
+	VertexGrid vertexGrid_coarse(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(16,16));
 	Quad quad;
 	Grid grid(100, 100, 0.1f, 0.1f);
 
@@ -280,7 +311,7 @@ int main(int argc, char *argv[])
 
 	// bind volume texture, back uvw textures, front uvws
 	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
+	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
 
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
 	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D); // left uvw front
@@ -325,8 +356,6 @@ int main(int argc, char *argv[])
 	ShaderProgram composeTexArrayShader("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", s_shaderDefines);
 	FrameBufferObject FBO_single_r(composeTexArrayShader.getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
 	OPENGLCONTEXT->bindTextureToUnit(FBO_single_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	RenderPass composeTexArray(&composeTexArrayShader, &FBO_single_r);
 	composeTexArray.addRenderable(&grid);
 	composeTexArray.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -479,11 +508,11 @@ int main(int argc, char *argv[])
 		ImGui::Columns(2, "mycolumns2", true);
         ImGui::Separator();
 		bool changed = false;
-		for (unsigned int n = 0; n < s_transferFunction.getValues().size(); n++)
+		for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 		{
-			changed |= ImGui::DragInt(("V" + std::to_string(n)).c_str(), &s_transferFunction.getValues()[n], 1.0f, (int)s_minValue, (int)s_maxValue);
+			changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
 			ImGui::NextColumn();
-			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &s_transferFunction.getColors()[n][0]);
+			changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 			ImGui::NextColumn();
 		}
 
@@ -501,7 +530,8 @@ int main(int argc, char *argv[])
             ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
         	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
         }
-        
+		ImGui::PopItemWidth();
+
 		ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
 		ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
 		ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
@@ -556,10 +586,80 @@ int main(int argc, char *argv[])
 			Frame::FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
 		}
 
+		
+		//DEBUG Output to profiler file
+		static CSVWriter csvWriter;
+		static int csvCounter = 0;
+		static int csvNumFramesToProfile = 300;
+		static bool csvDoRun = false;
+
+		ImGui::Separator();
+		if (ImGui::Button("Run CSV Profiling") && !csvDoRun)
+		{
+			csvDoRun = true;
+		}
+		ImGui::SameLine(); ImGui::Value("Running", csvDoRun);
+		ImGui::SameLine(); ImGui::Value("Frame",   csvCounter);
+		ImGui::SliderInt("Num Frames To Profile", &csvNumFramesToProfile, 1, 1000);
+		ImGui::Separator();
+
+		if ( csvDoRun && csvCounter == 0) // just not frame one, okay?
+		{
+			std::vector<std::string> headers;
+			for (auto e : Frame::Timings.getFront().m_timersElapsed)
+			{
+				headers.push_back(e.first);
+			}
+
+			// additional headers
+			headers.push_back("Total Stereo");
+			headers.push_back("Total Single");
+
+			csvWriter.setHeaders(headers);
+		}
+
+		if ( csvDoRun &&  csvCounter >= 0 && csvCounter < csvNumFramesToProfile ) // going to profile 1000 frames
+		{
+			std::vector<std::string> row;
+			float totalStereo = 0.0f;
+			float totalSingle = 0.0f;
+			for (auto e : Frame::Timings.getFront().m_timersElapsed )
+			{
+				row.push_back( std::to_string( e.second.lastTiming ) );
+
+				if( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos) // contains an L or R suffix --> from stereo rendering
+				{
+					totalStereo += e.second.lastTiming;
+				}
+				else
+				{
+					totalSingle += e.second.lastTiming;
+				}
+
+			}
+			
+			// additional values
+			row.push_back(std::to_string(totalStereo)); // total stereo rendering time
+			row.push_back(std::to_string(totalSingle)); // total single pass time
+
+			csvWriter.addRow(row);
+		}
+
+		if ( csvDoRun && csvCounter >= csvNumFramesToProfile ) // write when finished
+		{
+			csvWriter.writeToFile( "profile_" + std::to_string( (std::time(0) / 6) % 10000) + ".csv" );
+			csvCounter = 0;
+			csvDoRun = false;
+		}
+		
+		if( csvDoRun )
+		{
+			csvCounter++;
+		}
+
 		if (!pause_frame_profiler) Frame::Timings.swap();
 		Frame::Timings.getBack().timestamp("Frame Begin");
 
-		ImGui::PopItemWidth();
         //////////////////////////////////////////////////////////////////////////////
 
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
@@ -603,8 +703,13 @@ int main(int argc, char *argv[])
 		/************* update experimental  parameters ******************/
 		//stereoRaycastShader.update("uWriteStereo", s_writeStereo);
 
-		float s_zRayEnd   = abs(eye.z) + sqrt(2.0);
-		float s_zRayStart = abs(eye.z) - sqrt(2.0);
+		stereoRaycastShader.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+		stereoRaycastShader.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+		simpleRaycastShader.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
+		simpleRaycastShader.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+
+		float s_zRayEnd   = abs(s_translation[3].z) + sqrt(2.0)*0.5f;
+		float s_zRayStart = abs(s_translation[3].z) - sqrt(2.0)*0.5f;
 		float e = s_eyeDistance;
 		float w = TEXTURE_RESOLUTION.x;
 		float t_near = (s_zRayStart) / s_near;
@@ -629,12 +734,6 @@ int main(int argc, char *argv[])
 		
 		OPENGLCONTEXT->bindFBO(0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-
-		// clear output texture
-		Frame::Timings.getBack().beginTimerElapsed("Clear Array");
-		clearOutputTexture( stereoOutputTextureArray );
-		Frame::Timings.getBack().stopTimerElapsed();
 
 		// reset atomic buffers
 		GLuint a[3] = {0,0,0};
@@ -676,7 +775,12 @@ int main(int argc, char *argv[])
 		simpleRaycast.render();
 		Frame::Timings.getBack().stopTimerElapsed();
 
-		// render stereo images in a single pass
+		// clear output texture
+		Frame::Timings.getBack().beginTimerElapsed("Clear Array");
+		clearOutputTexture( stereoOutputTextureArray );
+		Frame::Timings.getBack().stopTimerElapsed();
+
+		// render stereo images in a single pass		
 		Frame::Timings.getBack().timestamp("Raycast Stereo");
 		Frame::Timings.getBack().beginTimerElapsed("UVW");
 		uvwShaderProgram.update("view", s_view);
@@ -701,19 +805,19 @@ int main(int argc, char *argv[])
 		Frame::Timings.getBack().timestamp("Finished");
 		// display fbo contents
 		showTexShader.updateAndBindTexture("tex", 7, FBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)0, 0, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)0, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 8, FBO_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)TEXTURE_RESOLUTION.x / 2, 0, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)getResolution(window).x / 2, 0, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 9, FBO_single.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)0, (int)TEXTURE_RESOLUTION.y / 2, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)0, (int)getResolution(window).y / 2, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		showTex.render();
 
 		showTexShader.updateAndBindTexture("tex", 10, FBO_single_r.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-		showTex.setViewport((int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2, (int)TEXTURE_RESOLUTION.x / 2, (int)TEXTURE_RESOLUTION.y / 2);
+		showTex.setViewport((int)getResolution(window).x / 2, (int)getResolution(window).y / 2, (int)getResolution(window).x / 2, (int)getResolution(window).y / 2);
 		if (!s_showSingleLayer)
 		{
 			showTex.render();
