@@ -113,6 +113,7 @@ private:
 	// Shader bookkeeping
 	ShaderProgram* m_pUvwShader;
 	ShaderProgram* m_pRaycastShader;
+	ShaderProgram* m_pRaycastLayersShader;
 	ShaderProgram* m_pOcclusionFrustumShader;
 	ShaderProgram* m_pOcclusionClipFrustumShader;
 	ShaderProgram* m_pQuadWarpShader;
@@ -125,6 +126,8 @@ private:
 	FrameBufferObject* m_pUvwFBO[2];
 	FrameBufferObject* m_pRaycastFBO[2];
 	FrameBufferObject* m_pRaycastFBO_front[2];
+	FrameBufferObject* m_pRaycastLayerFBO[2];
+	FrameBufferObject* m_pRaycastLayerFBO_front[2];
 	FrameBufferObject* m_pOcclusionClipFrustumFBO[2];
 	FrameBufferObject* m_pWarpFBO[2];
 	FrameBufferObject* m_pSceneDepthFBO[2];
@@ -133,7 +136,7 @@ private:
 	// Renderpass bookkeeping
 	RenderPass* m_pUvw; 		
 	RenderPass* m_pRaycast[2]; 		
-	ChunkedAdaptiveRenderPass* m_pRaycastChunked[2]; 
+	ChunkedAdaptiveRenderPass* m_pRaycastChunked[4]; 
 	RenderPass* m_pOcclusionFrustum; 		
 	RenderPass* m_pOcclusionClipFrustum; 		
 	RenderPass* m_pWarpQuad; 		
@@ -359,6 +362,8 @@ public:
 		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
+		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); DEBUGLOG->outdent();
+
 	}
 
 	void initUniforms()
@@ -370,6 +375,10 @@ public:
 		m_pRaycastShader->update("uStepSize", s_rayStepSize);
 		m_pRaycastShader->update("uViewport", glm::vec4(0,0,FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y));	
 		m_pRaycastShader->update("uResolution", glm::vec4(FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y,0,0));
+
+		m_pRaycastLayersShader->update("uStepSize", s_rayStepSize);
+		m_pRaycastLayersShader->update("uViewport", glm::vec4(0,0,FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y));	
+		m_pRaycastLayersShader->update("uResolution", glm::vec4(FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y,0,0));
 
 		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
 		m_pRaycastShader->update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
@@ -401,23 +410,23 @@ public:
 		FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
 		FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
 		FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
-		m_pRaycastFBO   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		FrameBufferObject::s_depthType = GL_FLOAT;
 		FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
 		FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
-		m_pRaycastFBO_front   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_front_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
+		m_pRaycastFBO[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_front[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO_front[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
 		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
 
 		checkGLError(true);
-		m_pRaycastFBO->bind();
-		OPENGLCONTEXT->bindTexture( m_pRaycastFBO->getDepthTextureHandle() );
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO->getDepthTextureHandle(), 0);
-		m_pRaycastFBO_r->bind();
-		OPENGLCONTEXT->bindTexture( m_pRaycastFBO_r->getDepthTextureHandle() );
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO_r->getDepthTextureHandle(), 0);			
+		m_pRaycastFBO[LEFT]->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO[LEFT]->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO[LEFT]->getDepthTextureHandle(), 0);
+		m_pRaycastFBO[RIGHT]->bind();
+		OPENGLCONTEXT->bindTexture( m_pRaycastFBO[RIGHT]->getDepthTextureHandle() );
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, m_pRaycastFBO[RIGHT]->getDepthTextureHandle(), 0);			
 
 		checkGLError(true);
 		// Add Stencil buffers
