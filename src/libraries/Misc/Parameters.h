@@ -21,6 +21,10 @@ namespace RaycastingParameters
 	static float s_windowingMinValue = -FLT_MAX / 2.0f;
 	static float s_windowingMaxValue = FLT_MAX / 2.0f;
 	static float s_windowingRange = FLT_MAX;
+
+	static float s_lodMaxLevel = 2.5f;
+	static float s_lodBegin  = 0.25f;
+	static float s_lodRange  = 3.0f;
 };
 
 namespace ViewParameters
@@ -60,6 +64,11 @@ namespace ViewParameters
 	static glm::mat4 s_scale = glm::scale(glm::vec3(0.5f)); // scalation part of model matrix
 	
 	static glm::mat4 s_model = s_translation * s_rotation * s_scale; // model matrix (discouraged to use if something else interferes (i.e. additional scalation/rotation etc)
+	//!< call when s_translation, s_rotation, or s_scale changed
+	inline void updateModel()
+	{
+		s_model = s_translation * s_rotation * s_scale;
+	}
 
 	static glm::vec4 s_eye = glm::vec4(0.0f, 0.0f, 1.5f, 1.0f); // (left) eye position
 	static glm::vec4 s_center = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // center point
