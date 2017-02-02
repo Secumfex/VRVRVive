@@ -538,7 +538,7 @@ void OpenVRSystem::renderModels( vr::Hmd_Eye nEye )
 		const glm::mat4& matDeviceToTracking = m_rmat4DevicePose[ unTrackedDevice ];
 		glm::mat4 matMVP = GetCurrentViewProjectionMatrix( nEye ) * matDeviceToTracking;
 		glUniformMatrix4fv( m_nRenderModelMatrixLocation, 1, GL_FALSE, glm::value_ptr(matMVP) );
-		glUniform1i(m_nRenderModelDiffuseTextureLocation, 21);
+		glUniform1i(m_nRenderModelDiffuseTextureLocation, 31);
 
 		m_rTrackedDeviceToRenderModel[ unTrackedDevice ]->Draw();
 	}
@@ -679,12 +679,8 @@ void CGLRenderModel::Cleanup()
 void CGLRenderModel::Draw()
 {
 	OPENGLCONTEXT->bindVAO(m_glVertArray);
-	//glBindVertexArray( m_glVertArray );
 
-	OPENGLCONTEXT->bindTextureToUnit(m_glTexture, GL_TEXTURE21);
-
-	//glActiveTexture( GL_TEXTURE0 );
-	//glBindTexture( GL_TEXTURE_2D, m_glTexture );
+	OPENGLCONTEXT->bindTextureToUnit(m_glTexture, GL_TEXTURE31);
 
 	glDrawElements( GL_TRIANGLES, m_unVertexCount, GL_UNSIGNED_SHORT, 0 );
 
