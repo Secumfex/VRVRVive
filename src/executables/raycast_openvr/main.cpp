@@ -416,19 +416,20 @@ public:
 		DEBUGLOG->log("FrameBufferObject Creation: ray casting"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA16F;
 
-		FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
-		FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
-		FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
-		FrameBufferObject::s_depthType = GL_FLOAT;
-		FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
-		FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
+		//FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
+		//FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
+		//FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
 		m_pRaycastFBO[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pRaycastFBO[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		//FrameBufferObject::s_depthType = GL_FLOAT;
+		//FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
+		//FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
 		m_pRaycastFBO_front[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		m_pRaycastFBO_front[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
 		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
 
+		/*
 		checkGLError(true);
 		m_pRaycastFBO[LEFT]->bind();
 		OPENGLCONTEXT->bindTexture( m_pRaycastFBO[LEFT]->getDepthTextureHandle() );
@@ -479,7 +480,9 @@ public:
 				model.Draw(); // fill stencil buffer
 				checkGLError(true);
 			}
-		}	
+		}
+		*/
+		
 		DEBUGLOG->log("FrameBufferObject Creation: Raycast Layers"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA32F;
 		m_pRaycastFBO[2 + LEFT]  = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
