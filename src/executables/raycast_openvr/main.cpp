@@ -367,10 +367,10 @@ public:
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
 		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
+		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
 		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); DEBUGLOG->outdent();
-		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag", m_shaderDefines);
 	}
 
 	void initUniforms()
