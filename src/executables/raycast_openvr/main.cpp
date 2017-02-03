@@ -31,7 +31,7 @@
 #include <VR/OpenVRTools.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient"};
+static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
@@ -43,11 +43,11 @@ const char* SHADER_DEFINES[] = {
 	//"AMBIENT_OCCLUSION",
 	"RANDOM_OFFSET",
 	//"WARP_SET_FAR_PLANE"
-	//"OCCLUSION_MAP",
+	"OCCLUSION_MAP",
 	"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
-	//"SHADOW_SAMPLING,"
-	//"LEVEL_OF_DETAIL",
+	"SHADOW_SAMPLING",
+	"LEVEL_OF_DETAIL",
 	"LAST_RESULT",
 	"FIRST_HIT"
 };
@@ -102,8 +102,8 @@ private:
 	OpenVRSystem* m_pOvr;
 
 	// Render objects bookkeeping
-	VolumeData<float> m_volumeData[4];
-	GLuint m_volumeTexture[4];
+	VolumeData<float> m_volumeData[5];
+	GLuint m_volumeTexture[5];
 	Quad*	m_pQuad;
 	Grid*	m_pGrid;
 	VertexGrid* m_pVertexGrid;
@@ -125,8 +125,7 @@ private:
 	// m_pRaycastFBO bookkeeping
 	FrameBufferObject* m_pOcclusionFrustumFBO[2];
 	FrameBufferObject* m_pUvwFBO[4];
-	FrameBufferObject* m_pRaycastFBO[4];
-	FrameBufferObject* m_pRaycastFBO_front[4];
+	SimpleDoubleBuffer<FrameBufferObject*> m_pRaycastFBO[4];
 	FrameBufferObject* m_pOcclusionClipFrustumFBO[2];
 	FrameBufferObject* m_pWarpFBO[2];
 	FrameBufferObject* m_pSceneDepthFBO[2];
@@ -284,9 +283,8 @@ public:
 	{
 		// load data set: CT of a Head	// load into 3d texture
 		std::string file = RESOURCES_PATH;
-		file += std::string( "/volumes/CTHead/CThead");
 		
-		m_volumeData[0] = Importer::load3DData<float>(file, 256, 256, 113, 2);
+		m_volumeData[0] = Importer::load3DData<float>(file + "/volumes/CTHead/CThead", 256, 256, 113, 2);
 		m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
 		m_volumeData[0].data.clear(); // set free	
 
@@ -301,6 +299,10 @@ public:
 		m_volumeData[3] = SyntheticVolume::generateRadialGradientVolume<float>( 32,32,32,1000.0f,0.0f);
 		m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 3, GL_R16F, GL_RED, GL_FLOAT);
 		m_volumeData[3].data.clear(); // set free	
+
+		m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
+		m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData[4].data.clear(); // set free	
 
 		// TODO wtf is going on here, why does it get corrupted?? 
 		DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
@@ -419,13 +421,13 @@ public:
 		//FrameBufferObject::s_depthFormat = GL_DEPTH_STENCIL;
 		//FrameBufferObject::s_internalDepthFormat = GL_DEPTH24_STENCIL8;
 		//FrameBufferObject::s_depthType = GL_UNSIGNED_INT_24_8; // 24 for depth, 8 for stencil
-		m_pRaycastFBO[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[LEFT].getBack()   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[RIGHT].getBack()  = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		//FrameBufferObject::s_depthType = GL_FLOAT;
 		//FrameBufferObject::s_internalDepthFormat = GL_DEPTH_COMPONENT24;
 		//FrameBufferObject::s_depthFormat = GL_DEPTH_COMPONENT;
-		m_pRaycastFBO_front[LEFT]   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_front[RIGHT] = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
+		m_pRaycastFBO[LEFT].getFront()   = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[RIGHT].getFront()  = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);		
 		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
 
@@ -485,11 +487,11 @@ public:
 		
 		DEBUGLOG->log("FrameBufferObject Creation: Raycast Layers"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA32F;
-		m_pRaycastFBO[2 + LEFT]  = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO[2 + RIGHT] = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[2 + LEFT].getBack()  = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[2 + RIGHT].getBack() = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 
-		m_pRaycastFBO_front[2 + LEFT]  = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		m_pRaycastFBO_front[2 + RIGHT] = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[2 + LEFT].getFront()  = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int)	FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		m_pRaycastFBO[2 + RIGHT].getFront() = new FrameBufferObject(m_pRaycastLayersShader->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		FrameBufferObject::s_internalFormat = GL_RGBA;
 		DEBUGLOG->outdent();
 		
@@ -545,14 +547,14 @@ public:
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[LEFT]->getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT1), GL_TEXTURE2 + 2 * UVW_FRONT + LEFT, GL_TEXTURE_2D); // left uvw front
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2 + 2 * UVW_FRONT + RIGHT, GL_TEXTURE_2D); // right uvw front
 
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[LEFT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + LEFT, GL_TEXTURE_2D); // left first hit map
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[RIGHT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + RIGHT, GL_TEXTURE_2D); // right first hit map
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT].getFront()->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + LEFT, GL_TEXTURE_2D); // left first hit map
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + RIGHT, GL_TEXTURE_2D); // right first hit map
 
 		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionFrustumFBO[LEFT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * OCCLUSION + LEFT, GL_TEXTURE_2D); // left occlusion map
 		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionFrustumFBO[RIGHT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * OCCLUSION + RIGHT, GL_TEXTURE_2D); // right occlusion map
 	
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + LEFT, GL_TEXTURE_2D); // left  raycasting result
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D);// right raycasting result
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + LEFT, GL_TEXTURE_2D); // left  raycasting result
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D);// right raycasting result
 	
 		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2 + 2 * OCCLUSION_CLIP_FRUSTUM_FRONT + LEFT, GL_TEXTURE_2D); // left occlusion clip map front
 		OPENGLCONTEXT->bindTextureToUnit(m_pOcclusionClipFrustumFBO[RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2 + 2 * OCCLUSION_CLIP_FRUSTUM_FRONT + RIGHT, GL_TEXTURE_2D); // right occlusion clip map front
@@ -563,8 +565,8 @@ public:
 		OPENGLCONTEXT->bindTextureToUnit(m_pSceneDepthFBO[LEFT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * SCENE_DEPTH + LEFT, GL_TEXTURE_2D); // left scene depth
 		OPENGLCONTEXT->bindTextureToUnit(m_pSceneDepthFBO[RIGHT]->getDepthTextureHandle(), GL_TEXTURE2 + 2 * SCENE_DEPTH + RIGHT, GL_TEXTURE_2D);// right scene depth
 		
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + LEFT, GL_TEXTURE_2D); // left layer raycast result
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + RIGHT, GL_TEXTURE_2D);// right layer raycast result
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + LEFT, GL_TEXTURE_2D); // left layer raycast result
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + RIGHT, GL_TEXTURE_2D);// right layer raycast result
 
 		OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 	}
@@ -593,14 +595,14 @@ public:
 		m_pUvw->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
 		m_pUvw->addRenderable(m_pVolume);
 
-		m_pRaycast[LEFT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[LEFT]);
+		m_pRaycast[LEFT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[LEFT].getBack());
 		m_pRaycast[LEFT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast[LEFT]->addRenderable(m_pQuad);
 		m_pRaycast[LEFT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
 		//m_pRaycast[LEFT]->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
 		m_pRaycast[LEFT]->addDisable(GL_BLEND);
 
-		m_pRaycast[RIGHT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[RIGHT]);
+		m_pRaycast[RIGHT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[RIGHT].getBack());
 		m_pRaycast[RIGHT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast[RIGHT]->addRenderable(m_pQuad);
 		m_pRaycast[RIGHT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
@@ -660,14 +662,14 @@ public:
 
 		//////////////// NOVEL VIEW SYNTH ////////////////
 		DEBUGLOG->log("Render Pass Configuration: ray cast layers shader"); DEBUGLOG->indent();
-		m_pRaycast[2 + LEFT] = new RenderPass(m_pRaycastLayersShader, m_pRaycastFBO[2 + LEFT]);
+		m_pRaycast[2 + LEFT] = new RenderPass(m_pRaycastLayersShader, m_pRaycastFBO[2 + LEFT].getBack());
 		m_pRaycast[2 + LEFT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast[2 + LEFT]->addRenderable(m_pQuad);
 		m_pRaycast[2 + LEFT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
 		//m_pRaycast[2 + LEFT]->addEnable(GL_STENCIL_TEST);
 		m_pRaycast[2 + LEFT]->addDisable(GL_BLEND);
 
-		m_pRaycast[2 + RIGHT] = new RenderPass(m_pRaycastLayersShader, m_pRaycastFBO[2 + RIGHT]);
+		m_pRaycast[2 + RIGHT] = new RenderPass(m_pRaycastLayersShader, m_pRaycastFBO[2 + RIGHT].getBack());
 		m_pRaycast[2 + RIGHT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast[2 + RIGHT]->addRenderable(m_pQuad);
 		m_pRaycast[2 + RIGHT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
@@ -880,8 +882,8 @@ public:
 				
 				static int offset = 5;
 				ImGui::SliderInt("Attachment Offset", &offset,0,5); 
-				OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0 + offset), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + LEFT, GL_TEXTURE_2D); // left layer raycast result
-				OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0 + offset), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + RIGHT, GL_TEXTURE_2D);// right layer raycast result
+				OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0 + offset), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + LEFT, GL_TEXTURE_2D); // left layer raycast result
+				OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0 + offset), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + RIGHT, GL_TEXTURE_2D);// right layer raycast result
 				
 				m_iRightDebugView = m_iLeftDebugView + 1;
 				break;
@@ -946,16 +948,19 @@ public:
     	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
     	{
 			activateVolume(m_volumeData[m_iActiveModel]);
-			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 			{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
 				static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
-				shadowDir.y = -shadowDir.y;
+				if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
+					shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
+					s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+				}
+				if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
 				m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+				m_pRaycastLayersShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
 			}}
 			OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
 			TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
     	}
-
 		ImGui::PopItemWidth();
 		
 		ImGui::Separator();
@@ -992,7 +997,7 @@ public:
 
 		{
 			static float scale = s_scale[0][0];
-			static float scaleY = s_scale[1][1];
+			static float scaleY = 1.0f;
 			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 5.0f))
 			{
 				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
@@ -1161,18 +1166,25 @@ public:
 	{
 		m_frame.Timings.getBack().beginTimerElapsed("Copy Result" + STR_SUFFIX[eye]);
 		
-		int idx = eye + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW);
-		for (int i = 0; i <= ((int) (m_iActiveWarpingTechnique == NOVELVIEW)) * m_pRaycastFBO[idx]->getNumColorAttachments(); i++)
+		int idx = eye;
+		if (m_iActiveWarpingTechnique == NOVELVIEW)
 		{
-			m_pRaycastFBO_front[idx]->bind();
-			GLenum drawBuffer = (GL_COLOR_ATTACHMENT0 + i);
-			glDrawBuffers(1, &drawBuffer); // copy one by one
-			copyFBOContent(m_pRaycastFBO[idx], m_pRaycastFBO_front[idx], GL_COLOR_BUFFER_BIT, GL_COLOR_ATTACHMENT0 + i);
+			idx = 2 + eye;
+			for (int i = 0; i <= ((int) (m_iActiveWarpingTechnique == NOVELVIEW)) * m_pRaycastFBO[idx].getBack()->getNumColorAttachments(); i++)
+			{
+				m_pRaycastFBO[idx].getFront()->bind();
+				GLenum drawBuffer = (GL_COLOR_ATTACHMENT0 + i);
+				glDrawBuffers(1, &drawBuffer); // copy one by one
+				copyFBOContent(m_pRaycastFBO[idx].getBack(), m_pRaycastFBO[idx].getFront(), GL_COLOR_BUFFER_BIT, GL_COLOR_ATTACHMENT0 + i);
+			}
+			glDrawBuffers(m_pRaycastFBO[idx].getFront()->getDrawBuffers().size(), &m_pRaycastFBO[idx].getFront()->getDrawBuffers()[0]);
 		}
-		glDrawBuffers(m_pRaycastFBO_front[idx]->getDrawBuffers().size(), &m_pRaycastFBO_front[idx]->getDrawBuffers()[0]);
+		else
+		{
+			copyFBOContent(m_pRaycastFBO[idx].getBack(), m_pRaycastFBO[idx].getFront(), GL_COLOR_BUFFER_BIT, GL_COLOR_ATTACHMENT0);
+		}
 
-		copyFBOContent(m_pRaycastFBO[idx], m_pRaycastFBO_front[idx], GL_DEPTH_BUFFER_BIT);
-
+		copyFBOContent(m_pRaycastFBO[idx].getBack(), m_pRaycastFBO[idx].getFront(), GL_DEPTH_BUFFER_BIT);
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
@@ -1347,12 +1359,12 @@ public:
 		m_pUvw->render();
 
 		// activate textures
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE20, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE21, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE22, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT4), GL_TEXTURE23, GL_TEXTURE_2D);
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getDepthTextureHandle(),								  GL_TEXTURE24, GL_TEXTURE_2D); //depth 0
-		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO_front[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE25, GL_TEXTURE_2D); //depth 1-4
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE20, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE21, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE22, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT4), GL_TEXTURE23, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getDepthTextureHandle(),								  GL_TEXTURE24, GL_TEXTURE_2D); //depth 0
+		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE25, GL_TEXTURE_2D); //depth 1-4
 		
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // uvw back novel
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // uvw front novel
@@ -1444,13 +1456,28 @@ public:
 	void renderViews()
 	{
 		// check for finished left/right images, copy to Front FBOs
-		if (m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->isFinished())
+		int idx = 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW);
+		if (m_pRaycastChunked[LEFT + idx]->isFinished())
 		{
-			copyResult(LEFT);
+			//copyResult(LEFT);
+			m_pRaycastFBO[LEFT + idx].swap();
+			m_pRaycast[LEFT + idx]->setFrameBufferObject(
+				m_pRaycastFBO[LEFT + idx].getBack()
+			);
+			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT].getFront()->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + LEFT, GL_TEXTURE_2D); // left first hit map
+			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + LEFT, GL_TEXTURE_2D); // left  raycasting result
+			OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 		}
-		if (m_pRaycastChunked[RIGHT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->isFinished())
+		if (m_pRaycastChunked[RIGHT + idx]->isFinished())
 		{
-			copyResult(RIGHT);
+			//copyResult(RIGHT);
+			m_pRaycastFBO[RIGHT + idx].swap();
+			m_pRaycast[RIGHT + idx]->setFrameBufferObject(
+				m_pRaycastFBO[RIGHT + idx].getBack()
+			);
+			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getDepthTextureHandle(), GL_TEXTURE2 + 2 * FIRST_HIT_ + RIGHT, GL_TEXTURE_2D); // left first hit map
+			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D); // left  raycasting result
+			OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 		}
 		
 		//%%%%%%%%%%%% render left image
@@ -1555,7 +1582,6 @@ public:
 		delete m_pOcclusionFrustumFBO;
 		delete m_pUvwFBO;
 		delete m_pRaycastFBO;
-		delete m_pRaycastFBO_front;
 		delete m_pOcclusionClipFrustumFBO;
 		delete m_pWarpFBO;
 		delete m_pSceneDepthFBO;
