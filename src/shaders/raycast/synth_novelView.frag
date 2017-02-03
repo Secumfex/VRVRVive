@@ -22,6 +22,8 @@ uniform mat4 uProjection; //
 uniform mat4 uViewNovel; // 
 uniform mat4 uViewOld; // 
 
+uniform mat4 uScreenToTexture;
+
 uniform int uThreshold;
 
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
@@ -90,7 +92,9 @@ void main()
 	vec4 uvwStart = texture(front_uvw_map, passUV);
 	vec4 uvwEnd   = texture(back_uvw_map, passUV);
 
-	//if (uvwStart.a == 0.0) { discard; } //invalid pixel
+	if (uvwEnd.a == 0.0) {
+		discard;
+	} //invalid pixel
 
 	vec4 oldViewStart = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwStart.a) );
 	vec4 reprojectedStart = uProjection * oldViewStart;

@@ -60,8 +60,8 @@ uniform float uWindowingMinVal; // windowing lower bound
 uniform float uStepSize;		// ray sampling step size
 
 uniform mat4 uProjection;
-uniform mat4 uViewToTexture;
-uniform mat4 uScreenToView; 
+uniform mat4 uScreenToView;
+uniform mat4 uScreenToTexture;
 
 #ifdef SHADOW_SAMPLING
 	uniform vec3 uShadowRayDirection; // simplified: in texture space
@@ -444,8 +444,14 @@ void main()
 	vec4 uvwStart = texture( front_uvw_map, passUV );
 	vec4 uvwEnd   = texture( back_uvw_map,  passUV );
 
-	if (uvwStart.a == 0.0) { discard; } //invalid pixel
+	if (uvwEnd.a == 0.0) {
+		discard;
+	} //invalid pixel
 
+	if (uvwStart.a == 0.0) // only back-uvws visible (camera inside volume)
+	{
+		uvwStart.xyz = ( uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
+	}
 	// linearize depth
 	float startDistance = length(getViewCoord(vec3(passUV, uvwStart.a)).xyz);
 	float endDistance   = length(getViewCoord(vec3(passUV, uvwEnd.a)).xyz);

@@ -1246,6 +1246,7 @@ public:
 	{
 		// raycasting (chunked)
 		m_pRaycastLayersShader->update( "uScreenToView", s_screenToView );
+		m_pRaycastLayersShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse(matrixSet.model) * glm::inverse(matrixSet.view) * s_screenToView);
 		m_pRaycastLayersShader->update( "uProjection", matrices[eye][CURRENT].perspective);
 		m_pRaycastLayersShader->update( "back_uvw_map",  2 + 2 * UVW_BACK + eye );
 		m_pRaycastLayersShader->update( "front_uvw_map", 2 + 2 * UVW_FRONT + eye );
