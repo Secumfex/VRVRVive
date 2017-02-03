@@ -69,8 +69,8 @@ vec4 getLayerEA(vec2 uv, int layer)
 	else if ( layer == 1 )  { return texture(layer1, uv); }
 	else if ( layer == 2 )  { return texture(layer2, uv); }
 	else if ( layer == 3 )  { return texture(layer3, uv); }
-	else if ( layer == 4 )  { return texture(layer4, uv); }
-	else/*if( layer == 5 )*/{ return vec4(0.0,0.0,0.0,0.0); }
+	else/*if ( layer == 4 )*/{ return texture(layer4, uv); }
+	//else/*if( layer == 5 )*/{ return vec4(0.0,0.0,0.0,0.0); }
 }
 
 //!< DEBUG simple, but expensive update method to retrieve depth values
@@ -80,8 +80,8 @@ float getLayerDistance(vec2 uv, int layer)
 	else if ( layer == 1 )  { return texture(depth, uv).x; }
 	else if ( layer == 2 )  { return texture(depth, uv).y; }
 	else if ( layer == 3 )  { return texture(depth, uv).z; }
-	else if ( layer == 4 )  { return texture(depth, uv).w; }
-	else/*if( layer == 5 )*/{ return depthToDistance(uv, texture(back_uvw_map_old, uv).w); }
+	else/*if( layer == 4 )*/{ return texture(depth, uv).w; }
+	//else/*if( layer == 5 )*/{ return depthToDistance(uv, texture(back_uvw_map_old, uv).w); }
 }
 
 void main()
@@ -90,7 +90,7 @@ void main()
 	vec4 uvwStart = texture(front_uvw_map, passUV);
 	vec4 uvwEnd   = texture(back_uvw_map, passUV);
 
-	if (uvwStart.a == 0.0) { discard; } //invalid pixel
+	//if (uvwStart.a == 0.0) { discard; } //invalid pixel
 
 	vec4 oldViewStart = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwStart.a) );
 	vec4 reprojectedStart = uProjection * oldViewStart;
@@ -126,7 +126,7 @@ void main()
 	vec3 lastSampleView = oldViewStart.xyz;
 	int  currentLayer = 0; // start at 'empty-layer'
 	float  currentLayerDistance = getLayerDistance(startPoint.xy, currentLayer);
-	while ( currentLayerDistance <= samplePoint.z && currentLayer < 5){
+	while ( currentLayerDistance <= samplePoint.z && currentLayer < 4){
 		currentLayer++;
 		currentLayerDistance = getLayerDistance(samplePoint.xy, currentLayer);
 	}
@@ -174,7 +174,7 @@ void main()
 				
 				// check back layer distance, is it behind current sample point (as should be)?
 				currentLayerDistance = getLayerDistance(samplePoint.xy, currentLayer);
-				if (currentLayerDistance < samplePoint.z && currentLayer < 5) // is not behind current sample point
+				if (currentLayerDistance < samplePoint.z && currentLayer < 4) // is not behind current sample point
 				{
 					currentLayer++;
 					continue;
@@ -197,7 +197,7 @@ void main()
 		}
 		else // if ( tNext == tMax.z ) // dda went in z direction => entering deeper layer
 		{
-			currentLayer = min(currentLayer + 1, 5);
+			currentLayer = min(currentLayer + 1, 4);
 			currentLayerDistance = getLayerDistance(samplePoint.xy, currentLayer);
 		}
 

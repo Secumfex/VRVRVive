@@ -375,7 +375,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 		if (sampleColor.a > 0.0)
 		{
-			lastNonZero = curDistance;
+			//lastNonZero = curDistance;
 		}
 
 		// reached y_i?
@@ -402,11 +402,12 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	}
 
 	// make sure last layer gets filled
-	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, lastNonZero - layerDepth[2]);
+	//vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, lastNonZero - layerDepth[2]);
+	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, layerDepth[3] - layerDepth[2]);
 
 	//<<<< write to layer
 	layerColor[3] = emissionAbsorption;
-	layerDepth[3] = lastNonZero;
+	//layerDepth[3] = lastNonZero;
 
 	// DEBUG the full raycasting result
 	curColor.rgb = (1.0 - curColor.a) * (segmentColor.rgb) + curColor.rgb;
