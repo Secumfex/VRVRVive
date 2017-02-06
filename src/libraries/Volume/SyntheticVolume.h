@@ -77,16 +77,16 @@ VolumeData<T> SyntheticVolume::generateRadialGradientVolume( unsigned int width,
 	{
 	
 		glm::vec3 position(
-			(float) i * result.real_size_x + 0.5 * result.real_size_x,
-			(float) j * result.real_size_y + 0.5 * result.real_size_y,
-			(float) k * result.real_size_z + 0.5 * result.real_size_z);
+			(float) i * result.real_size_x + 0.5f * result.real_size_x,
+			(float) j * result.real_size_y + 0.5f * result.real_size_y,
+			(float) k * result.real_size_z + 0.5f * result.real_size_z);
 
 		float radius = glm::length(position - center);
 		float mixParam = (radius) / maxRadius;
 
 		result.data[k * result.size_x * result.size_y
 		           +j * result.size_x
-				   +i] = (1.0 - mixParam) * centerValue + (mixParam) * outerValue;
+				   +i] = (1.0f - mixParam) * centerValue + (mixParam) * outerValue;
 	}}}
 	
 	std::cout << std::endl;

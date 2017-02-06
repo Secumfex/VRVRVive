@@ -218,7 +218,51 @@ private:
 	} matrices[2][2]; // left, right, firsthit, current
 
 public:
-	CMainApplication( int argc, char *argv[] )
+
+
+	virtual ~CMainApplication();
+	void profileFPS(float fps);
+	void loop();
+
+	void renderViews();
+	void submitView(int eye);
+	void renderGui();
+	void renderToScreen();
+	void renderDisplayImages();
+	void renderWarpedImages();
+	void renderNovelViewWarp(int eye);
+	void renderGridWarp(int eye);
+	void renderQuadWarp(int eye);
+	void clearWarpFBO(int eye);
+	void renderModels(int eye);
+	void renderImage(int eye);
+	void renderVolumeLayersIteration(int eye, MatrixSet& matrixSet);
+	void renderVolumeIteration(int eye, MatrixSet& matrixSet);
+	void renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last);
+	void renderUVWs(int eye, MatrixSet& matrixSet );
+	void renderModelsDepth(int eye);
+	void copyResult(int eye);
+	void predictPose(int eye);
+	void updateCommonUniforms();
+	void updateGui();
+	void pollEvents();
+	void initEventHandlers();
+	void initGUI();
+	void initRenderPasses();
+	void initTextureUniforms();
+	void initTextureUnits();
+	void initFramebuffers();
+	void initUniforms();
+	void loadShaders();
+	void loadGeometries();
+	void initSceneVariables();
+	void loadVolumes();
+	void initOpenVR();
+	CMainApplication( int argc, char *argv[] );
+};
+
+
+	CMainApplication::CMainApplication( int argc, char *argv[] )
 		: m_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES))
 		, m_fpsCounter(120)
 		, m_iCurFpsIdx(0)
@@ -247,15 +291,13 @@ public:
 
 		printOpenGLInfo();
 		printSDLRenderDriverInfo();
-
-		// init imgui
-		ImGui_ImplSdlGL3_Init(m_pWindow);
 	}
 
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// INITIALIZE OPENVR   //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	void initOpenVR()
+	
+	void CMainApplication::initOpenVR()
 	{
 		m_pOvr = new OpenVRSystem(s_near, s_far);
 	
@@ -279,7 +321,8 @@ public:
 	//////////////////////////////////////////////////////////////////////////////
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	void loadVolumes()
+	
+	void CMainApplication::loadVolumes()
 	{
 		// load data set: CT of a Head	// load into 3d texture
 		std::string file = RESOURCES_PATH;
@@ -306,13 +349,12 @@ public:
 
 		// TODO wtf is going on here, why does it get corrupted?? 
 		DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
-		DEBUGLOG->log("Loading Volume Data to 3D-Texture.");
 
 		activateVolume<float>(m_volumeData[0]);
 		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 	}
 
-	void initSceneVariables()
+	void CMainApplication::initSceneVariables()
 	{
 		/////////////////////     Scene / View Settings     //////////////////////////
 		if (m_pOvr->m_pHMD)
@@ -345,7 +387,7 @@ public:
 		updateScreenToViewMatrix();
 	}
 
-	void loadGeometries()
+	void CMainApplication::loadGeometries()
 	{
 		m_pQuad = new Quad();
 	
@@ -361,7 +403,7 @@ public:
 		m_pNdcCube = new Volume(1.0f); // a cube that spans -1 .. 1 
 	}
 
-	void loadShaders()
+	void CMainApplication::loadShaders()
 	{
 		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines);
 		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
@@ -375,7 +417,7 @@ public:
 		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); DEBUGLOG->outdent();
 	}
 
-	void initUniforms()
+	void CMainApplication::initUniforms()
 	{
 		m_pUvwShader->update("model", s_translation * s_rotation * s_scale);
 		m_pUvwShader->update("view", s_view);
@@ -404,7 +446,7 @@ public:
 
 	}
 
-	void initFramebuffers()
+	void CMainApplication::initFramebuffers()
 	{
 		DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
 		FrameBufferObject::s_internalFormat = GL_RGBA16F;
@@ -536,7 +578,7 @@ public:
 		DEBUGLOG->outdent();
 	}
 
-	void initTextureUnits()
+	void CMainApplication::initTextureUnits()
 	{
 		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
 		OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
@@ -571,7 +613,7 @@ public:
 		OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 	}
 
-	void initTextureUniforms()
+	void CMainApplication::initTextureUniforms()
 	{
 		m_pRaycastShader->update("volume_texture", 0); // m_pVolume texture
 		m_pRaycastShader->update("transferFunctionTex", 1);
@@ -587,7 +629,7 @@ public:
 		m_pNovelViewWarpShader->update("depth",  25);
 	}
 
-	void initRenderPasses()
+	void CMainApplication::initRenderPasses()
 	{
 		m_pUvw = new RenderPass(m_pUvwShader, m_pUvwFBO[LEFT]);
 		m_pUvw->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -693,14 +735,14 @@ public:
 		DEBUGLOG->outdent();
 	}
 
-	void initGUI()
+	void CMainApplication::initGUI()
 	{
 		// Setup ImGui binding
 		ImGui_ImplSdlGL3_Init(m_pWindow);
 	}
 
 
-	void initEventHandlers()
+	void CMainApplication::initEventHandlers()
 	{
 		//////////////////////////////////////////////////////////////////////////////
 		///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -892,7 +934,7 @@ public:
 	}
 	
 	////////////////////////////////    EVENTS    ////////////////////////////////
-	void pollEvents()
+	void CMainApplication::pollEvents()
 	{
 		pollSDLEvents(m_pWindow, m_sdlEventFunc);
 		m_pOvr->PollVREvents(m_vrEventFunc);
@@ -900,7 +942,7 @@ public:
 	}
 	
 	////////////////////////////////     GUI      ////////////////////////////////
-	void updateGui()
+	void CMainApplication::updateGui()
 	{
 		ImGui_ImplSdlGL3_NewFrame(m_pWindow);
 		ImGuiIO& io = ImGui::GetIO();
@@ -1101,7 +1143,7 @@ public:
 	}
 
 	////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
-	void updateCommonUniforms()
+	void CMainApplication::updateCommonUniforms()
 	{
 		/************* update color mapping parameters ******************/
 		// 
@@ -1129,7 +1171,7 @@ public:
 
 	}
 
-	void predictPose(int eye)
+	void CMainApplication::predictPose(int eye)
 	{
 		static vr::TrackedDevicePose_t predictedDevicePose[ vr::k_unMaxTrackedDeviceCount ];
 		//float predictSecondsAhead = ((float)m_pRaycastChunked->getLastNumFramesElapsed()) * 0.011f; // number of frames rendering took
@@ -1162,7 +1204,7 @@ public:
 		}
 	}
 
-	void copyResult(int eye)
+	void CMainApplication::copyResult(int eye)
 	{
 		m_frame.Timings.getBack().beginTimerElapsed("Copy Result" + STR_SUFFIX[eye]);
 		
@@ -1188,7 +1230,7 @@ public:
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
-	void renderModelsDepth(int eye)
+	void CMainApplication::renderModelsDepth(int eye)
 	{
 		m_frame.Timings.getBack().beginTimerElapsed("Depth Models" + STR_SUFFIX[eye]);
 		m_pSceneDepthFBO[eye]->bind();
@@ -1199,7 +1241,7 @@ public:
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
-	void renderUVWs(int eye, MatrixSet& matrixSet )
+	void CMainApplication::renderUVWs(int eye, MatrixSet& matrixSet )
 	{
 		// uvw maps
 		m_frame.Timings.getBack().beginTimerElapsed("UVW" + STR_SUFFIX[eye]);
@@ -1211,7 +1253,7 @@ public:
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
-	void renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last)
+	void CMainApplication::renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last)
 	{
 		//update raycasting matrices for next iteration	// for occlusion frustum
 		glm::mat4 firstHitViewToCurrentView  = current.view * (current.model * glm::inverse(last.model)) * glm::inverse(last.view);
@@ -1237,7 +1279,7 @@ public:
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
-	void renderVolumeIteration(int eye, MatrixSet& matrixSet)
+	void CMainApplication::renderVolumeIteration(int eye, MatrixSet& matrixSet)
 	{
 		// raycasting (chunked)
 		m_pRaycastShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrixSet.model ) * glm::inverse( matrixSet.view ) * s_screenToView );
@@ -1254,7 +1296,7 @@ public:
 		m_frame.Timings.getBack().stopTimer("Chunked Raycast" + STR_SUFFIX[eye]);
 	}
 
-	void renderVolumeLayersIteration(int eye, MatrixSet& matrixSet)
+	void CMainApplication::renderVolumeLayersIteration(int eye, MatrixSet& matrixSet)
 	{
 		// raycasting (chunked)
 		m_pRaycastLayersShader->update( "uScreenToView", s_screenToView );
@@ -1268,7 +1310,7 @@ public:
 		m_frame.Timings.getBack().stopTimer("Chunked Raycast" + STR_SUFFIX[eye]);
 	}
 
-	void renderImage(int eye)
+	void CMainApplication::renderImage(int eye)
 	{
 		if (m_pRaycastChunked[eye + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->isFinished())
 		{
@@ -1309,7 +1351,7 @@ public:
 		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 	}
 
-	void renderModels(int eye)
+	void CMainApplication::renderModels(int eye)
 	{
 		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, true);
 		m_pWarpFBO[eye]->bind();
@@ -1317,7 +1359,7 @@ public:
 		OPENGLCONTEXT->setEnabled(GL_DEPTH_TEST, false);
 	}
 
-	void clearWarpFBO(int eye)
+	void CMainApplication::clearWarpFBO(int eye)
 	{
 		// clear 
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1325,7 +1367,7 @@ public:
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
 
-	void renderQuadWarp(int eye)
+	void CMainApplication::renderQuadWarp(int eye)
 	{
 		// warp left
 		m_pQuadWarp->setFrameBufferObject( m_pWarpFBO[eye] );
@@ -1336,7 +1378,7 @@ public:
 		m_pQuadWarp->render();
 	}
 
-	void renderGridWarp(int eye)
+	void CMainApplication::renderGridWarp(int eye)
 	{
 		glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
 		m_pGridWarp->setFrameBufferObject(m_pWarpFBO[eye]);
@@ -1349,7 +1391,7 @@ public:
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 	}
 
-	void renderNovelViewWarp(int eye)
+	void CMainApplication::renderNovelViewWarp(int eye)
 	{
 		// render UVWs
 		m_pUvw->setFrameBufferObject( m_pUvwFBO[2 + eye] );
@@ -1381,7 +1423,7 @@ public:
 		m_pNovelViewWarp->render();
 	}
 
-	void renderWarpedImages()
+	void CMainApplication::renderWarpedImages()
 	{
 		m_frame.Timings.getBack().beginTimerElapsed("Warping");
 		OPENGLCONTEXT->setEnabled(GL_BLEND, true);
@@ -1404,7 +1446,7 @@ public:
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
 
-	void renderDisplayImages()
+	void CMainApplication::renderDisplayImages()
 	{
 		clearWarpFBO(LEFT);
 		clearWarpFBO(RIGHT);
@@ -1422,7 +1464,7 @@ public:
 		renderWarpedImages();
 	}
 
-	void renderToScreen()
+	void CMainApplication::renderToScreen()
 	{
 		{
 			m_pShowTexShader->update("tex", m_iLeftDebugView);
@@ -1439,21 +1481,21 @@ public:
 		m_fMirrorScreenTimer = 0.0f;
 	}
 
-	void renderGui()
+	void CMainApplication::renderGui()
 	{
 		ImGui::Render();
 		OPENGLCONTEXT->setEnabled(GL_BLEND, false);
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 	}
 
-	void submitView(int eye)
+	void CMainApplication::submitView(int eye)
 	{
 		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + m_iLeftDebugView + eye], (vr::Hmd_Eye) eye);
 	}
 
 
 	////////////////////////////////  RENDERING //// /////////////////////////////
-	void renderViews()
+	void CMainApplication::renderViews()
 	{
 		// check for finished left/right images, copy to Front FBOs
 		int idx = 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW);
@@ -1515,7 +1557,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
-	void loop()
+	void CMainApplication::loop()
 	{
 		std::string window_header = "Volume Renderer - OpenVR";
 		SDL_SetWindowTitle(m_pWindow, window_header.c_str() );
@@ -1554,13 +1596,13 @@ public:
 	
 	}
 
-	void profileFPS(float fps)
+	void CMainApplication::profileFPS(float fps)
 	{
 		m_fpsCounter[m_iCurFpsIdx] = fps;
 		m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
 	}
 
-	virtual ~CMainApplication()
+	CMainApplication::~CMainApplication()
 	{
 		delete m_pOvr;
 		delete m_pVolume;
@@ -1579,17 +1621,36 @@ public:
 		delete m_pShowTexShader;
 		delete m_pDepthToTextureShader;
 
-		delete m_pOcclusionFrustumFBO;
-		delete m_pUvwFBO;
-		delete m_pRaycastFBO;
-		delete m_pOcclusionClipFrustumFBO;
-		delete m_pWarpFBO;
-		delete m_pSceneDepthFBO;
-		delete m_pDebugDepthFBO;
+		for (int i = 0; i < 4; i++)
+		{
+			delete m_pRaycastFBO[i].getFront();
+			delete m_pRaycastFBO[i].getBack();
+		}
+
+		for (int i = 0; i < 4; i++)
+		{
+			delete m_pUvwFBO[i];
+			delete m_pUvwFBO[i];
+		}
+
+		for (int i = 0; i < 4; i++)
+		{
+			delete m_pUvwFBO[i];
+			delete m_pUvwFBO[i];
+			delete m_pRaycastChunked[i];
+			delete m_pRaycast[i];
+		}
+
+		for (int i = 0; i < 2; i++)
+		{
+			delete m_pOcclusionFrustumFBO[i];
+			delete m_pOcclusionClipFrustumFBO[i];
+			delete m_pWarpFBO[i];
+			delete m_pSceneDepthFBO[i];
+			delete m_pDebugDepthFBO[i];
+		}
 
 		delete m_pUvw;
-		delete m_pRaycast;
-		delete m_pRaycastChunked;
 		delete m_pOcclusionFrustum;
 		delete m_pOcclusionClipFrustum;
 		delete m_pQuadWarp;
@@ -1598,7 +1659,6 @@ public:
 		delete m_pShowTex;
 		delete m_pDebugDepthToTexture;
 	}
-};
 
 
 
