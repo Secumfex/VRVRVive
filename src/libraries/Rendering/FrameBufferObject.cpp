@@ -193,7 +193,17 @@ void FrameBufferObject::setNumColorAttachments(int numColorAttachments) {
 }
 
 FrameBufferObject::~FrameBufferObject() {
-	// TODO free OpenGL textures etc.
+	// free texture memory
+	std::vector<GLuint> textures;
+	textures.push_back(m_depthTextureHandle);
+	for (auto e : m_textureMap)
+	{
+		textures.push_back(e.second);
+	}
+	glDeleteTextures(textures.size(), &textures[0]);
+
+	// delete fbo handle
+	glDeleteFramebuffers(1, &m_frameBufferHandle);
 }
 
 void FrameBufferObject::setWidth(int width) {

@@ -37,10 +37,6 @@ static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial 
 const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
 };
-static std::vector<std::string> s_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES));
-
-static const int NUM_LAYERS = 32;
-const glm::vec2 TEXTURE_RESOLUTION = glm::vec2(800, 800);
 
 const int LEFT = 0;
 const int RIGHT = 1;
@@ -138,6 +134,16 @@ private:
 	GLuint m_pboHandle; // PBO 
 	GLuint m_atomicsBuffer;
 
+	CSVWriter m_csvWriter;
+	int  m_iCsvCounter;
+	int  m_iCsvNumFramesToProfile;
+	bool m_bCsvDoRun;
+
+	int m_iNumLayers;
+    glm::vec2 m_textureResolution;
+
+	std::string m_executableName;
+
 public:
 
 	void profileFPS(float fps);
@@ -168,7 +174,13 @@ public:
 	virtual ~CMainApplication();
 
 	void clearOutputTexture(GLuint texture);
-	void loadShaderDefines(std::string fullExecutableName);
+	void loadShaderDefines();
+	void handleCsvProfiling();
+
+	void recompileShaders();
+	void rebuildFramebuffers(); 
+	void loadRaycastingShaders();
+	void initRaycastingFramebuffers();
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -182,11 +194,22 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_fDisplayedLayer(0.0f)
 	, m_fpsCounter(120)
 	, m_iCurFpsIdx(0)
-	, m_texData((int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, 0.0f)
+	, m_iNumLayers(32)
+	, m_textureResolution(800, 800)
 	, m_pboHandle(-1)
+	, m_iCsvCounter(0)
+	, m_iCsvNumFramesToProfile(150)
+	, m_bCsvDoRun(false)
 {
+	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
+
+	std::string fullExecutableName( argv[0] );
+	m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
+	m_executableName = m_executableName.substr(0, m_executableName.find(".exe"));
+	DEBUGLOG->log("Executable name: " + m_executableName);
+
 	// create m_pWindow and opengl context
-	m_pWindow = generateWindow_SDL(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+	m_pWindow = generateWindow_SDL(m_textureResolution.x, m_textureResolution.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
 	printOpenGLInfo();
 	printSDLRenderDriverInfo();
@@ -198,14 +221,21 @@ void CMainApplication::clearOutputTexture(GLuint texture)
 	{
 		glGenBuffers(1,&m_pboHandle);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) TEXTURE_RESOLUTION.x * (int) TEXTURE_RESOLUTION.y * NUM_LAYERS * 4, &m_texData[0], GL_STATIC_DRAW);
+		glBufferStorage(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * m_iNumLayers * 4, NULL, GL_DYNAMIC_STORAGE_BIT);
+		checkGLError(true);
+		for (int i = 0; i < m_iNumLayers; i++)
+		{
+			glBufferSubData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * i * 4, m_texData.size(), &m_texData[0]);
+		}
+		checkGLError(true);
+		//glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * m_iNumLayers * 4, &m_texData[0], GL_STATIC_DRAW);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 	
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE6);
 	OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D_ARRAY);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
-		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, (int) TEXTURE_RESOLUTION.x, (int) TEXTURE_RESOLUTION.y, NUM_LAYERS, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, (int) m_textureResolution.x, (int) m_textureResolution.y, m_iNumLayers, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
@@ -241,15 +271,14 @@ void CMainApplication::profileFPS(float fps)
 	m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
 }
 
-void CMainApplication::loadShaderDefines(std::string fullExecutableName)
+void CMainApplication::loadShaderDefines()
 {
-	DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
-	//std::string fullExecutableName = argv;
-	std::string justTheName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
-	justTheName = justTheName.substr(0, justTheName.find(".exe"));
-	DEBUGLOG->log("Executable name: " + justTheName);
+	m_shaderDefines.clear();
+	m_shaderDefines.insert(m_shaderDefines.end(), SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-	std::string definitionsFile = justTheName + ".defs";
+	DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
+	std::string definitionsFile = m_executableName + ".defs";
+
 	DEBUGLOG->log("Looking for shader definitions file: " + definitionsFile);
 
 	FileReader fileReader;
@@ -257,7 +286,18 @@ void CMainApplication::loadShaderDefines(std::string fullExecutableName)
 	if ( fileReader.readFileToBuffer(definitionsFile) )
 	{
 		std::vector<std::string> fileDefines = fileReader.getLines();
-		s_shaderDefines.insert(s_shaderDefines.end(), fileDefines.begin(), fileDefines.end());
+		std::vector<std::string> activeDefines;
+		for (auto e: fileDefines)
+		{
+			if (e.length() >= (2 * sizeof(char)) && e[0] == '/' && e[1] == '/' ) { // "Commented" out
+				continue; 
+			}
+			else
+			{
+				activeDefines.push_back(e);
+			}
+		}
+		m_shaderDefines.insert(m_shaderDefines.end(), activeDefines.begin(), activeDefines.end());
 	}
 	else
 	{
@@ -308,7 +348,7 @@ void CMainApplication::initSceneVariables()
 
 	s_eye = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	s_center = s_translation[3];
-	s_aspect = TEXTURE_RESOLUTION.x / TEXTURE_RESOLUTION.y;
+	s_aspect = m_textureResolution.x / m_textureResolution.y;
 	s_fovY = 45.0f;
 
 	m_textureToProjection_r = s_perspective * s_view_r;
@@ -330,58 +370,71 @@ void CMainApplication::initSceneVariables()
 void CMainApplication::loadGeometries(){
 	DEBUGLOG->log("Geometry Creation"); DEBUGLOG->indent();
 	m_pVolume = new VolumeSubdiv(0.5f * s_volumeSize.x, 0.5f * s_volumeSize.y, 0.5f * s_volumeSize.z , 6);
-	m_pVertexGrid = new VertexGrid(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
+	m_pVertexGrid = new VertexGrid(m_textureResolution.x, m_textureResolution.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
 	m_pQuad = new Quad();;
 	m_pGrid = new Grid(100, 100, 0.1f, 0.1f);
 	DEBUGLOG->outdent();
 }
+
+void CMainApplication::loadRaycastingShaders()
+{
+	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
+	m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", m_shaderDefines); DEBUGLOG->outdent();
+
+	DEBUGLOG->log("Shader Compilation: ray casting shader - single pass stereo"); DEBUGLOG->indent();
+	std::vector<std::string> shaderDefinesStereo(m_shaderDefines);
+	shaderDefinesStereo.push_back("STEREO_SINGLE_PASS");
+	m_pRaycastStereoShader = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", shaderDefinesStereo); DEBUGLOG->outdent();
+}
+
 
 void CMainApplication::loadShaders()
 {
 	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
 	m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
 
-	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", s_shaderDefines); DEBUGLOG->outdent();
+	loadRaycastingShaders();
 
 	DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
-	m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", s_shaderDefines); DEBUGLOG->outdent();
+	m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
 
 	DEBUGLOG->log("Shader Compilation: show layer shader"); DEBUGLOG->indent();
 	m_pShowLayerShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(1,"ARRAY_TEXTURE"));DEBUGLOG->outdent();
 	
 	DEBUGLOG->log("Shader Compilation: show texture shader"); DEBUGLOG->indent();
-	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", s_shaderDefines);DEBUGLOG->outdent();
+	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);DEBUGLOG->outdent();
 
-	DEBUGLOG->log("Shader Compilation: ray casting shader - single pass stereo"); DEBUGLOG->indent();
-	std::vector<std::string> shaderDefinesStereo(s_shaderDefines);
-	shaderDefinesStereo.push_back("STEREO_SINGLE_PASS");
-	m_pRaycastStereoShader = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", shaderDefinesStereo); DEBUGLOG->outdent();
 }
+
+void CMainApplication::initRaycastingFramebuffers()
+{
+	DEBUGLOG->log("FrameBufferObject Creation: raycasting results"); DEBUGLOG->indent();
+	m_pFBO = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	m_pFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	m_pFBO_single = new FrameBufferObject(m_pRaycastStereoShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	DEBUGLOG->outdent();
+}
+
 
 void CMainApplication::initFramebuffers()
 {
 	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
 	FrameBufferObject::s_internalFormat = GL_RGBA16F;
-	m_pUvwFBO = new FrameBufferObject(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	m_pUvwFBO_r = new FrameBufferObject(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
+	m_pUvwFBO = new FrameBufferObject(m_textureResolution.x, m_textureResolution.y);
+	m_pUvwFBO_r = new FrameBufferObject(m_textureResolution.x, m_textureResolution.y);
 	m_pUvwFBO->addColorAttachments(2); // front UVRs and back UVRs
 	m_pUvwFBO_r->addColorAttachments(2); // front UVRs and back UVRs
 	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 
-	DEBUGLOG->log("FrameBufferObject Creation: raycasting results"); DEBUGLOG->indent();
-	m_pFBO = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
-	m_pFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
-	m_pFBO_single = new FrameBufferObject(m_pRaycastStereoShader->getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
-	DEBUGLOG->outdent();
+	initRaycastingFramebuffers();
 	
 	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo compositing result"); DEBUGLOG->indent();
-	m_pFBO_single_r = new FrameBufferObject(m_pComposeTexArrayShader->getOutputInfoMap(), (int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y);
+	m_pFBO_single_r = new FrameBufferObject(m_pComposeTexArrayShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo output texture array"); DEBUGLOG->indent();
-	m_stereoOutputTextureArray = createTextureArray((int)TEXTURE_RESOLUTION.x, (int)TEXTURE_RESOLUTION.y, NUM_LAYERS, GL_RGBA16F);
+	m_stereoOutputTextureArray = createTextureArray((int)m_textureResolution.x, (int)m_textureResolution.y, m_iNumLayers, GL_RGBA16F);
 	DEBUGLOG->outdent();
 }
 
@@ -420,7 +473,7 @@ void CMainApplication::initRenderPasses()
 	
 	DEBUGLOG->log("RenderPass Creation: show layer"); DEBUGLOG->indent();
 	m_pShowLayer = new RenderPass(m_pShowLayerShader, 0);
-	m_pShowLayer->setViewport(TEXTURE_RESOLUTION.x / 2, TEXTURE_RESOLUTION.y / 2, TEXTURE_RESOLUTION.x / 2, TEXTURE_RESOLUTION.y / 2);
+	m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
 	m_pShowLayer->addRenderable(m_pQuad);
 	DEBUGLOG->outdent();
 
@@ -639,9 +692,23 @@ void CMainApplication::updateGui()
 	static bool s_writeStereo = true;
 	ImGui::Checkbox("write stereo", &s_writeStereo); // enable/disable single pass stereo
 	
-	
 	ImGui::Checkbox("Show Single Layer", &m_bShowSingleLayer);
-	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, NUM_LAYERS-1);
+	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
+
+	
+	if (ImGui::Button("Recompile Shaders"))
+	{
+		recompileShaders();
+	}
+
+	if (ImGui::SliderFloat("Texture Size", &m_textureResolution.x, 256.0f, 2160.0f, "%.f", 2.0f)){ m_textureResolution.y = m_textureResolution.x; }
+	ImGui::SliderInt("Num Layers", &m_iNumLayers, 1, 128);
+	if (ImGui::Button("Rebuild Framebuffers"))
+	{
+		rebuildFramebuffers();
+	}
+
+
 
 	/////////// PROFILING /////////////////////
 	static bool frame_profiler_visible = false;
@@ -685,22 +752,25 @@ void CMainApplication::updateGui()
 
 		
 	//DEBUG Output to profiler file
-	static CSVWriter csvWriter;
-	static int csvCounter = 0;
-	static int csvNumFramesToProfile = 300;
-	static bool csvDoRun = false;
+	if (!pause_frame_profiler) m_frame.Timings.swap();
+	m_frame.Timings.getBack().timestamp("Frame Begin");
 
+    //////////////////////////////////////////////////////////////////////////////
+}
+
+void CMainApplication::handleCsvProfiling()
+{
 	ImGui::Separator();
-	if (ImGui::Button("Run CSV Profiling") && !csvDoRun)
+	if (ImGui::Button("Run CSV Profiling") && !m_bCsvDoRun)
 	{
-		csvDoRun = true;
+		m_bCsvDoRun = true;
 	}
-	ImGui::SameLine(); ImGui::Value("Running", csvDoRun);
-	ImGui::SameLine(); ImGui::Value("Frame",   csvCounter);
-	ImGui::SliderInt("Num Frames To Profile", &csvNumFramesToProfile, 1, 1000);
+	ImGui::SameLine(); ImGui::Value("Running", m_bCsvDoRun);
+	ImGui::SameLine(); ImGui::Value("Frame",   m_iCsvCounter);
+	ImGui::SliderInt("Num Frames To Profile", &m_iCsvNumFramesToProfile, 1, 1000);
 	ImGui::Separator();
 
-	if ( csvDoRun && csvCounter == 0) // just not frame one, okay?
+	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
 		std::vector<std::string> headers;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed)
@@ -712,10 +782,10 @@ void CMainApplication::updateGui()
 		headers.push_back("Total Stereo");
 		headers.push_back("Total Single");
 
-		csvWriter.setHeaders(headers);
+		m_csvWriter.setHeaders(headers);
 	}
 
-	if ( csvDoRun &&  csvCounter >= 0 && csvCounter < csvNumFramesToProfile ) // going to profile 1000 frames
+	if ( m_bCsvDoRun &&  m_iCsvCounter >= 0 && m_iCsvCounter < m_iCsvNumFramesToProfile ) // going to profile 1000 frames
 	{
 		std::vector<std::string> row;
 		float totalStereo = 0.0f;
@@ -739,26 +809,22 @@ void CMainApplication::updateGui()
 		row.push_back(std::to_string(totalStereo)); // total stereo rendering time
 		row.push_back(std::to_string(totalSingle)); // total single pass time
 
-		csvWriter.addRow(row);
+		m_csvWriter.addRow(row);
 	}
 
-	if ( csvDoRun && csvCounter >= csvNumFramesToProfile ) // write when finished
+	if ( m_bCsvDoRun && m_iCsvCounter >= m_iCsvNumFramesToProfile ) // write when finished
 	{
-		csvWriter.writeToFile( "profile_" + std::to_string( (std::time(0) / 6) % 10000) + ".csv" );
-		csvCounter = 0;
-		csvDoRun = false;
+		m_csvWriter.writeToFile( "profile_" + std::to_string( (std::time(0) / 6) % 10000) + ".csv" );
+		m_iCsvCounter = 0;
+		m_bCsvDoRun = false;
 	}
 		
-	if( csvDoRun )
+	if( m_bCsvDoRun )
 	{
-		csvCounter++;
+		m_iCsvCounter++;
 	}
-
-	if (!pause_frame_profiler) m_frame.Timings.swap();
-	m_frame.Timings.getBack().timestamp("Frame Begin");
-
-    //////////////////////////////////////////////////////////////////////////////
 }
+
 
 void CMainApplication::updateCommonUniforms()
 {
@@ -798,7 +864,7 @@ void CMainApplication::updateCommonUniforms()
 	float s_zRayEnd   = abs(s_translation[3].z) + sqrt(2.0)*0.5f;
 	float s_zRayStart = abs(s_translation[3].z) - sqrt(2.0)*0.5f;
 	float e = s_eyeDistance;
-	float w = TEXTURE_RESOLUTION.x;
+	float w = m_textureResolution.x;
 	float t_near = (s_zRayStart) / s_near;
 	float t_far  = (s_zRayEnd)  / s_near;
 	float nW = s_nearW;
@@ -926,6 +992,7 @@ void CMainApplication::renderViews()
 	}
 	else
 	{
+		m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
 		m_pShowLayerShader->update("layer", m_fDisplayedLayer);
 		m_pShowLayer->render();
 	}
@@ -935,6 +1002,73 @@ void CMainApplication::renderViews()
 		
 	glFinish();
 	SDL_GL_SwapWindow(m_pWindow); // swap buffers
+}
+
+void CMainApplication::recompileShaders()
+{
+	DEBUGLOG->log("Recompiling Shaders"); DEBUGLOG->indent();
+	DEBUGLOG->log("Deleting Shaders");
+	
+	// delete shaders
+	delete m_pRaycastShader;
+	delete m_pRaycastStereoShader;
+
+	// reload shader defines
+	loadShaderDefines();
+
+	// reload shaders
+	loadRaycastingShaders();
+	
+	// set ShaderProgram References
+	m_pSimpleRaycast->setShaderProgram(m_pRaycastShader);
+	m_pStereoRaycast->setShaderProgram(m_pRaycastStereoShader);
+
+	// update uniforms
+	initTextureUniforms();
+	initUniforms();
+
+	DEBUGLOG->outdent();
+}
+
+void CMainApplication::rebuildFramebuffers()
+{
+	DEBUGLOG->log("Rebuilding Framebuffers"); DEBUGLOG->indent();
+	DEBUGLOG->log("Deleting Framebuffers");
+	delete m_pUvwFBO;
+	delete m_pUvwFBO_r;
+	delete m_pFBO;
+	delete m_pFBO_r;
+	delete m_pFBO_single;
+	delete m_pFBO_single_r;
+
+	// delete texture array
+	std::vector<GLuint> textures;
+	textures.push_back(m_stereoOutputTextureArray);
+	glDeleteTextures(textures.size(), &textures[0]);
+
+	// delete pixel buffer object
+	glDeleteBuffers(1,&m_pboHandle);
+	m_pboHandle = -1;
+	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
+
+	initFramebuffers();
+	
+	// set Framebuffer References
+	m_pUvw->setFrameBufferObject(m_pUvwFBO);
+	m_pSimpleRaycast->setFrameBufferObject(m_pFBO);
+	m_pStereoRaycast->setFrameBufferObject(m_pFBO_single);
+	m_pComposeTexArray->setFrameBufferObject(m_pFBO_single_r);
+
+	m_pUvw->setViewport(0,0, m_pUvwFBO->getWidth(),m_pUvwFBO->getHeight());
+	m_pSimpleRaycast->setViewport(0,0, m_pFBO->getWidth(),m_pFBO->getHeight());
+	m_pStereoRaycast->setViewport(0,0, m_pFBO_single->getWidth(),m_pFBO_single->getHeight());
+	m_pComposeTexArray->setViewport(0,0, m_pFBO_single_r->getWidth(),m_pFBO_single_r->getHeight());
+
+	// bind textures
+	initTextureUnits();
+
+	DEBUGLOG->outdent();
+
 }
 
 
@@ -1019,7 +1153,7 @@ int main(int argc, char *argv[])
 	
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
 	
-	pMainApplication->loadShaderDefines( argv[0] );
+	pMainApplication->loadShaderDefines();
 
 	pMainApplication->initSceneVariables();
 
