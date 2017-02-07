@@ -11,12 +11,13 @@
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
 #include <Rendering/RenderPass.h>
-#include <UI/Profiler.h>
+#include <Importing/TextureTools.h>
 
 #include "UI/imgui/imgui.h"
 #include <UI/imgui_impl_sdl_gl3.h>
 #include <UI/imguiTools.h>
 #include <UI/Turntable.h>
+#include <UI/Profiler.h>
 
 #include <Volume/TransferFunction.h>
 #include <Volume/SyntheticVolume.h>
@@ -184,7 +185,7 @@ public:
 };
 
 //////////////////////////////////////////////////////////////////////////////
-///////////////////////////////// MAIN ///////////////////////////////////////
+///////////////////////// IMPLEMENTATION  ////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 CMainApplication::CMainApplication(int argc, char *argv[])
@@ -708,7 +709,10 @@ void CMainApplication::updateGui()
 		rebuildFramebuffers();
 	}
 
-
+	if (ImGui::Button("Save Image"))
+	{
+		TextureTools::saveTexture("test.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	}
 
 	/////////// PROFILING /////////////////////
 	static bool frame_profiler_visible = false;

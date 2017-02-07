@@ -1,8 +1,10 @@
 #include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "stb_image.h"
+#include "stb_image_write.h"
 #include "TextureTools.h"
 
 #include "Core/DebugLog.h"
@@ -173,4 +175,48 @@ namespace TextureTools {
         cubeMapFiles.push_back("cubemap/cloudtop_ft.tga");
         return TextureTools::loadCubemapFromResourceFolder(cubeMapFiles, generateMipMaps);
     }
+
+	bool saveTexture(std::string fileName, GLuint texture)
+	{
+
+		int width, height = -1;
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE30);
+		OPENGLCONTEXT->bindTexture(0, GL_TEXTURE_2D);
+		OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D);
+
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH,  &width);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+		//glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &comp);
+
+		if (width == -1 || height == -1) 
+		{
+			DEBUGLOG->log("ERROR: couldn't retrieve width/height!"); return false;
+		}
+
+		std::vector<unsigned char> data(width * height * 4 );
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, &data[0]);
+
+		// flip y
+		for (int i = 0; i < height/2; i++)
+		{
+			// save top line
+			std::vector<unsigned char> tmp(data.begin() +  ( (i) * (width * 4) ), data.begin() + ( (i+1) * (width * 4)) ); 
+
+			// copy from bottom to top
+			std::copy(data.begin() + ( (height - 1 - i) * (width * 4) ), data.begin() + ( (height - i) * (width * 4) ), data.begin() + ( (i) * (width * 4) ) );
+
+			// coppy from top to bottom
+			std::copy(tmp.begin(), tmp.end(),  data.begin() + ( (height - 1 - i) * (width * 4) ) );
+		}
+
+		int comp = 4;
+		int stride_in_bytes = width * comp * sizeof(unsigned char);
+
+		// *data points to top-left-most pixel
+		// For PNG, "stride_in_bytes" is the distance in bytes from the first byte of
+		// a row of pixels to the first byte of the next row of pixels.
+		return stbi_write_png( fileName.c_str(), width, height, comp, &data[0], stride_in_bytes );
+	}
+
 }
+

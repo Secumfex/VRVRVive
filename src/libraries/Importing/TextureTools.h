@@ -38,6 +38,8 @@ namespace TextureTools {
 	// +X (right), -X(left), +Y (top), -Y (bottom), +Z (front), -Z (back)
 	GLuint loadCubemapFromResourceFolder(std::vector<std::string> fileNames, bool generateMipMaps = true);
 	GLuint loadDefaultCubemap(bool generateMipMaps = true);
+
+	bool saveTexture(std::string fileName, GLuint texture);
 }
 
 #endif
