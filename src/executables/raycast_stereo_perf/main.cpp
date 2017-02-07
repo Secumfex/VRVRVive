@@ -39,6 +39,14 @@ const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
 };
 
+// defines that will be checked when writing config
+const char* SHADER_DEFINES_CONFIG[] = {
+	"SHADOW_SAMPLING",
+	"AMBIENT_OCCLUSION",
+	"LEVEL_OF_DETAIL",
+};
+std::vector<std::string> s_shader_defines_config(SHADER_DEFINES_CONFIG, std::end(SHADER_DEFINES_CONFIG));
+
 const int LEFT = 0;
 const int RIGHT = 1;
 
@@ -51,7 +59,7 @@ using namespace RaycastingParameters;
 //////////////////////////////////////////////////////////////////////////////
 class CMainApplication 
 {
-private: 
+public: // who cares 
 	// SDL bookkeeping
 	SDL_Window	 *m_pWindow;
 	SDL_GLContext m_pContext;
@@ -135,7 +143,22 @@ private:
 	GLuint m_pboHandle; // PBO 
 	GLuint m_atomicsBuffer;
 
-	CSVWriter m_csvWriter;
+	struct ConfigHelper
+	{
+		std::string prefix; // i.e. timestamp or other uid
+
+		CSVWriter timings;
+		CSVWriter shader;
+		CSVWriter render;
+
+		ConfigHelper();
+		void saveImages(CMainApplication* mainApp);
+		void copyShaderConfig(CMainApplication* mainApp);
+		void copyRenderConfig(CMainApplication* mainApp);
+		void writeToFiles();
+
+	} m_configHelper;
+
 	int  m_iCsvCounter;
 	int  m_iCsvNumFramesToProfile;
 	bool m_bCsvDoRun;
@@ -201,6 +224,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_iCsvCounter(0)
 	, m_iCsvNumFramesToProfile(150)
 	, m_bCsvDoRun(false)
+	, m_iActiveModel(0)
 {
 	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
 
@@ -414,6 +438,10 @@ void CMainApplication::initRaycastingFramebuffers()
 	m_pFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	m_pFBO_single = new FrameBufferObject(m_pRaycastStereoShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	DEBUGLOG->outdent();
+
+	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo compositing result"); DEBUGLOG->indent();
+	m_pFBO_single_r = new FrameBufferObject(m_pComposeTexArrayShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	DEBUGLOG->outdent();
 }
 
 
@@ -429,10 +457,6 @@ void CMainApplication::initFramebuffers()
 	DEBUGLOG->outdent();
 
 	initRaycastingFramebuffers();
-	
-	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo compositing result"); DEBUGLOG->indent();
-	m_pFBO_single_r = new FrameBufferObject(m_pComposeTexArrayShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
-	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo output texture array"); DEBUGLOG->indent();
 	m_stereoOutputTextureArray = createTextureArray((int)m_textureResolution.x, (int)m_textureResolution.y, m_iNumLayers, GL_RGBA16F);
@@ -668,6 +692,23 @@ void CMainApplication::updateGui()
 		ImGui::NextColumn();
 	}
 
+	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
+    {
+		activateVolume(m_volumeData[m_iActiveModel]);
+		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+			static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
+			if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
+				shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
+				s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+			}
+			if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
+			m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+			m_pRaycastStereoShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+		}}
+		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
+    }
+
 	if(changed)
 	{
 		updateTransferFunctionTex();
@@ -684,19 +725,20 @@ void CMainApplication::updateGui()
     }
 	ImGui::PopItemWidth();
 
+	if (ImGui::CollapsingHeader("Level of Detail Settings"))
+    {
 	ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
 	ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
 	ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
-
+	}
 	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 
-	static bool s_writeStereo = true;
-	ImGui::Checkbox("write stereo", &s_writeStereo); // enable/disable single pass stereo
+	//static bool s_writeStereo = true;
+	//ImGui::Checkbox("write stereo", &s_writeStereo); // enable/disable single pass stereo
 	
 	ImGui::Checkbox("Show Single Layer", &m_bShowSingleLayer);
 	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
 
-	
 	if (ImGui::Button("Recompile Shaders"))
 	{
 		recompileShaders();
@@ -709,9 +751,11 @@ void CMainApplication::updateGui()
 		rebuildFramebuffers();
 	}
 
-	if (ImGui::Button("Save Image"))
+	if (ImGui::Button("Save Images"))
 	{
-		TextureTools::saveTexture("test.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture("LEFT.png", m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture("RIGHT.png", m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture("RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 	}
 
 	/////////// PROFILING /////////////////////
@@ -776,6 +820,8 @@ void CMainApplication::handleCsvProfiling()
 
 	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
+		m_configHelper.prefix = "profile_" + std::to_string( (std::time(0) / 6) % 10000) + "_";
+
 		std::vector<std::string> headers;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed)
 		{
@@ -786,10 +832,14 @@ void CMainApplication::handleCsvProfiling()
 		headers.push_back("Total Stereo");
 		headers.push_back("Total Single");
 
-		m_csvWriter.setHeaders(headers);
+		m_configHelper.timings.setHeaders(headers);
+
+		m_configHelper.copyRenderConfig( this );
+		m_configHelper.copyShaderConfig( this );
+		m_configHelper.saveImages( this );
 	}
 
-	if ( m_bCsvDoRun &&  m_iCsvCounter >= 0 && m_iCsvCounter < m_iCsvNumFramesToProfile ) // going to profile 1000 frames
+	if ( m_bCsvDoRun &&  m_iCsvCounter > 0 && m_iCsvCounter <= m_iCsvNumFramesToProfile ) // going to profile 1000 frames
 	{
 		std::vector<std::string> row;
 		float totalStereo = 0.0f;
@@ -806,19 +856,18 @@ void CMainApplication::handleCsvProfiling()
 			{
 				totalSingle += e.second.lastTiming;
 			}
-
 		}
 			
 		// additional values
 		row.push_back(std::to_string(totalStereo)); // total stereo rendering time
 		row.push_back(std::to_string(totalSingle)); // total single pass time
 
-		m_csvWriter.addRow(row);
+		m_configHelper.timings.addRow(row);
 	}
 
-	if ( m_bCsvDoRun && m_iCsvCounter >= m_iCsvNumFramesToProfile ) // write when finished
+	if ( m_bCsvDoRun && m_iCsvCounter > m_iCsvNumFramesToProfile ) // write when finished
 	{
-		m_csvWriter.writeToFile( "profile_" + std::to_string( (std::time(0) / 6) % 10000) + ".csv" );
+		m_configHelper.writeToFiles();
 		m_iCsvCounter = 0;
 		m_bCsvDoRun = false;
 	}
@@ -1096,6 +1145,9 @@ void CMainApplication::loop()
 		//////////////////////////////////////////////////////////////////////////////
 		updateGui();
 
+		//////////////////////////////////////////////////////////////////////////////
+		handleCsvProfiling();
+
 		///////////////////////////// MATRIX UPDATING ///////////////////////////////
 		updateMatrices();
 		//////////////////////////////////////////////////////////////////////////////
@@ -1150,6 +1202,74 @@ CMainApplication::~CMainApplication()
 	// volume textures
 	glDeleteTextures( sizeof(m_volumeTexture)/sizeof(GLuint), m_volumeTexture);
 }
+
+////////////////////////////// CONFIG HELPER ///////////////////////////////////////
+CMainApplication::ConfigHelper::ConfigHelper(){
+	shader.setHeaders(s_shader_defines_config);
+}
+
+void CMainApplication::ConfigHelper::copyShaderConfig(CMainApplication* mainApp)
+{
+	std::vector<std::string> row(s_shader_defines_config.size(), "0");
+	for (unsigned int i = 0; i < s_shader_defines_config.size(); i++)
+	{
+		for( auto s : mainApp->m_shaderDefines )
+		{
+			if ( s_shader_defines_config[i] == s)
+			{
+				row[i] = "1";
+			}
+		}
+	}
+	shader.setData(row);
+}
+
+void CMainApplication::ConfigHelper::copyRenderConfig(CMainApplication* mainApp)
+{
+	std::vector<std::string> headers;
+	std::vector<std::string> row;
+	headers.push_back( "Num Layers" );
+	row.push_back(std::to_string(mainApp->m_iNumLayers));
+		
+	headers.push_back( "Texture Size" );
+	row.push_back(std::to_string(mainApp->m_textureResolution.x));
+		
+	headers.push_back( "Field of View" );
+	row.push_back(std::to_string(s_fovY));
+		
+	headers.push_back( "Near" );
+	row.push_back(std::to_string(s_near));
+
+	headers.push_back( "Volume Name" );
+	row.push_back( s_models[mainApp->m_iActiveModel] );
+	headers.push_back( "Volume Res X" );
+	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_x ));
+	headers.push_back( "Volume Res Y" );
+	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_y ));
+	headers.push_back( "Volume Res Z" );
+	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_z ));
+
+	render.setHeaders(headers);
+	render.setData(row);
+}
+
+void CMainApplication::ConfigHelper::saveImages(CMainApplication* mainApp)
+{
+	TextureTools::saveTexture( prefix  + "L.png",		 mainApp->m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	TextureTools::saveTexture( prefix  + "R.png",		 mainApp->m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	TextureTools::saveTexture( prefix  + "R_SINGLE.png", mainApp->m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+
+}
+
+void CMainApplication::ConfigHelper::writeToFiles()
+{
+	render.writeToFile(  prefix + "RENDER"  + ".csv" );
+	shader.writeToFile(  prefix + "SHADER"  + ".csv" );
+	timings.writeToFile( prefix + "TIMINGS" + ".csv" );
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char *argv[])
 {
