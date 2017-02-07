@@ -33,7 +33,7 @@
 #include <Misc/Parameters.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
+static const char* s_models[]  = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
 
 const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
@@ -200,6 +200,11 @@ public:
 	void clearOutputTexture(GLuint texture);
 	void loadShaderDefines();
 	void handleCsvProfiling();
+
+	void handleVolume();
+	void handleResolutionPreset();
+	void handleNumLayersPreset();
+	void handleFieldOfViewPreset();
 
 	void recompileShaders();
 	void rebuildFramebuffers(); 
@@ -382,6 +387,11 @@ void CMainApplication::initSceneVariables()
 	updateView();
 	updatePerspective();
 	updateScreenToViewMatrix();
+
+	// volume radius == 1.0f
+	s_volumeSize = glm::vec3( 2.0f * sqrtf( 1.0f / 3.0f ) );
+
+	float radius = sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
 
 	s_modelToTexture = glm::mat4( // swap components
 		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
@@ -663,6 +673,72 @@ void CMainApplication::pollEvents()
 	pollSDLEvents(m_pWindow, m_sdlEventFunc);
 }
 
+void CMainApplication::handleVolume()
+{
+	activateVolume(m_volumeData[m_iActiveModel]);
+	{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+		static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
+		if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
+			shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
+			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+		}
+		if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
+		m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+		m_pRaycastStereoShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
+	}}
+	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
+}
+
+void CMainApplication::handleNumLayersPreset()
+{
+	// TODO adjust num layers
+
+	// rebuild fbos
+	rebuildFramebuffers();
+
+	// TODO compute ideal model position
+	// compute new f such that numLayers == d_p
+}
+
+void CMainApplication::handleResolutionPreset()
+{
+	// TODO adjust resolution
+
+	// rebuild fbos
+	rebuildFramebuffers();
+
+	// TODO compute ideal model position
+	float b = s_eyeDistance;
+	float w = m_textureResolution.x;
+	float d_p = (float) m_iNumLayers;
+	float alpha = glm::radians(s_fovY * 0.5f);
+	float radius = 1.0f;
+
+	// variant 1: ray from near to infinity
+	//float f = b / ( tanf( alpha ) * (2.0f / w) * d_p );
+
+	// variant 2: ray from near to outer bounds
+	float d1 = tanf(alpha) * (2.0f / w) * d_p;
+	float r = 2.0f * radius;
+	float p = (d1 * r - b) / d1;
+	float q = (b - b * r) / d1;
+	float f = -(p /2.0f) + sqrtf( powf(p/2.0f,2.0f) - q); 
+
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( radius + f )));
+}
+
+void CMainApplication::handleFieldOfViewPreset()
+{
+	// TODO adjust fov
+
+	// TODO update matrices etc
+
+	// TODO compute ideal model position
+	// compute new f such that d_p == numLayers
+	// set model.z = f - radius	
+	// TODO update model matrix
+}
 ////////////////////////////////     GUI      ////////////////////////////////
 void CMainApplication::updateGui()
 {
@@ -694,19 +770,7 @@ void CMainApplication::updateGui()
 
 	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
     {
-		activateVolume(m_volumeData[m_iActiveModel]);
-		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-			static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
-			if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
-				shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
-				s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-			}
-			if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
-			m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-			m_pRaycastStereoShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-		}}
-		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
-		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
+		handleVolume();
     }
 
 	if(changed)
@@ -756,6 +820,21 @@ void CMainApplication::updateGui()
 		TextureTools::saveTexture("LEFT.png", m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture("RIGHT.png", m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture("RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	}
+
+	if (ImGui::Button("Resolution Preset"))
+	{
+		handleResolutionPreset();
+	}
+	
+	if (ImGui::Button("Num Layers Preset"))
+	{
+		handleNumLayersPreset();
+	}
+	
+	if (ImGui::Button("Field of View Preset"))
+	{
+		handleFieldOfViewPreset();
 	}
 
 	/////////// PROFILING /////////////////////
@@ -914,8 +993,9 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
 	m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 
-	float s_zRayEnd   = abs(s_translation[3].z) + sqrt(2.0)*0.5f;
-	float s_zRayStart = abs(s_translation[3].z) - sqrt(2.0)*0.5f;
+	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+	float s_zRayEnd   = abs(s_translation[3].z) + radius;
+	float s_zRayStart = abs(s_translation[3].z) - radius;
 	float e = s_eyeDistance;
 	float w = m_textureResolution.x;
 	float t_near = (s_zRayStart) / s_near;
