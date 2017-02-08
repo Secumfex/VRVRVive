@@ -205,6 +205,7 @@ public:
 	void handleResolutionPreset();
 	void handleNumLayersPreset();
 	void handleFieldOfViewPreset();
+	float getIdealNearValue(); //!< returns the computed 'near' value
 
 	void recompileShaders();
 	void rebuildFramebuffers(); 
@@ -372,14 +373,17 @@ void CMainApplication::loadVolumes()
 	/////////////////////     Scene / View Settings     //////////////////////////
 void CMainApplication::initSceneVariables()
 {
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -2.0f));
+	// volume radius == 1.0f
+	s_volumeSize = glm::vec3( 2.0f * sqrtf( 1.0f / 3.0f ) );
+	float radius = sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+
 	s_scale = glm::scale(glm::vec3(1.0f, 1.0f, 1.0f));
-	updateModel();
 
 	s_eye = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	s_center = s_translation[3];
 	s_aspect = m_textureResolution.x / m_textureResolution.y;
 	s_fovY = 45.0f;
+	s_near = getIdealNearValue();
 
 	m_textureToProjection_r = s_perspective * s_view_r;
 
@@ -388,11 +392,6 @@ void CMainApplication::initSceneVariables()
 	updatePerspective();
 	updateScreenToViewMatrix();
 
-	// volume radius == 1.0f
-	s_volumeSize = glm::vec3( 2.0f * sqrtf( 1.0f / 3.0f ) );
-
-	float radius = sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
-
 	s_modelToTexture = glm::mat4( // swap components
 		glm::vec4(1.0f, 0.0f, 0.0f, 0.0f), // column 1
 		glm::vec4(0.0f, 0.0f, 1.0f, 0.0f), // column 2
@@ -400,6 +399,9 @@ void CMainApplication::initSceneVariables()
 		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)) //column 4 
 		* glm::inverse(glm::scale(s_volumeSize)) // moves origin to front left
 		* glm::translate(glm::vec3(s_volumeSize.x * 0.5f, s_volumeSize.y * 0.5f, -s_volumeSize.z * 0.5f));
+
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	updateModel();
 }
 
 void CMainApplication::loadGeometries(){
@@ -557,7 +559,6 @@ void CMainApplication::initUniforms()
 {
 	m_pUvwShader->update("model", s_translation * s_rotation * s_scale);
 	m_pUvwShader->update("view", s_view);
-	m_pUvwShader->update("projection", s_perspective);
 
 	m_pRaycastShader->update("uStepSize", s_rayStepSize);
 	m_pRaycastStereoShader->update("uStepSize", s_rayStepSize);
@@ -690,6 +691,28 @@ void CMainApplication::handleVolume()
 	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
 }
 
+float CMainApplication::getIdealNearValue()
+{
+	// what we have right now
+	float b = s_eyeDistance;
+	float w = m_textureResolution.x;
+	float d_p = (float) m_iNumLayers;
+	float alpha = glm::radians(s_fovY * 0.5f);
+	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+
+	// variant 1: ray from near to infinity
+	//float f = b / ( tanf( alpha ) * (2.0f / w) * d_p );
+
+	// variant 2: ray from near to outer bounds
+	float r = radius;
+	float s = d_p * tanf(alpha) * (2.0f / w);
+	float p = 2.0f * r;
+	float q = -( (b * 2.0f * r) / s );
+	float f = -(p /2.0f) + sqrtf( powf(p/2.0f,2.0f) - q); 
+
+	return f;
+}
+
 void CMainApplication::handleNumLayersPreset()
 {
 	// TODO adjust num layers
@@ -697,8 +720,15 @@ void CMainApplication::handleNumLayersPreset()
 	// rebuild fbos
 	rebuildFramebuffers();
 
-	// TODO compute ideal model position
-	// compute new f such that numLayers == d_p
+	s_near = getIdealNearValue();
+	
+	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	updateModel();
+
+	updateNearHeightWidth();
+	updatePerspective();
+	updateScreenToViewMatrix();
 }
 
 void CMainApplication::handleResolutionPreset()
@@ -708,36 +738,33 @@ void CMainApplication::handleResolutionPreset()
 	// rebuild fbos
 	rebuildFramebuffers();
 
-	// TODO compute ideal model position
-	float b = s_eyeDistance;
-	float w = m_textureResolution.x;
-	float d_p = (float) m_iNumLayers;
-	float alpha = glm::radians(s_fovY * 0.5f);
-	float radius = 1.0f;
+	//  compute ideal model position
+	s_near = getIdealNearValue();
 
-	// variant 1: ray from near to infinity
-	//float f = b / ( tanf( alpha ) * (2.0f / w) * d_p );
+	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	updateModel();
 
-	// variant 2: ray from near to outer bounds
-	float d1 = tanf(alpha) * (2.0f / w) * d_p;
-	float r = 2.0f * radius;
-	float p = (d1 * r - b) / d1;
-	float q = (b - b * r) / d1;
-	float f = -(p /2.0f) + sqrtf( powf(p/2.0f,2.0f) - q); 
-
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( radius + f )));
+	updateNearHeightWidth();
+	updatePerspective();
+	updateScreenToViewMatrix();
 }
 
 void CMainApplication::handleFieldOfViewPreset()
 {
 	// TODO adjust fov
 
-	// TODO update matrices etc
+	// compute ideal model position
+	s_near = getIdealNearValue();
 
-	// TODO compute ideal model position
-	// compute new f such that d_p == numLayers
-	// set model.z = f - radius	
-	// TODO update model matrix
+	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	updateModel();
+
+	updateNearHeightWidth();
+	updatePerspective();
+	updateScreenToViewMatrix();
+
 }
 ////////////////////////////////     GUI      ////////////////////////////////
 void CMainApplication::updateGui()
@@ -832,6 +859,7 @@ void CMainApplication::updateGui()
 		handleNumLayersPreset();
 	}
 	
+	ImGui::SliderFloat("Field Of View", &s_fovY, 10.0f, 120.0f);
 	if (ImGui::Button("Field of View Preset"))
 	{
 		handleFieldOfViewPreset();
@@ -961,6 +989,7 @@ void CMainApplication::handleCsvProfiling()
 void CMainApplication::updateCommonUniforms()
 {
 	m_pUvwShader->update("model", s_model);
+	m_pUvwShader->update("projection", s_perspective);
 
 	m_pRaycastStereoShader->update( "uTextureToProjection_r", m_textureToProjection_r ); //since position map contains s_view space coords
 
@@ -996,14 +1025,16 @@ void CMainApplication::updateCommonUniforms()
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
 	float s_zRayEnd   = abs(s_translation[3].z) + radius;
 	float s_zRayStart = abs(s_translation[3].z) - radius;
-	float e = s_eyeDistance;
+	float b = s_eyeDistance;
 	float w = m_textureResolution.x;
+
 	float t_near = (s_zRayStart) / s_near;
 	float t_far  = (s_zRayEnd)  / s_near;
 	float nW = s_nearW;
-	float pixelOffsetFar  = (1.0f / t_far)  * (e * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
-	float pixelOffsetNear = (1.0f / t_near) * (e * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
-		
+
+	float pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
+	float pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
+
 	m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
 	m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
 		
@@ -1077,12 +1108,12 @@ void CMainApplication::renderViews()
 	m_frame.Timings.getBack().stopTimerElapsed();
 
 	// clear output texture
+	m_frame.Timings.getBack().timestamp("Raycast Stereo");
 	m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
 	clearOutputTexture( m_stereoOutputTextureArray );
 	m_frame.Timings.getBack().stopTimerElapsed();
 
 	// render stereo images in a single pass		
-	m_frame.Timings.getBack().timestamp("Raycast Stereo");
 	m_frame.Timings.getBack().beginTimerElapsed("UVW");
 	m_pUvwShader->update("view", s_view);
 	m_pUvw->setFrameBufferObject(m_pUvwFBO);
