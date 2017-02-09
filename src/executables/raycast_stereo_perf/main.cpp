@@ -696,7 +696,7 @@ float CMainApplication::getIdealNearValue()
 	// what we have right now
 	float b = s_eyeDistance;
 	float w = m_textureResolution.x;
-	float d_p = (float) m_iNumLayers;
+	float d_p = (float) m_iNumLayers + 1; // plus for rounding to bigger range
 	float alpha = glm::radians(s_fovY * 0.5f);
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
 
@@ -1023,23 +1023,31 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	float s_zRayEnd   = abs(s_translation[3].z) + radius;
-	float s_zRayStart = abs(s_translation[3].z) - radius;
-	float b = s_eyeDistance;
-	float w = m_textureResolution.x;
+	float s_zRayEnd   = max(s_near, abs(s_translation[3].z) + radius);
+	float s_zRayStart = max(s_near, abs(s_translation[3].z) - radius);
 
 	float t_near = (s_zRayStart) / s_near;
 	float t_far  = (s_zRayEnd)  / s_near;
 	float nW = s_nearW;
 
-	float pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
-	float pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
+	//float pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
+	//float pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
 
-	m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
+	float b = s_eyeDistance;
+	float w = m_textureResolution.x;
+	float alpha = glm::radians(s_fovY * 0.5f);
+	// variant 2: ray from near to outer bounds
+	float s = w / (2.0f * s_near * tanf(alpha) );
+	float pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
+	float pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
+	float imageOffset =  b * s;
+	//m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
 	m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
+	m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
 		
 	ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
 	ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+	ImGui::Value("Pixel Offset of Images", imageOffset);
 	ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
 	ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
 	ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
