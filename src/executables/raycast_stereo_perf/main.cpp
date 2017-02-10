@@ -11,6 +11,7 @@
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
 #include <Rendering/RenderPass.h>
+#include <Rendering/ComputePass.h>
 #include <Importing/TextureTools.h>
 
 #include "UI/imgui/imgui.h"
@@ -86,6 +87,7 @@ public: // who cares
 	ShaderProgram* m_pShowTexShader;
 	ShaderProgram* m_pShowLayerShader;
 	ShaderProgram* m_pComposeTexArrayShader;
+	ShaderProgram* m_pRaycastStereoComputeShader;
 
 	// m_pRaycastFBO bookkeeping
 	FrameBufferObject* m_pUvwFBO;
@@ -104,6 +106,7 @@ public: // who cares
 	RenderPass* m_pShowTex;
 	RenderPass* m_pShowLayer;
 	RenderPass* m_pComposeTexArray;
+	ComputePass* m_pStereoRaycastCompute;
 
 	// Event handler bookkeeping
 	std::function<bool(SDL_Event*)> m_sdlEventFunc;
@@ -435,6 +438,10 @@ void CMainApplication::loadRaycastingShaders()
 	DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
 	m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
 
+	DEBUGLOG->log("Shader Compilation: ray casting shader - single pass stereo compute"); DEBUGLOG->indent();
+	std::vector<std::string> shaderDefinesStereoCompute(shaderDefinesStereo);
+	shaderDefinesStereoCompute.push_back("STEREO_SINGLE_OUTPUT");
+	m_pRaycastStereoComputeShader = new ShaderProgram("/compute/unified_raycast.comp", shaderDefinesStereoCompute); DEBUGLOG->outdent();
 }
 
 
@@ -450,7 +457,6 @@ void CMainApplication::loadShaders()
 	
 	DEBUGLOG->log("Shader Compilation: show texture shader"); DEBUGLOG->indent();
 	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);DEBUGLOG->outdent();
-
 }
 
 void CMainApplication::initRaycastingFramebuffers()
@@ -533,6 +539,11 @@ void CMainApplication::initRenderPasses()
 	m_pShowTex = new RenderPass(m_pShowTexShader, 0);
 	m_pShowTex->addRenderable(m_pQuad);
 	DEBUGLOG->outdent();
+
+	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
+	m_pStereoRaycastCompute = new ComputePass(m_pRaycastStereoComputeShader);
+	DEBUGLOG->outdent();
+
 }
 
 
@@ -565,6 +576,11 @@ void CMainApplication::initTextureUniforms()
 	m_pRaycastStereoShader->update("back_uvw_map", 2);
 	m_pRaycastStereoShader->update("front_uvw_map", 4);
 
+	m_pRaycastStereoComputeShader->update("volume_texture", 0);
+	m_pRaycastStereoComputeShader->update("transferFunctionTex", 1);
+	m_pRaycastStereoComputeShader->update("back_uvw_map", 2);
+	m_pRaycastStereoComputeShader->update("front_uvw_map", 4);
+
 	m_pComposeTexArrayShader->update( "tex", 6);
 
 	m_pShowLayerShader->update("tex", 6);
@@ -577,6 +593,7 @@ void CMainApplication::initUniforms()
 
 	m_pRaycastShader->update("uStepSize", s_rayStepSize);
 	m_pRaycastStereoShader->update("uStepSize", s_rayStepSize);
+	m_pRaycastStereoComputeShader->update("uStepSize", s_rayStepSize);
 }
 
 void CMainApplication::initGUI()
@@ -1039,6 +1056,7 @@ void CMainApplication::updateCommonUniforms()
 	m_pUvwShader->update("projection", s_perspective);
 
 	m_pRaycastStereoShader->update( "uTextureToProjection_r", m_textureToProjection_r ); //since position map contains s_view space coords
+	m_pRaycastStereoComputeShader->update( "uTextureToProjection_r", m_textureToProjection_r );
 
 	/************* update color mapping parameters ******************/
 	// ray start/end parameters
@@ -1047,10 +1065,17 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastStereoShader->update("uLodBegin", s_lodBegin);
 	m_pRaycastStereoShader->update("uLodRange", s_lodRange);
 
+	// ray start/end parameters
 	m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
 	m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
 	m_pRaycastShader->update("uLodBegin", s_lodBegin);
 	m_pRaycastShader->update("uLodRange", s_lodRange);
+
+	// ray start/end parameters
+	m_pRaycastStereoComputeShader->update("uStepSize", s_rayStepSize); 	  // ray step size
+	m_pRaycastStereoComputeShader->update("uLodMaxLevel", s_lodMaxLevel);
+	m_pRaycastStereoComputeShader->update("uLodBegin", s_lodBegin);
+	m_pRaycastStereoComputeShader->update("uLodRange", s_lodRange);
 
 	// color mapping parameters
 	m_pRaycastStereoShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
@@ -1058,6 +1083,9 @@ void CMainApplication::updateCommonUniforms()
 
 	m_pRaycastShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 	m_pRaycastShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in m_pWindow
+
+	m_pRaycastStereoComputeShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
+	m_pRaycastStereoComputeShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in m_pWindow
 
 	/************* update experimental  parameters ******************/
 	//m_pRaycastStereoShader->update("uWriteStereo", s_writeStereo);
@@ -1068,6 +1096,8 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastStereoShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 	m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
 	m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+	m_pRaycastStereoComputeShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
+	m_pRaycastStereoComputeShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 	}}
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
@@ -1184,21 +1214,47 @@ void CMainApplication::renderViews()
 	m_pUvw->render();
 	m_frame.Timings.getBack().stopTimerElapsed();
 
+
 	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
-	m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
-	m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
-	m_pRaycastStereoShader->update("uProjection", s_perspective);
-	m_pStereoRaycast->render();
+	static bool useCompute = true;
+	ImGui::Checkbox("Use Compute", &useCompute);
+	if (!useCompute)
+	{
+		m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+		m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
+		m_pRaycastStereoShader->update("uProjection", s_perspective);
+		m_pStereoRaycast->render();
+	}
+	else // render stereo images in single pass using compute
+	{
+		m_pFBO_single_r->bind();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		///////////////////////////// DEBUG ///////////////////////////////
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA8, GL_READ_WRITE, 0, GL_FALSE);		
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1 , GL_RGBA8);		
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8);		
+
+		glm::ivec3 localGroupSize = m_pStereoRaycastCompute->getLocalGroupSize();
+		m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+		m_pRaycastStereoComputeShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
+		m_pRaycastStereoComputeShader->update("uProjection", s_perspective);
+		m_pStereoRaycastCompute->dispatch( ceil(m_textureResolution.x / localGroupSize.x), ceil(m_textureResolution.y/ localGroupSize.y) );
+		///////////////////////////////////////////////////////////////////
+	}
 	m_frame.Timings.getBack().stopTimerElapsed();
 
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
 	// compose right image from single pass output
+	if (!useCompute)
+	{
 	m_frame.Timings.getBack().beginTimerElapsed("Compose");
 	m_pComposeTexArray->render();
 	m_frame.Timings.getBack().stopTimerElapsed();
 
 	m_frame.Timings.getBack().timestamp("Finished");
+	}
 	// display fbo contents
 	m_pShowTexShader->updateAndBindTexture("tex", 7, m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 	m_pShowTex->setViewport((int)0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
@@ -1479,7 +1535,7 @@ int main(int argc, char *argv[])
 	DEBUGLOG->setAutoPrint(true);
 	
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
-	
+
 	pMainApplication->loadShaderDefines();
 
 	pMainApplication->initSceneVariables();
