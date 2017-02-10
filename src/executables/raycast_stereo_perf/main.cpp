@@ -364,7 +364,7 @@ void CMainApplication::loadVolumes()
 	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
-	activateVolume<float>(m_volumeData[0]);
+	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 	checkGLError(true);
@@ -422,6 +422,10 @@ void CMainApplication::loadRaycastingShaders()
 	std::vector<std::string> shaderDefinesStereo(m_shaderDefines);
 	shaderDefinesStereo.push_back("STEREO_SINGLE_PASS");
 	m_pRaycastStereoShader = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", shaderDefinesStereo); DEBUGLOG->outdent();
+
+	DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
+	m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
+
 }
 
 
@@ -431,9 +435,6 @@ void CMainApplication::loadShaders()
 	m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
 
 	loadRaycastingShaders();
-
-	DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
-	m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
 
 	DEBUGLOG->log("Shader Compilation: show layer shader"); DEBUGLOG->indent();
 	m_pShowLayerShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(1,"ARRAY_TEXTURE"));DEBUGLOG->outdent();
@@ -523,7 +524,7 @@ void CMainApplication::initRenderPasses()
 
 void CMainApplication::initTextureUnits()
 {
-	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[0], GL_TEXTURE0, GL_TEXTURE_3D);
+	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
 
 	OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
@@ -677,16 +678,21 @@ void CMainApplication::pollEvents()
 void CMainApplication::handleVolume()
 {
 	activateVolume(m_volumeData[m_iActiveModel]);
-	{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-		static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
-		if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
-			shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
-			s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-		}
-		if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
-		m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-		m_pRaycastStereoShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-	}}
+	// adjust scale
+	if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
+		s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+		s_scale = glm::scale(glm::vec3(1.0f, 0.79166, 1.0f));
+	}		
+	if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {
+		s_scale = glm::scale(glm::vec3(1.0f, 1.5f * 0.42578125f, 1.0f));
+	}
+	if ( m_iActiveModel == TransferFunctionPresets::CT_Head ) {
+		s_scale = glm::scale(glm::vec3(1.0f, 0.8828f, 1.0f));
+	}
+	if ( m_iActiveModel == TransferFunctionPresets::Homogeneous || m_iActiveModel == TransferFunctionPresets::Radial_Gradient ) {
+		s_scale = glm::scale(glm::vec3(1.0f));
+	}
+
 	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
 	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
 }
@@ -1014,17 +1020,18 @@ void CMainApplication::updateCommonUniforms()
 
 	/************* update experimental  parameters ******************/
 	//m_pRaycastStereoShader->update("uWriteStereo", s_writeStereo);
-
+	{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
 	static glm::vec3 shadowDir(0.0f,-0.5f,-1.0f);
 	ImGui::SliderFloat3("Shadow Dir", glm::value_ptr(shadowDir), -1.0f, 1.0f);
 	m_pRaycastStereoShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
 	m_pRaycastStereoShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
 	m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
 	m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+	}}
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	float s_zRayEnd   = max(s_near, abs(s_translation[3].z) + radius);
-	float s_zRayStart = max(s_near, abs(s_translation[3].z) - radius);
+	float s_zRayEnd   = max(s_near, abs(s_translation[3].z - radius));
+	float s_zRayStart = max(s_near, abs(s_translation[3].z + radius));
 
 	float t_near = (s_zRayStart) / s_near;
 	float t_far  = (s_zRayEnd)  / s_near;
@@ -1038,12 +1045,12 @@ void CMainApplication::updateCommonUniforms()
 	float alpha = glm::radians(s_fovY * 0.5f);
 	// variant 2: ray from near to outer bounds
 	float s = w / (2.0f * s_near * tanf(alpha) );
+	float imageOffset =  b * s;
 	float pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
 	float pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
-	float imageOffset =  b * s;
-	//m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
+	m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
 	m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
-	m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
+	//m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
 		
 	ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
 	ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
@@ -1051,6 +1058,14 @@ void CMainApplication::updateCommonUniforms()
 	ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
 	ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
 	ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
+
+	{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
+	static int debugIdx = -1;
+	ImGui::SliderInt( "DEBUG LAYER", &debugIdx, -1, m_iNumLayers - 1 ); 
+	if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
+	if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
+	}}
+
 	//////////////////////////////////////////////////////////////////////////////
 }
 
@@ -1194,6 +1209,7 @@ void CMainApplication::recompileShaders()
 	// set ShaderProgram References
 	m_pSimpleRaycast->setShaderProgram(m_pRaycastShader);
 	m_pStereoRaycast->setShaderProgram(m_pRaycastStereoShader);
+	m_pComposeTexArray->setShaderProgram(m_pComposeTexArrayShader);
 
 	// update uniforms
 	initTextureUniforms();

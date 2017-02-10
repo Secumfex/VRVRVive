@@ -12,7 +12,13 @@ in vec3 passPosition;
 uniform sampler2DArray tex;
 uniform float uPixelOffsetFar;
 uniform float uPixelOffsetNear;
-uniform float uImageOffset;
+
+#ifdef DEBUG_IDX
+uniform int uDebugIdx;
+#endif
+#ifdef DEBUG_LAYER
+uniform int uDebugLayer;
+#endif
 
 //!< out-variables
 layout(location = 0) out vec4 fragColor;
@@ -32,9 +38,9 @@ void main()
 	
 	int d_p = texSize.z;
 	float x_r = passPosition.x * texSize.x;
-	float x_0 = x_r - uPixelOffsetNear;
-	int x_l = d_p + int(x_0);
-	int initialLayerIdx = int(uImageOffset) - ( x_l % d_p ) - 1; // this defines the "entry" layer for this pixel
+	float x_l = (x_r + uPixelOffsetNear);
+	int initialLayerIdx = d_p - ( int(x_l) % d_p ) - 1; // this defines the "entry" layer for this pixel
+	int numLayers = int( floor(uPixelOffsetNear - uPixelOffsetFar) );
 
 	fragColor = vec4(0.0);
 
@@ -46,7 +52,7 @@ void main()
 
 	// blend layers (front to back)
 	//for (int i = initialLayerIdx; i != endLayerIdx; i = (i-1) % texSize.z)
-	for (int i = 0; i < texSize.z; i ++)
+	for (int i = 0; i < numLayers; i ++)
 	{
 		// BACK TO FRONT
 		//vec4 texColor = texture(tex, vec3(passPosition.xy, (initialLayerIdx - i) % texSize.z) ); // blend
@@ -55,6 +61,14 @@ void main()
 
 		// FRONT TO BACK
 		vec4 texColor = texture(tex, vec3(passPosition.xy, (initialLayerIdx + i) % texSize.z) ); // blend
+		
+		#ifdef DEBUG_IDX
+		if (uDebugIdx == i) { texColor = vec4(texColor.a);}
+		#endif
+		#ifdef DEBUG_LAYER
+		if (uDebugLayer == (initialLayerIdx + i) % texSize.z) { texColor = vec4(texColor.a);}
+		#endif
+		 
 		fragColor.rgb = (1.0 - fragColor.a) * (texColor.rgb) + fragColor.rgb;
 		fragColor.a = (1.0 - fragColor.a) * texColor.a + fragColor.a;
 	}

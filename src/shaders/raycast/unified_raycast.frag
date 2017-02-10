@@ -21,6 +21,9 @@
 #ifndef ALPHA_SCALE
 #define ALPHA_SCALE 20.0
 #endif
+#ifndef COLOR_SCALE
+#define COLOR_SCALE 1.0
+#endif
 
 #ifdef RANDOM_OFFSET 
 float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
@@ -192,7 +195,7 @@ vec4 transferFunction(float value, float stepSize)
 	
 	vec4 color = texture(transferFunctionTex, clamped);
 	color.a *= ALPHA_SCALE * stepSize;
-	color.rgb *= (color.a);
+	color.rgb *= COLOR_SCALE * (color.a);
 
 	return color;
 }
@@ -268,7 +271,29 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 
 		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
 
-		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+		if (sampleColor.a < 0.00001) {
+			#ifdef STEREO_SINGLE_PASS
+			// reproject Coords, check whether image coords changed
+			ivec2 curTexelCoord_r = ivec2( reprojectCoords( curUVW ) );
+			if ( curTexelCoord_r.x > texelCoord_r.x ) //changed
+			{
+				// reproject color, then reset segment color
+				for(int i = texelCoord_r.x; i < curTexelCoord_r.x; i++)
+				{
+					storeColor( segmentColor_r, ivec2(i, texelCoord_r.y)
+						#ifndef STEREO_SINGLE_OUTPUT
+						, layerIdx 
+						#endif
+					);
+				}
+
+				// update/reset for next segment
+				texelCoord_r = curTexelCoord_r;
+				segmentColor_r = vec4(0);
+			}
+			#endif
+			continue; 
+		} // skip invisible voxel
 
 		#ifdef AMBIENT_OCCLUSION
 			float occlusion = 0.0;	
