@@ -35,6 +35,13 @@
 ////////////////////// PARAMETERS /////////////////////////////
 static const char* s_models[]  = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
 
+static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)", "1.4x Vive (1512)", "2.0x Vive (2160)"};
+static const int resolutionPresets[]  = {256, 512, 768, 1080, 1512, 2160};
+static const char* numLayersPresetsStr[]  = {"16", "32", "64", "96"};
+static const int numLayersPresets[]  = {16, 32, 64, 96};
+static const char* fovPresetsStr[]  = {"45", "90", "Vive (110)"};
+static const float fovPresets[]  = {45, 90, 110};
+
 const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
 };
@@ -202,15 +209,17 @@ public:
 	void handleCsvProfiling();
 
 	void handleVolume();
-	void handleResolutionPreset();
-	void handleNumLayersPreset();
-	void handleFieldOfViewPreset();
+	void handleResolutionPreset(int resolution);
+	void handleNumLayersPreset(int numLayers);
+	void handleFieldOfViewPreset(float fov);
 	float getIdealNearValue(); //!< returns the computed 'near' value
 
 	void recompileShaders();
-	void rebuildFramebuffers(); 
+	void rebuildFramebuffers();
+	void rebuildLayerTexture();
 	void loadRaycastingShaders();
 	void initRaycastingFramebuffers();
+	void initLayerTexture();
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -225,7 +234,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_fpsCounter(120)
 	, m_iCurFpsIdx(0)
 	, m_iNumLayers(32)
-	, m_textureResolution(800, 800)
+	, m_textureResolution(768, 768)
 	, m_pboHandle(-1)
 	, m_iCsvCounter(0)
 	, m_iCsvNumFramesToProfile(150)
@@ -457,6 +466,12 @@ void CMainApplication::initRaycastingFramebuffers()
 	DEBUGLOG->outdent();
 }
 
+void CMainApplication::initLayerTexture()
+{
+	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo output texture array"); DEBUGLOG->indent();
+	m_stereoOutputTextureArray = createTextureArray((int)m_textureResolution.x, (int)m_textureResolution.y, m_iNumLayers, GL_RGBA16F);
+	DEBUGLOG->outdent();
+}
 
 void CMainApplication::initFramebuffers()
 {
@@ -471,9 +486,8 @@ void CMainApplication::initFramebuffers()
 
 	initRaycastingFramebuffers();
 
-	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo output texture array"); DEBUGLOG->indent();
-	m_stereoOutputTextureArray = createTextureArray((int)m_textureResolution.x, (int)m_textureResolution.y, m_iNumLayers, GL_RGBA16F);
-	DEBUGLOG->outdent();
+	initLayerTexture();
+
 }
 
 
@@ -719,12 +733,13 @@ float CMainApplication::getIdealNearValue()
 	return f;
 }
 
-void CMainApplication::handleNumLayersPreset()
+void CMainApplication::handleNumLayersPreset(int numLayers)
 {
-	// TODO adjust num layers
+	// adjust num layers
+	m_iNumLayers = numLayers;
 
 	// rebuild fbos
-	rebuildFramebuffers();
+	rebuildLayerTexture();
 
 	s_near = getIdealNearValue();
 	
@@ -737,9 +752,10 @@ void CMainApplication::handleNumLayersPreset()
 	updateScreenToViewMatrix();
 }
 
-void CMainApplication::handleResolutionPreset()
+void CMainApplication::handleResolutionPreset(int resolution)
 {
-	// TODO adjust resolution
+	// adjust resolution
+	m_textureResolution = glm::vec2(resolution, resolution);
 
 	// rebuild fbos
 	rebuildFramebuffers();
@@ -756,9 +772,10 @@ void CMainApplication::handleResolutionPreset()
 	updateScreenToViewMatrix();
 }
 
-void CMainApplication::handleFieldOfViewPreset()
+void CMainApplication::handleFieldOfViewPreset(float fov)
 {
-	// TODO adjust fov
+	// adjust fov
+	s_fovY = fov;
 
 	// compute ideal model position
 	s_near = getIdealNearValue();
@@ -790,6 +807,8 @@ void CMainApplication::updateGui()
 
 	ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.0f, 2.0f);
 	
+	if (ImGui::CollapsingHeader("Transfer Function"))
+    {
 	ImGui::Columns(2, "mycolumns2", true);
     ImGui::Separator();
 	bool changed = false;
@@ -801,17 +820,21 @@ void CMainApplication::updateGui()
 		ImGui::NextColumn();
 	}
 
-	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
-    {
-		handleVolume();
-    }
-
 	if(changed)
 	{
 		updateTransferFunctionTex();
 	}
     ImGui::Columns(1);
     ImGui::Separator();
+	}
+
+	ImGui::Text("Active Model");
+	ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
+	if (ImGui::ListBox("##activemodel", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 3))
+    {
+		handleVolume();
+    }
+	ImGui::PopItemWidth();
 
 	ImGui::PushItemWidth(-100);
 	if (ImGui::CollapsingHeader("Volume Rendering Settings"))
@@ -855,21 +878,39 @@ void CMainApplication::updateGui()
 		TextureTools::saveTexture("RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 	}
 
-	if (ImGui::Button("Resolution Preset"))
+	ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
+	{static int selectedPreset = 2;
+	ImGui::BeginGroup();
+	ImGui::Text("Resolution");
+	if (ImGui::ListBox("##resolutionpresets", &selectedPreset, resolutionPresetsStr, (int)(sizeof(resolutionPresetsStr)/sizeof(*resolutionPresetsStr)),4))
+    {
+		handleResolutionPreset( resolutionPresets[ selectedPreset ]);
+	}}
+	ImGui::EndGroup();
+
+	ImGui::SameLine();
+
+	ImGui::BeginGroup();
+	ImGui::Text("Num Layers");
+	{static int selectedPreset = 1;
+	if (ImGui::ListBox("##numlayerpresets", &selectedPreset, numLayersPresetsStr, (int)(sizeof(numLayersPresetsStr)/sizeof(*numLayersPresetsStr)),4))
 	{
-		handleResolutionPreset();
-	}
-	
-	if (ImGui::Button("Num Layers Preset"))
+		handleNumLayersPreset(numLayersPresets[ selectedPreset ]);
+	}}
+	ImGui::EndGroup();
+
+	ImGui::SameLine();
+
+	ImGui::BeginGroup();
+	ImGui::Text("Field of View");
+	{static int selectedPreset = 0;
+	if (ImGui::ListBox("##fovpresets", &selectedPreset, fovPresetsStr, (int)(sizeof(fovPresetsStr)/sizeof(*fovPresetsStr)),4))
 	{
-		handleNumLayersPreset();
-	}
-	
-	ImGui::SliderFloat("Field Of View", &s_fovY, 10.0f, 120.0f);
-	if (ImGui::Button("Field of View Preset"))
-	{
-		handleFieldOfViewPreset();
-	}
+		handleFieldOfViewPreset( fovPresets[ selectedPreset ]);
+	}}
+	ImGui::EndGroup();
+
+	ImGui::PopItemWidth();
 
 	/////////// PROFILING /////////////////////
 	static bool frame_profiler_visible = false;
@@ -1030,8 +1071,8 @@ void CMainApplication::updateCommonUniforms()
 	}}
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	float s_zRayEnd   = max(s_near, abs(s_translation[3].z - radius));
-	float s_zRayStart = max(s_near, abs(s_translation[3].z + radius));
+	float s_zRayEnd   = max(s_near, -(s_translation[3].z - radius));
+	float s_zRayStart = max(s_near, -(s_translation[3].z + radius));
 
 	float t_near = (s_zRayStart) / s_near;
 	float t_far  = (s_zRayEnd)  / s_near;
@@ -1218,6 +1259,31 @@ void CMainApplication::recompileShaders()
 	DEBUGLOG->outdent();
 }
 
+void CMainApplication::rebuildLayerTexture()
+{
+	DEBUGLOG->log("Rebuilding Layer Texture"); DEBUGLOG->indent();
+	// delete texture array
+	std::vector<GLuint> textures;
+	textures.push_back(m_stereoOutputTextureArray);
+	glDeleteTextures(textures.size(), &textures[0]);
+
+	// delete pixel buffer object
+	glDeleteBuffers(1,&m_pboHandle);
+	m_pboHandle = -1;
+	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
+
+	OPENGLCONTEXT->updateCurrentTextureCache();
+	
+	initLayerTexture();
+
+	// bind textures
+	initTextureUnits();
+
+	DEBUGLOG->outdent();
+}
+
+
+
 void CMainApplication::rebuildFramebuffers()
 {
 	DEBUGLOG->log("Rebuilding Framebuffers"); DEBUGLOG->indent();
@@ -1238,6 +1304,8 @@ void CMainApplication::rebuildFramebuffers()
 	glDeleteBuffers(1,&m_pboHandle);
 	m_pboHandle = -1;
 	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
+	
+	OPENGLCONTEXT->updateCurrentTextureCache();
 
 	initFramebuffers();
 	
