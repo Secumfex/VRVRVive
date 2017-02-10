@@ -26,6 +26,15 @@ class ShaderProgram
 
 public:
 
+
+	/**
+	 * @brief Constructor
+	 * 
+	 * @param computeshader path to the vertexshader
+	 * 
+	 */
+	ShaderProgram(std::string computeshader, const std::vector<std::string>& defines = std::vector<std::string>());
+
 	/**
 	 * @brief Constructor
 	 * 

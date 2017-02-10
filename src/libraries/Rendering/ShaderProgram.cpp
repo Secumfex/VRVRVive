@@ -12,6 +12,31 @@
 
 using namespace std;
 
+ShaderProgram::ShaderProgram(std::string computeshader, const std::vector<std::string>& defines)
+{
+    // Initially, we have zero shaders attached to the program
+	m_shaderCount = 0;
+
+	// Generate a unique Id / handle for the shader program
+	// Note: We MUST have a valid rendering context before generating
+	// the m_shaderProgramHandle or it causes a segfault!
+	m_shaderProgramHandle = glCreateProgram();
+
+    //Set up fragment shader
+	Shader computeShader(GL_COMPUTE_SHADER);
+	computeShader.loadFromFile(SHADERS_PATH + computeshader);
+	computeShader.addDefines(defines);
+	computeShader.compile();
+
+	// Set up shader program
+	attachShader(computeShader);
+	link();
+
+    mapShaderProperties(GL_UNIFORM, &m_uniformMap);
+    mapShaderProperties(GL_PROGRAM_INPUT, &m_inputMap);
+    mapShaderProperties(GL_PROGRAM_OUTPUT, &m_outputMap);
+}
+
 ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, const std::vector<std::string>& defines)
 {
     // Initially, we have zero shaders attached to the program
@@ -217,7 +242,7 @@ void ShaderProgram::attachShader(Shader shader)
 void ShaderProgram::link()
 {
 	// If we have at least two shaders (like a vertex shader and a fragment shader)...
-	if (m_shaderCount >= 2)
+	if (m_shaderCount >= 1)
 	{
 		// Perform the linking process
 		glLinkProgram(m_shaderProgramHandle);
@@ -228,7 +253,6 @@ void ShaderProgram::link()
 		{
 			DEBUGLOG->log("ERROR: Shader program linking failed.");
 			printShaderProgramInfoLog();
-			glfwTerminate();
 		}
 		else
 		{
@@ -237,8 +261,7 @@ void ShaderProgram::link()
 	}
 	else
 	{
-		DEBUGLOG->log("Can't link shaders - you need at least 2, but attached shader count is only: " + DebugLog::to_string(m_shaderCount));
-		glfwTerminate();
+		DEBUGLOG->log("Can't link shaders - you need at least 1, but attached shader count is only: " + DebugLog::to_string(m_shaderCount));
 	}
 }
 
