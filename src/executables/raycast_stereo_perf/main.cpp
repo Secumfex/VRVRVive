@@ -1350,6 +1350,7 @@ void CMainApplication::recompileShaders()
 	// delete shaders
 	delete m_pRaycastShader;
 	delete m_pRaycastStereoShader;
+	delete m_pRaycastStereoComputeShader;
 
 	// reload shader defines
 	loadShaderDefines();
@@ -1360,6 +1361,7 @@ void CMainApplication::recompileShaders()
 	// set ShaderProgram References
 	m_pSimpleRaycast->setShaderProgram(m_pRaycastShader);
 	m_pStereoRaycast->setShaderProgram(m_pRaycastStereoShader);
+	m_pStereoRaycastCompute->setShaderProgram(m_pRaycastStereoComputeShader);
 	m_pComposeTexArray->setShaderProgram(m_pComposeTexArrayShader);
 
 	// update uniforms

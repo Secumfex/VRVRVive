@@ -62,6 +62,9 @@ layout(binding = 1, rgba8) writeonly uniform image2D color_image;
 	layout(binding = 2, rgba8) writeonly uniform image2D fragFirst_image;
 #endif
 
+// specify atomic counter to save
+//layout(binding = 0, offset = 0) uniform atomic_uint counter;
+
 // textures
 uniform sampler1D transferFunctionTex;
 uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces
@@ -163,6 +166,7 @@ struct RaycastResult
 	)
 	{
 		#ifdef STEREO_SINGLE_OUTPUT
+			//memoryBarrierImage();
 			vec4 curColor = imageLoad( stereo_image, texelCoord_r );
 			
 			//TODO compute segment length from ray angle to view vector (multiply with uStepSize)
@@ -171,10 +175,12 @@ struct RaycastResult
 			curColor.rgb = (1.0 - curColor.a) * (sampleColor.rgb) + curColor.rgb;
 			curColor.a = (1.0 - curColor.a) * sampleColor.a + curColor.a;
 			vec4 result_color = curColor;
+
 			imageStore( stereo_image, texelCoord_r, result_color );
 		#else 
 			imageStore( stereo_image, ivec3(texelCoord_r, layerIdx), sampleColor );
 		#endif
+		//memoryBarrierImage();
 	}
 
 	/** @brief reproject provided texture coordinate into right image coordinate space [0..res]*/
@@ -424,7 +430,12 @@ vec4 getViewCoord( vec3 screenPos )
 
 void main()
 {
+	//uint cnt = atomicCounterIncrement( counter ); // number of invocation
+	//int x = int(cnt) / imageSize( color_image ).y;// x coordinate 
+	//int y = int(cnt) % imageSize( color_image ).y;    // y coordinate
+	//ivec2 index = ivec2(x,y);
 	ivec2 index = ivec2( gl_GlobalInvocationID.xy );
+
 	ivec2 imageCoord = ivec2( imageSize( color_image ).x - index.x, index.y ); // right to left
 
 	vec2 passUV = ( vec2( imageCoord ) + vec2(0.5) ) / vec2( imageSize( color_image ) );
