@@ -52,6 +52,7 @@ const char* SHADER_DEFINES_CONFIG[] = {
 	"SHADOW_SAMPLING",
 	"AMBIENT_OCCLUSION",
 	"LEVEL_OF_DETAIL",
+	"RANDOM_OFFSET"
 };
 std::vector<std::string> s_shader_defines_config(SHADER_DEFINES_CONFIG, std::end(SHADER_DEFINES_CONFIG));
 
@@ -1023,12 +1024,16 @@ void CMainApplication::handleCsvProfiling()
 		// additional headers
 		headers.push_back("Total Stereo");
 		headers.push_back("Total Single");
+		headers.push_back("Percentage");
 
 		m_configHelper.timings.setHeaders(headers);
 
 		m_configHelper.copyRenderConfig( this );
 		m_configHelper.copyShaderConfig( this );
 		m_configHelper.saveImages( this );
+
+		// clear timings
+		m_configHelper.timings.clearData();
 	}
 
 	if ( m_bCsvDoRun &&  m_iCsvCounter > 0 && m_iCsvCounter <= m_iCsvNumFramesToProfile ) // going to profile 1000 frames
@@ -1053,6 +1058,7 @@ void CMainApplication::handleCsvProfiling()
 		// additional values
 		row.push_back(std::to_string(totalStereo)); // total stereo rendering time
 		row.push_back(std::to_string(totalSingle)); // total single pass time
+		row.push_back(std::to_string(totalSingle / totalStereo)); // percentage of total single pass to total stereo passes time
 
 		m_configHelper.timings.addRow(row);
 	}

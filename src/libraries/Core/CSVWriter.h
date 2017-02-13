@@ -21,7 +21,7 @@ public:
 		if (row.size() != m_headers.size()) { DEBUGLOG->log("ERROR: row columns to number of columns mismatch"); return false; }
 		else{ m_data.insert(m_data.end(), row.begin(), row.end()); return true;}
 	}
-	inline bool clearData(){ m_data.clear(); } 
+	inline void clearData(){ m_data.clear(); } 
 
 	bool writeToFile(std::string name);
 };
