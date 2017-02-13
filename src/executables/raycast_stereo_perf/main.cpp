@@ -178,6 +178,8 @@ public: // who cares
 
 	std::string m_executableName;
 
+	bool m_bUseCompute;
+
 public:
 
 	void profileFPS(float fps);
@@ -223,6 +225,9 @@ public:
 	void loadRaycastingShaders();
 	void initRaycastingFramebuffers();
 	void initLayerTexture();
+
+	void singlePassLayered();
+	void singlePassCompute();
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -243,6 +248,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_iCsvNumFramesToProfile(150)
 	, m_bCsvDoRun(false)
 	, m_iActiveModel(0)
+	, m_bUseCompute(false)
 {
 	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
 
@@ -820,7 +826,7 @@ void CMainApplication::updateGui()
 	m_fDeltaTime = io.DeltaTime;
 
 	ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2,0.8,0.2,1.0) );
-	ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+	ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2( ImGui::GetContentRegionAvailWidth() ,60));
 	ImGui::PopStyleColor();
 
 	ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.0f, 2.0f);
@@ -871,9 +877,8 @@ void CMainApplication::updateGui()
 	}
 	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 
-	//static bool s_writeStereo = true;
-	//ImGui::Checkbox("write stereo", &s_writeStereo); // enable/disable single pass stereo
-	
+	ImGui::Checkbox("Use Compute", &m_bUseCompute);
+
 	ImGui::Checkbox("Show Single Layer", &m_bShowSingleLayer);
 	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
 
@@ -1183,6 +1188,68 @@ void CMainApplication::updateMatrices()
 	m_textureToProjection_r = s_perspective * s_view_r * s_model * glm::inverse( s_modelToTexture ); // texture to model
 }
 
+void CMainApplication::singlePassLayered()
+{
+	// clear output texture
+	m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
+	clearOutputTexture( m_stereoOutputTextureArray );
+	m_frame.Timings.getBack().stopTimerElapsed();
+
+	// render stereo images in a single pass		
+	m_frame.Timings.getBack().beginTimerElapsed("UVW");
+	m_pUvwShader->update("view", s_view);
+	m_pUvw->setFrameBufferObject(m_pUvwFBO);
+	m_pUvw->render();
+	m_frame.Timings.getBack().stopTimerElapsed();
+
+	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
+	OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
+	m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+	m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
+	m_pRaycastStereoShader->update("uProjection", s_perspective);
+	m_pStereoRaycast->render();
+	m_frame.Timings.getBack().stopTimerElapsed();
+
+	// put barrier
+	glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT );
+
+	// compose
+	m_frame.Timings.getBack().beginTimerElapsed("Compose");
+	m_pComposeTexArray->render();
+	m_frame.Timings.getBack().stopTimerElapsed();
+}
+
+void CMainApplication::singlePassCompute()
+{
+	m_frame.Timings.getBack().beginTimerElapsed("UVW");
+	m_pUvwShader->update("view", s_view);
+	m_pUvw->setFrameBufferObject(m_pUvwFBO);
+	m_pUvw->render();
+	m_frame.Timings.getBack().stopTimerElapsed();
+
+	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
+	m_pFBO_single->bind();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	m_pFBO_single_r->bind();
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA8, GL_READ_WRITE, 0, GL_FALSE); // stereo output
+	OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1 , GL_RGBA8, GL_WRITE_ONLY); // color output
+	OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8, GL_WRITE_ONLY);		 // first hit output
+
+	glm::ivec3 localGroupSize = m_pStereoRaycastCompute->getLocalGroupSize();
+	m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+	m_pRaycastStereoComputeShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
+	m_pRaycastStereoComputeShader->update("uProjection", s_perspective);
+
+	int numGroupsX = ceil(m_textureResolution.x / localGroupSize.x);
+	int numGroupsY = ceil(m_textureResolution.y / localGroupSize.y);
+
+	m_pStereoRaycastCompute->dispatch( numGroupsX, numGroupsY );
+	m_frame.Timings.getBack().stopTimerElapsed();
+}
+
+
 void CMainApplication::renderViews()
 {
 	glDisable(GL_BLEND);
@@ -1231,67 +1298,14 @@ void CMainApplication::renderViews()
 	m_pSimpleRaycast->render();
 	m_frame.Timings.getBack().stopTimerElapsed();
 
-	static bool useCompute = true;
-	// clear output texture
 	m_frame.Timings.getBack().timestamp("Raycast Stereo");
-	if (!useCompute)
+	if (m_bUseCompute)
 	{
-		m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
-		clearOutputTexture( m_stereoOutputTextureArray );
-		m_frame.Timings.getBack().stopTimerElapsed();
+		singlePassCompute();
 	}
-
-	// render stereo images in a single pass		
-	m_frame.Timings.getBack().beginTimerElapsed("UVW");
-	m_pUvwShader->update("view", s_view);
-	m_pUvw->setFrameBufferObject(m_pUvwFBO);
-	m_pUvw->render();
-	m_frame.Timings.getBack().stopTimerElapsed();
-
-
-	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
-	ImGui::Checkbox("Use Compute", &useCompute);
-	if (!useCompute)
+	else
 	{
-		OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
-		m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
-		m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
-		m_pRaycastStereoShader->update("uProjection", s_perspective);
-		m_pStereoRaycast->render();
-	}
-	else // render stereo images in single pass using compute
-	{
-		m_pFBO_single->bind();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		m_pFBO_single_r->bind();
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		///////////////////////////// DEBUG ///////////////////////////////
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA8, GL_READ_WRITE, 0, GL_FALSE); // stereo output
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1 , GL_RGBA8, GL_WRITE_ONLY); // color output
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8, GL_WRITE_ONLY);		 // first hit output
-
-		glm::ivec3 localGroupSize = m_pStereoRaycastCompute->getLocalGroupSize();
-		m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
-		m_pRaycastStereoComputeShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
-		m_pRaycastStereoComputeShader->update("uProjection", s_perspective);
-
-		int numGroupsX = ceil(m_textureResolution.x / localGroupSize.x);
-		int numGroupsY = ceil(m_textureResolution.y/ localGroupSize.y);
-
-		m_pStereoRaycastCompute->dispatch( numGroupsX, numGroupsY );
-		///////////////////////////////////////////////////////////////////
-	}
-	m_frame.Timings.getBack().stopTimerElapsed();
-
-	glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
-	// compose right image from single pass output
-	if (!useCompute)
-	{
-		m_frame.Timings.getBack().beginTimerElapsed("Compose");
-		m_pComposeTexArray->render();
-		m_frame.Timings.getBack().stopTimerElapsed();
+		singlePassLayered();
 	}
 	m_frame.Timings.getBack().timestamp("Finished");
 
