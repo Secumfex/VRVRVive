@@ -57,9 +57,9 @@ float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noi
 // specify local work group size
 layout (local_size_x = LOCAL_SIZE_X, local_size_y = LOCAL_SIZE_Y) in;
 
-layout(binding = 1, rgba8) restrict uniform image2D color_image;
+layout(binding = 1, rgba8) writeonly uniform image2D color_image;
 #ifdef FIRST_HIT
-	layout(binding = 2, rgba8) restrict uniform image2D fragFirst_image;
+	layout(binding = 2, rgba8) writeonly uniform image2D fragFirst_image;
 #endif
 
 // textures
@@ -85,7 +85,7 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 	#ifdef STEREO_SINGLE_OUTPUT
 		layout(binding = 0, rgba8) restrict uniform image2D stereo_image;
 	#else
-		layout(binding = 0, rgba8) writeonly uniform image2DArray stereo_image;
+		layout(binding = 0, rgba16f) writeonly uniform image2DArray stereo_image;
 		//uniform int uBlockWidth; // width of a texture block (i.e. number of textures of array) 
 	#endif
 
@@ -425,7 +425,10 @@ vec4 getViewCoord( vec3 screenPos )
 void main()
 {
 	ivec2 index = ivec2( gl_GlobalInvocationID.xy );
-	vec2 passUV = vec2( index ) / vec2( imageSize( color_image ) );
+	ivec2 imageCoord = ivec2( imageSize( color_image ).x - index.x, index.y ); // right to left
+
+	vec2 passUV = ( vec2( imageCoord ) + vec2(0.5) ) / vec2( imageSize( color_image ) );
+
 	vec4 fragColor = vec4(0.0);
 	vec4 fragFirstHit = vec4(0.0);
 	float fragDepth = 1.0;
@@ -542,8 +545,8 @@ void main()
 			fragDepth = 1.0;
 		}
 
-		imageStore( fragFirst_image, index, vec4(fragDepth) );
+		imageStore( fragFirst_image, imageCoord, vec4(fragDepth) );
 	#endif
 
-	imageStore( color_image, index, fragColor );
+	imageStore( color_image, imageCoord, fragColor );
 }

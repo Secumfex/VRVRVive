@@ -440,8 +440,9 @@ void CMainApplication::loadRaycastingShaders()
 
 	DEBUGLOG->log("Shader Compilation: ray casting shader - single pass stereo compute"); DEBUGLOG->indent();
 	std::vector<std::string> shaderDefinesStereoCompute(shaderDefinesStereo);
-	shaderDefinesStereoCompute.push_back("STEREO_SINGLE_OUTPUT");
-	m_pRaycastStereoComputeShader = new ShaderProgram("/compute/unified_raycast.comp", shaderDefinesStereoCompute); DEBUGLOG->outdent();
+	shaderDefinesStereoCompute.push_back( "STEREO_SINGLE_OUTPUT" );
+	shaderDefinesStereoCompute.push_back( "LOCAL_SIZE_Y " + std::to_string( int(m_textureResolution.y) ) );
+	m_pRaycastStereoComputeShader = new ShaderProgram("/compute/unified_raycast.glsl", shaderDefinesStereoCompute); DEBUGLOG->outdent();
 }
 
 
@@ -824,6 +825,14 @@ void CMainApplication::updateGui()
 
 	ImGui::DragFloat("eye distance", &s_eyeDistance, 0.01f, 0.0f, 2.0f);
 	
+	ImGui::Text("Active Model");
+	ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
+	if (ImGui::ListBox("##activemodel", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 3))
+    {
+		handleVolume();
+    }
+	ImGui::PopItemWidth();
+
 	if (ImGui::CollapsingHeader("Transfer Function"))
     {
 	ImGui::Columns(2, "mycolumns2", true);
@@ -844,14 +853,6 @@ void CMainApplication::updateGui()
     ImGui::Columns(1);
     ImGui::Separator();
 	}
-
-	ImGui::Text("Active Model");
-	ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
-	if (ImGui::ListBox("##activemodel", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 3))
-    {
-		handleVolume();
-    }
-	ImGui::PopItemWidth();
 
 	ImGui::PushItemWidth(-100);
 	if (ImGui::CollapsingHeader("Volume Rendering Settings"))
@@ -881,6 +882,8 @@ void CMainApplication::updateGui()
 		recompileShaders();
 	}
 
+	if (ImGui::CollapsingHeader("Preset Settings"))
+	{
 	if (ImGui::SliderFloat("Texture Size", &m_textureResolution.x, 256.0f, 2160.0f, "%.f", 2.0f)){ m_textureResolution.y = m_textureResolution.x; }
 	ImGui::SliderInt("Num Layers", &m_iNumLayers, 1, 128);
 	if (ImGui::Button("Rebuild Framebuffers"))
@@ -928,7 +931,7 @@ void CMainApplication::updateGui()
 	ImGui::EndGroup();
 
 	ImGui::PopItemWidth();
-
+	}
 	/////////// PROFILING /////////////////////
 	static bool frame_profiler_visible = false;
 	static bool pause_frame_profiler = false;
@@ -953,6 +956,8 @@ void CMainApplication::updateGui()
 
 	if (frame_profiler_visible)
 	{
+		OpenGLTimings& front = m_frame.Timings.getFront();
+
 		for (auto e : m_frame.Timings.getFront().m_timers)
 		{
 			m_frame.FrameProfiler.setRangeByTag(e.first, e.second.lastTime, e.second.lastTime + e.second.lastTiming);
@@ -965,6 +970,17 @@ void CMainApplication::updateGui()
 		{
 			m_frame.FrameProfiler.setMarkerByTag(e.first, e.second.lastTime);
 		}
+
+		// DEBUG see full ranges
+		//if ( front.m_timestamps.find("Raycast Left") != front.m_timestamps.end() && front.m_timersElapsed.find("Raycast_R") != front.m_timersElapsed.end())
+		//{
+		//	m_frame.FrameProfiler.setRangeByTag("Total Stereo", front.m_timestamps.at("Raycast Left").lastTime, front.m_timersElapsed.at("Raycast_R").lastTime + front.m_timersElapsed.at("Raycast_R").lastTiming, "", 1);
+		//}
+		//if ( front.m_timestamps.find("Raycast Stereo") != front.m_timestamps.end() && front.m_timestamps.find("Finished") != front.m_timestamps.end())
+		//{
+		//	m_frame.FrameProfiler.setRangeByTag("Total Single", front.m_timestamps.at("Raycast Stereo").lastTime, front.m_timestamps.at("Finished").lastTime, "", 1);
+		//}
+
 
 		m_frame.FrameProfiler.imguiInterface(frame_begin, frame_end, &frame_profiler_visible);
 	}
@@ -1090,14 +1106,25 @@ void CMainApplication::updateCommonUniforms()
 	/************* update experimental  parameters ******************/
 	//m_pRaycastStereoShader->update("uWriteStereo", s_writeStereo);
 	{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-	static glm::vec3 shadowDir(0.0f,-0.5f,-1.0f);
-	ImGui::SliderFloat3("Shadow Dir", glm::value_ptr(shadowDir), -1.0f, 1.0f);
+	static float angles[2] = {-0.5f, -0.5f};
+	float alpha = angles[0] * glm::pi<float>();
+	float beta  = angles[1] * glm::half_pi<float>();
+	static int numSteps = 8;
+	static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+	if (ImGui::CollapsingHeader("Shadow Properties"))
+    {	
+		if (ImGui::SliderFloat2("Shadow Dir", angles, -0.999f, 0.999f) )
+		{
+			shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+		}
+		ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
+	}
 	m_pRaycastStereoShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
-	m_pRaycastStereoShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+	m_pRaycastStereoShader->update("uShadowRayNumSteps", numSteps); 	  // lower grayscale ramp boundary
 	m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
-	m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+	m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 	  // lower grayscale ramp boundary
 	m_pRaycastStereoComputeShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
-	m_pRaycastStereoComputeShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+	m_pRaycastStereoComputeShader->update("uShadowRayNumSteps", numSteps); 	  // lower grayscale ramp boundary
 	}}
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
@@ -1122,13 +1149,16 @@ void CMainApplication::updateCommonUniforms()
 	m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
 	m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
 	//m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
-		
+	
+	if (ImGui::CollapsingHeader("Epipolar Info"))
+    {
 	ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
 	ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
 	ImGui::Value("Pixel Offset of Images", imageOffset);
 	ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
 	ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
 	ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
+	}
 
 	{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
 	static int debugIdx = -1;
@@ -1136,7 +1166,7 @@ void CMainApplication::updateCommonUniforms()
 	if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
 	if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
 	}}
-
+	
 	//////////////////////////////////////////////////////////////////////////////
 }
 
@@ -1201,11 +1231,15 @@ void CMainApplication::renderViews()
 	m_pSimpleRaycast->render();
 	m_frame.Timings.getBack().stopTimerElapsed();
 
+	static bool useCompute = true;
 	// clear output texture
 	m_frame.Timings.getBack().timestamp("Raycast Stereo");
-	m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
-	clearOutputTexture( m_stereoOutputTextureArray );
-	m_frame.Timings.getBack().stopTimerElapsed();
+	if (!useCompute)
+	{
+		m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
+		clearOutputTexture( m_stereoOutputTextureArray );
+		m_frame.Timings.getBack().stopTimerElapsed();
+	}
 
 	// render stereo images in a single pass		
 	m_frame.Timings.getBack().beginTimerElapsed("UVW");
@@ -1216,10 +1250,10 @@ void CMainApplication::renderViews()
 
 
 	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
-	static bool useCompute = true;
 	ImGui::Checkbox("Use Compute", &useCompute);
 	if (!useCompute)
 	{
+		OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
 		m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
 		m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
 		m_pRaycastStereoShader->update("uProjection", s_perspective);
@@ -1227,19 +1261,25 @@ void CMainApplication::renderViews()
 	}
 	else // render stereo images in single pass using compute
 	{
+		m_pFBO_single->bind();
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		m_pFBO_single_r->bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		///////////////////////////// DEBUG ///////////////////////////////
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA8, GL_READ_WRITE, 0, GL_FALSE);		
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1 , GL_RGBA8);		
-		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8);		
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA8, GL_READ_WRITE, 0, GL_FALSE); // stereo output
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1 , GL_RGBA8, GL_WRITE_ONLY); // color output
+		OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8, GL_WRITE_ONLY);		 // first hit output
 
 		glm::ivec3 localGroupSize = m_pStereoRaycastCompute->getLocalGroupSize();
 		m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
 		m_pRaycastStereoComputeShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
 		m_pRaycastStereoComputeShader->update("uProjection", s_perspective);
-		m_pStereoRaycastCompute->dispatch( ceil(m_textureResolution.x / localGroupSize.x), ceil(m_textureResolution.y/ localGroupSize.y) );
+
+		int numGroupsX = ceil(m_textureResolution.x / localGroupSize.x);
+		int numGroupsY = ceil(m_textureResolution.y/ localGroupSize.y);
+
+		m_pStereoRaycastCompute->dispatch( numGroupsX, numGroupsY );
 		///////////////////////////////////////////////////////////////////
 	}
 	m_frame.Timings.getBack().stopTimerElapsed();
@@ -1249,12 +1289,12 @@ void CMainApplication::renderViews()
 	// compose right image from single pass output
 	if (!useCompute)
 	{
-	m_frame.Timings.getBack().beginTimerElapsed("Compose");
-	m_pComposeTexArray->render();
-	m_frame.Timings.getBack().stopTimerElapsed();
-
-	m_frame.Timings.getBack().timestamp("Finished");
+		m_frame.Timings.getBack().beginTimerElapsed("Compose");
+		m_pComposeTexArray->render();
+		m_frame.Timings.getBack().stopTimerElapsed();
 	}
+	m_frame.Timings.getBack().timestamp("Finished");
+
 	// display fbo contents
 	m_pShowTexShader->updateAndBindTexture("tex", 7, m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 	m_pShowTex->setViewport((int)0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
@@ -1337,8 +1377,6 @@ void CMainApplication::rebuildLayerTexture()
 
 	DEBUGLOG->outdent();
 }
-
-
 
 void CMainApplication::rebuildFramebuffers()
 {
