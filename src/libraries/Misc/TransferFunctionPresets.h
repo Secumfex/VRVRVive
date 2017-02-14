@@ -7,7 +7,7 @@ namespace TransferFunctionPresets
 {
 	static TransferFunction s_transferFunction;
 
-	enum Preset {CT_Head, MRT_Brain, Homogeneous, Radial_Gradient, MRT_Brain_Stanford};
+	enum Preset {CT_Head, MRT_Brain, Homogeneous, Radial_Gradient, MRT_Brain_Stanford, Bucky_Ball};
 	
 	void loadPreset(TransferFunction& transferFunction, Preset preset);
 
@@ -84,6 +84,25 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Pre
 		transferFunction.getValues().push_back(0.611f);
 		transferFunction.getColors().push_back(glm::vec4(255.0f/255.0f, 255.0f/255.0, 255.0f/255.0f, 255.0f/255.0f));
 	}
+	else if( preset == Preset::Bucky_Ball)
+	{
+		transferFunction.getValues().push_back(0.1f);
+		transferFunction.getColors().push_back(glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+		transferFunction.getValues().push_back(0.5f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 1.0f, 0.85f, 0.12f));
+		transferFunction.getValues().push_back(0.6f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 1.0f, 0.15f));
+	}
+	else // default
+	{
+		transferFunction.getValues().push_back(0.0);
+		transferFunction.getColors().push_back(glm::vec4(1.0f, 0.0f, 0.0f, 0.25f));
+		transferFunction.getValues().push_back(0.5f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 1.0f, 0.0f, 0.25f));
+		transferFunction.getValues().push_back(1.0f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 1.0f, 0.25f));
+	}
+
 	transferFunction.updateTex(); // values are all in range 0..1
 }
 

@@ -34,7 +34,7 @@
 #include <Misc/Parameters.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[]  = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
+static const char* s_models[]  = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford", "Bucky Balls"};
 
 static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)", "1.4x Vive (1512)", "2.0x Vive (2160)"};
 static const int resolutionPresets[]  = {256, 512, 768, 1080, 1512, 2160};
@@ -74,8 +74,8 @@ public: // who cares
 	SDL_GLContext m_pContext;
 
 	// Render objects bookkeeping
-	VolumeData<float> m_volumeData[5];
-	GLuint m_volumeTexture[5];
+	VolumeData<float> m_volumeData[6];
+	GLuint m_volumeTexture[6];
 	Quad*	m_pQuad;
 	Grid*	m_pGrid;
 	VertexGrid* m_pVertexGrid;
@@ -383,9 +383,11 @@ void CMainApplication::loadVolumes()
 	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
+	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/BuckyBall/Bucky.pvm");
+	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 1, GL_R16F, GL_RED, GL_FLOAT);
+
 	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
-	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
 	checkGLError(true);
 }
 
@@ -728,7 +730,7 @@ void CMainApplication::handleVolume()
 	if ( m_iActiveModel == TransferFunctionPresets::CT_Head ) {
 		s_scale = glm::scale(glm::vec3(1.0f, 0.8828f, 1.0f));
 	}
-	if ( m_iActiveModel == TransferFunctionPresets::Homogeneous || m_iActiveModel == TransferFunctionPresets::Radial_Gradient ) {
+	if ( m_iActiveModel == TransferFunctionPresets::Homogeneous || m_iActiveModel == TransferFunctionPresets::Radial_Gradient || m_iActiveModel == TransferFunctionPresets::Bucky_Ball) {
 		s_scale = glm::scale(glm::vec3(1.0f));
 	}
 
@@ -1590,10 +1592,11 @@ void CMainApplication::ConfigHelper::writeToFiles()
 //////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////
 
+
 int main(int argc, char *argv[])
 {
 	DEBUGLOG->setAutoPrint(true);
-	
+
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
 
 	pMainApplication->loadShaderDefines();
