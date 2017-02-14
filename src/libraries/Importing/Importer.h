@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+#include "ddsbase.h"
+
 namespace Importer {
 	/**
 	 * @param path to file prefix relative to resources folder file suffix is assumed to be .1 .2 .. .num_files
@@ -102,6 +104,58 @@ namespace Importer {
 
 		return result;
 	}
+
+	template <class T> 
+	VolumeData<T> load3DDataPVM(std::string path)
+	{
+		unsigned char *volume;
+
+		unsigned int width,height,depth,
+				components;
+
+		float scalex,scaley,scalez;
+
+		char *output,*dot;
+		char *outname;
+
+		// read and uncompress PVM volume
+		if ((volume=readPVMvolume(path.c_str(),
+								&width,&height,&depth,&components,
+								&scalex,&scaley,&scalez))==NULL)
+		{
+			DEBUGLOG->log("ERROR: failed to load PVM file: " + path);
+		}
+   
+		VolumeData<T> volData;
+
+		volData.real_size_x = 1.0f / (float) width;
+		volData.real_size_y = 1.0f / (float) depth;
+		volData.real_size_z = 1.0f / (float) height;
+		volData.size_x = width;
+		volData.size_y = depth;
+		volData.size_z = height;
+		//volData.data.resize(width * height * depth * sizeof(char));
+		volData.data.assign(volume, volume + width * height * depth * sizeof(char));
+
+		volData.min = CHAR_MAX;
+		volData.max = CHAR_MIN;
+		for (auto v : volData.data)
+		{
+			volData.min = std::min<T>(v, volData.min);
+			volData.max = std::max<T>(v, volData.max);
+
+		}
+
+		if (volData.min > volData.max) // swap
+		{
+			T tmp = volData.min;
+			volData.min = volData.max;
+			volData.max = tmp;
+		}
+
+		return volData;
+	}
+
 
 	VolumeData<short> loadBruder();
 
