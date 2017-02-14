@@ -108,6 +108,8 @@ namespace Importer {
 	template <class T> 
 	VolumeData<T> load3DDataPVM(std::string path)
 	{
+		DEBUGLOG->log("Loading PVM file: " + path);
+		DEBUGLOG->log("Reading slice data...");
 		unsigned char *volume;
 
 		unsigned int width,height,depth,
@@ -119,14 +121,16 @@ namespace Importer {
 		char *outname;
 
 		// read and uncompress PVM volume
+		VolumeData<T> volData;
+
 		if ((volume=readPVMvolume(path.c_str(),
 								&width,&height,&depth,&components,
 								&scalex,&scaley,&scalez))==NULL)
 		{
 			DEBUGLOG->log("ERROR: failed to load PVM file: " + path);
+			return volData;
 		}
    
-		VolumeData<T> volData;
 
 		volData.real_size_x = 1.0f / (float) width;
 		volData.real_size_y = 1.0f / (float) depth;
@@ -135,7 +139,8 @@ namespace Importer {
 		volData.size_y = depth;
 		volData.size_z = height;
 		//volData.data.resize(width * height * depth * sizeof(char));
-		volData.data.assign(volume, volume + width * height * depth * sizeof(char));
+		volData.data.resize(width * height * depth);
+		std::copy(volume, volume + width * height * depth * sizeof(char),volData.data.begin());
 
 		volData.min = CHAR_MAX;
 		volData.max = CHAR_MIN;
@@ -143,7 +148,6 @@ namespace Importer {
 		{
 			volData.min = std::min<T>(v, volData.min);
 			volData.max = std::max<T>(v, volData.max);
-
 		}
 
 		if (volData.min > volData.max) // swap

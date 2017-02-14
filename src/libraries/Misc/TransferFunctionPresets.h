@@ -7,7 +7,7 @@ namespace TransferFunctionPresets
 {
 	static TransferFunction s_transferFunction;
 
-	enum Preset {CT_Head, MRT_Brain, Homogeneous, Radial_Gradient, MRT_Brain_Stanford, Bucky_Ball};
+	enum Preset {CT_Head, MRT_Brain, Homogeneous, Radial_Gradient, MRT_Brain_Stanford, Bucky_Ball, SolidBox, Foot, Engine};
 	
 	void loadPreset(TransferFunction& transferFunction, Preset preset);
 
@@ -92,6 +92,33 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Pre
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 1.0f, 0.85f, 0.12f));
 		transferFunction.getValues().push_back(0.6f);
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 1.0f, 0.15f));
+	}
+	else if( preset == Preset::SolidBox)
+	{
+		transferFunction.getValues().push_back(0.1f);
+		transferFunction.getColors().push_back(glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+		transferFunction.getValues().push_back(0.5f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 1.0f, 0.85f, 0.12f));
+		transferFunction.getValues().push_back(0.6f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 1.0f, 0.15f));
+	}
+	else if( preset == Preset::Foot)
+	{
+		transferFunction.getValues().push_back(0.0f);
+		transferFunction.getColors().push_back(glm::vec4(120.0f/255.0f, 227.0f/255.0f, 135.0f/255.0f, 0.0f));
+		transferFunction.getValues().push_back(0.2f);
+		transferFunction.getColors().push_back(glm::vec4(192.0f/255.0f, 86.0f/255.0f, 0.0f, 28.0f/255.0f));
+		transferFunction.getValues().push_back(0.5f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 11.0f/255.0f, 157.0f/255.0f, 1.0f));
+	}
+	else if( preset == Preset::Engine)
+	{
+		transferFunction.getValues().push_back(0.385f);
+		transferFunction.getColors().push_back(glm::vec4(1.0f, 1.0f, 1.0f, 35.0f/255.0f));
+		transferFunction.getValues().push_back(0.606f);
+		transferFunction.getColors().push_back(glm::vec4(173.0f/255.0f, 60.0f/255.0f, 0.02f, 8.0f/255.0f));
+		transferFunction.getValues().push_back(0.769f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 113.0f/255.0f, 185.0f/255.0f, 1.0f));
 	}
 	else // default
 	{

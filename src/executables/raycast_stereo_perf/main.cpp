@@ -34,7 +34,22 @@
 #include <Misc/Parameters.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[]  = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford", "Bucky Balls"};
+static const char* s_models[]  = {
+	"CT Head",
+	"MRT Brain",
+	"Solid Box",
+	"Bucky Ball",
+	"MRT Brain Stanford",
+	"Engine"
+};
+static TransferFunctionPresets::Preset s_modelToPresets[] =  { 
+	TransferFunctionPresets::CT_Head, 
+	TransferFunctionPresets::MRT_Brain, 
+	TransferFunctionPresets::SolidBox, 
+	TransferFunctionPresets::Bucky_Ball, 
+	TransferFunctionPresets::MRT_Brain_Stanford, 
+	TransferFunctionPresets::Engine 
+};
 
 static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)", "1.4x Vive (1512)", "2.0x Vive (2160)"};
 static const int resolutionPresets[]  = {256, 512, 768, 1080, 1512, 2160};
@@ -371,11 +386,11 @@ void CMainApplication::loadVolumes()
 	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[1].data.clear(); // set free
 
-	m_volumeData[2] = SyntheticVolume::generateHomogeneousVolume<float>(32, 32, 32, 1000.0f);
+	m_volumeData[2] = Importer::load3DDataPVM<float>(file + "/volumes/SolidBox/Box.pvm");
 	m_volumeTexture[2] =  loadTo3DTexture<float>(m_volumeData[2], 1, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[2].data.clear(); // set free	
 
-	m_volumeData[3] = SyntheticVolume::generateRadialGradientVolume<float>( 32,32,32,1000.0f,0.0f);
+	m_volumeData[3] = Importer::load3DDataPVM<float>(file + "/volumes/BuckyBall/Bucky.pvm");
 	m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 3, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[3].data.clear(); // set free	
 
@@ -383,7 +398,7 @@ void CMainApplication::loadVolumes()
 	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
-	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/BuckyBall/Bucky.pvm");
+	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/Engine/Engine.pvm");
 	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 1, GL_R16F, GL_RED, GL_FLOAT);
 
 	handleVolume();
@@ -720,22 +735,22 @@ void CMainApplication::handleVolume()
 {
 	activateVolume(m_volumeData[m_iActiveModel]);
 	// adjust scale
-	if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain ) {
 		s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 		s_scale = glm::scale(glm::vec3(1.0f, 0.79166, 1.0f));
 	}		
-	if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain_Stanford ) {
 		s_scale = glm::scale(glm::vec3(1.0f, 1.5f * 0.42578125f, 1.0f));
 	}
-	if ( m_iActiveModel == TransferFunctionPresets::CT_Head ) {
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::CT_Head ) {
 		s_scale = glm::scale(glm::vec3(1.0f, 0.8828f, 1.0f));
 	}
-	if ( m_iActiveModel == TransferFunctionPresets::Homogeneous || m_iActiveModel == TransferFunctionPresets::Radial_Gradient || m_iActiveModel == TransferFunctionPresets::Bucky_Ball) {
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Bucky_Ball || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::SolidBox || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Engine) {
 		s_scale = glm::scale(glm::vec3(1.0f));
 	}
 
 	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
-	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, s_modelToPresets[m_iActiveModel]);
 }
 
 float CMainApplication::getIdealNearValue()
