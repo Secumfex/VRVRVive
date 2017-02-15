@@ -60,6 +60,7 @@ static const float fovPresets[]  = {45, 90, 110};
 
 const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
+	"DSSIM_ERROR",
 };
 
 // defines that will be checked when writing config
@@ -101,6 +102,7 @@ public: // who cares
 	ShaderProgram* m_pRaycastShader;
 	ShaderProgram* m_pRaycastStereoShader;
 	ShaderProgram* m_pShowTexShader;
+	ShaderProgram* m_pErrorShader;
 	ShaderProgram* m_pShowLayerShader;
 	ShaderProgram* m_pComposeTexArrayShader;
 	ShaderProgram* m_pRaycastStereoComputeShader;
@@ -120,6 +122,7 @@ public: // who cares
 	RenderPass* m_pSimpleRaycast;
 	RenderPass* m_pStereoRaycast;
 	RenderPass* m_pShowTex;
+	RenderPass* m_pError;
 	RenderPass* m_pShowLayer;
 	RenderPass* m_pComposeTexArray;
 	ComputePass* m_pStereoRaycastCompute;
@@ -482,6 +485,9 @@ void CMainApplication::loadShaders()
 	
 	DEBUGLOG->log("Shader Compilation: show texture shader"); DEBUGLOG->indent();
 	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);DEBUGLOG->outdent();
+
+	DEBUGLOG->log("Shader Compilation: square error shader"); DEBUGLOG->indent();
+	m_pErrorShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/error.frag", m_shaderDefines); DEBUGLOG->outdent();
 }
 
 void CMainApplication::initRaycastingFramebuffers()
@@ -565,6 +571,12 @@ void CMainApplication::initRenderPasses()
 	m_pShowTex->addRenderable(m_pQuad);
 	DEBUGLOG->outdent();
 
+	DEBUGLOG->log("RenderPass Creation: square error"); DEBUGLOG->indent();
+	m_pError = new RenderPass(m_pErrorShader, 0);
+	m_pError->addRenderable(m_pQuad);
+	m_pError->addDisable(GL_BLEND);
+	DEBUGLOG->outdent();
+
 	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
 	m_pStereoRaycastCompute = new ComputePass(m_pRaycastStereoComputeShader);
 	DEBUGLOG->outdent();
@@ -586,6 +598,7 @@ void CMainApplication::initTextureUnits()
 	OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
 	OPENGLCONTEXT->bindTextureToUnit(m_stereoOutputTextureArray, GL_TEXTURE6, GL_TEXTURE_2D_ARRAY); // for display
 	
+	OPENGLCONTEXT->bindTextureToUnit(m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
 }
 
@@ -609,6 +622,9 @@ void CMainApplication::initTextureUniforms()
 	m_pComposeTexArrayShader->update( "tex", 6);
 
 	m_pShowLayerShader->update("tex", 6);
+
+	m_pErrorShader->update("tex1", 10);
+	m_pErrorShader->update("tex2", 8);
 }
 
 void CMainApplication::initUniforms()
@@ -887,12 +903,14 @@ void CMainApplication::updateGui()
     }
 	ImGui::PopItemWidth();
 
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 	if (ImGui::CollapsingHeader("Level of Detail Settings"))
     {
 	ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
 	ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
 	ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
 	}
+	}}
 	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 
 	ImGui::Checkbox("Use Compute", &m_bUseCompute);
@@ -1105,22 +1123,23 @@ void CMainApplication::updateCommonUniforms()
 	/************* update color mapping parameters ******************/
 	// ray start/end parameters
 	m_pRaycastStereoShader->update("uStepSize", s_rayStepSize); 	  // ray step size
-	m_pRaycastStereoShader->update("uLodMaxLevel", s_lodMaxLevel);
-	m_pRaycastStereoShader->update("uLodBegin", s_lodBegin);
-	m_pRaycastStereoShader->update("uLodRange", s_lodRange);
+	m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
+
 
 	// ray start/end parameters
-	m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
+	
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 	m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
 	m_pRaycastShader->update("uLodBegin", s_lodBegin);
 	m_pRaycastShader->update("uLodRange", s_lodRange);
-
-	// ray start/end parameters
+	m_pRaycastStereoShader->update("uLodMaxLevel", s_lodMaxLevel);
+	m_pRaycastStereoShader->update("uLodBegin", s_lodBegin);
+	m_pRaycastStereoShader->update("uLodRange", s_lodRange);
 	m_pRaycastStereoComputeShader->update("uStepSize", s_rayStepSize); 	  // ray step size
 	m_pRaycastStereoComputeShader->update("uLodMaxLevel", s_lodMaxLevel);
 	m_pRaycastStereoComputeShader->update("uLodBegin", s_lodBegin);
 	m_pRaycastStereoComputeShader->update("uLodRange", s_lodRange);
-
+	}}	
 	// color mapping parameters
 	m_pRaycastStereoShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 	m_pRaycastStereoShader->update("uWindowingRange", s_windowingMaxValue - s_windowingMinValue); // full range of values in m_pWindow
@@ -1353,9 +1372,11 @@ void CMainApplication::renderViews()
 	}
 	else
 	{
-		m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
-		m_pShowLayerShader->update("layer", m_fDisplayedLayer);
-		m_pShowLayer->render();
+		m_pError->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+		m_pError->render();
+		//m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
+		//m_pShowLayerShader->update("layer", m_fDisplayedLayer);
+		//m_pShowLayer->render();
 	}
 
 	m_frame.Timings.getBack().timestamp("Frame End");
