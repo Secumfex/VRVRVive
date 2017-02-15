@@ -1379,6 +1379,37 @@ void CMainApplication::renderViews()
 	}
 	m_frame.Timings.getBack().timestamp("Finished");
 
+
+	//+++++++++++++++ DEBUG ++++++++++++++++++++++++
+	// compute dssim
+	m_pError->render();
+
+	// compute average dssim by mipmapping
+	// option 1: use OpenGL mipmapping func
+	OPENGLCONTEXT->activeTexture( GL_TEXTURE11 );
+	OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE_2D);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	checkGLError();
+
+	int numMipmaps = (int) (std::log( std::max( (float) m_pFBO_error->getWidth(), (float) m_pFBO_error->getHeight()) ) / std::log( 2.0f ) );
+	// option 2: use compute shader
+	//int mipmapBase = 0;
+	//int mipmapTarget = 1;
+	//glm::ivec2 curRes(m_pFBO_error->getWidth(), m_pFBO_error->getHeight());
+	//for (int i = 0; i < numMipmaps; i++)
+	//{
+	//	curRes /= 2;
+	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA16F, GL_READ_ONLY, mipmapBase + i, GL_FALSE);
+	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1, GL_RGBA16F, GL_WRITE_ONLY, mipmapTarget + i, GL_FALSE);
+	//	m_pMipmapCompute->dispatch( curRes.x / m_pMipmapCompute->getLocalGroupSize().x + 1, curRes.y / m_pMipmapCompute->getLocalGroupSize().y + 1);
+	//}
+
+	float avg[4];
+	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, &avg[0]);
+	ImGui::InputFloat4("Avg DSSIM Channels", avg, 3);
+	ImGui::Value("AVG DSSIM", ((avg[0] + avg[1] + avg[2] + avg[3]) / 4.0f));
+	//++++++++++++++++++++++++++++++++++++++++++++++
+
 	// display fbo contents
 	m_pShowTexShader->updateAndBindTexture("tex", 7, m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 	m_pShowTex->setViewport((int)0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
@@ -1400,30 +1431,6 @@ void CMainApplication::renderViews()
 	}
 	else
 	{
-		//+++++++++++++++ DEBUG ++++++++++++++++++++++++
-		// compute dssim
-		m_pError->render();
-
-		// compute average dssim by mipmapping
-		// option 1: use OpenGL mipmapping func
-		OPENGLCONTEXT->activeTexture( GL_TEXTURE11 );
-		OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE_2D);
-		glGenerateMipmap(GL_TEXTURE_2D);
-		checkGLError();
-
-		int numMipmaps = (int) (std::log( std::max( (float) m_pFBO_error->getWidth(), (float) m_pFBO_error->getHeight()) ) / std::log( 2.0f ) );
-		// option 2: use compute shader
-		//int mipmapBase = 0;
-		//int mipmapTarget = 1;
-		//glm::ivec2 curRes(m_pFBO_error->getWidth(), m_pFBO_error->getHeight());
-		//for (int i = 0; i < numMipmaps; i++)
-		//{
-		//	curRes /= 2;
-		//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA16F, GL_READ_ONLY, mipmapBase + i, GL_FALSE);
-		//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1, GL_RGBA16F, GL_WRITE_ONLY, mipmapTarget + i, GL_FALSE);
-		//	m_pMipmapCompute->dispatch( curRes.x / m_pMipmapCompute->getLocalGroupSize().x + 1, curRes.y / m_pMipmapCompute->getLocalGroupSize().y + 1);
-		//}
-
 		m_pShowTexShader->updateAndBindTexture( "tex", 11, m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 
 		static float level = 0.0;
@@ -1432,7 +1439,6 @@ void CMainApplication::renderViews()
 		m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
 		m_pShowTex->render();
 		m_pShowTexShader->update("level", 0.0f);
-		//++++++++++++++++++++++++++++++++++++++++++++++
 		
 		//m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
 		//m_pShowLayerShader->update("layer", m_fDisplayedLayer);
