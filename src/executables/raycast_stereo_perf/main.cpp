@@ -391,7 +391,7 @@ void CMainApplication::loadVolumes()
 	m_volumeData[2].data.clear(); // set free	
 
 	m_volumeData[3] = Importer::load3DDataPVM<float>(file + "/volumes/BuckyBall/Bucky.pvm");
-	m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 3, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 1, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[3].data.clear(); // set free	
 
 	m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
@@ -399,7 +399,7 @@ void CMainApplication::loadVolumes()
 	m_volumeData[4].data.clear(); // set free	
 
 	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/Engine/Engine.pvm");
-	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 1, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 3, GL_R16F, GL_RED, GL_FLOAT);
 
 	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);

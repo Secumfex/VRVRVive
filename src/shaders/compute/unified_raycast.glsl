@@ -260,7 +260,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 		curSample.uvw   = curUVW;
 		
 		#ifdef LEVEL_OF_DETAIL
-			float curLod = max(0.0, min(1.0, ((curDepth - uLodBegin) / uLodRange) ) ) * uLodMaxLevel; // bad approximation, but idc for now
+			float curLod = min( max(0.0, min(1.0, ((curDepth - uLodBegin) / uLodRange) ) ) * uLodMaxLevel, float( textureQueryLevels( volume_texture ) - 1) ); // bad approximation, but idc for now
 			float curStepSize = stepSize * pow(2.0, curLod);
 			parameterStepSize = curStepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
 			curSample.value = textureLod(volume_texture, curUVW, curLod).r;
