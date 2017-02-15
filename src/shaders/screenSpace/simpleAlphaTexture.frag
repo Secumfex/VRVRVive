@@ -15,6 +15,10 @@ uniform float layer;
 uniform sampler2D tex;
 #endif
 
+#ifdef LEVEL_OF_DETAIL
+uniform float level;
+#endif
+
 uniform float transparency;
 
 //!< out-variables
@@ -22,11 +26,27 @@ layout(location = 0) out vec4 fragColor;
 
 void main() 
 {
-	#ifdef ARRAY_TEXTURE
-	vec4 texColor = texture(tex, vec3(passPosition.xy, layer));
+	vec4 texColor =
+	#ifdef LEVEL_OF_DETAIL
+		textureLod(tex,
 	#else
-	vec4 texColor = texture(tex, passPosition.xy);
+		texture(tex,
 	#endif
+	#ifdef ARRAY_TEXTURE
+		vec3(passPosition.xy, layer)
+	#else
+		passPosition.xy
+	#endif
+	#ifdef LEVEL_OF_DETAIL
+		, level
+	#endif
+	);		
+
+	// #ifdef ARRAY_TEXTURE
+	// vec4 texColor = textureLod(tex, vec3(passPosition.xy,level), 4.0);
+	// #else
+	// vec4 texColor = textureLod(tex, passPosition.xy, 4.0);
+	// #endif
 
 	//!< fragcolor gets transparency by uniform
     fragColor = vec4(texColor.rgb, texColor.a * (1.0 - transparency));

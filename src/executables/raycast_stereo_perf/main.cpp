@@ -106,7 +106,8 @@ public: // who cares
 	ShaderProgram* m_pShowLayerShader;
 	ShaderProgram* m_pComposeTexArrayShader;
 	ShaderProgram* m_pRaycastStereoComputeShader;
-
+	ShaderProgram* m_pMipmapComputeShader;
+	
 	// m_pRaycastFBO bookkeeping
 	FrameBufferObject* m_pUvwFBO;
 	FrameBufferObject* m_pUvwFBO_r;
@@ -114,6 +115,7 @@ public: // who cares
 	FrameBufferObject* m_pFBO_r;
 	FrameBufferObject* m_pFBO_single;
 	FrameBufferObject* m_pFBO_single_r;
+	FrameBufferObject* m_pFBO_error;
 
 	GLuint m_stereoOutputTextureArray;
 
@@ -126,6 +128,7 @@ public: // who cares
 	RenderPass* m_pShowLayer;
 	RenderPass* m_pComposeTexArray;
 	ComputePass* m_pStereoRaycastCompute;
+	ComputePass* m_pMipmapCompute;
 
 	// Event handler bookkeeping
 	std::function<bool(SDL_Event*)> m_sdlEventFunc;
@@ -162,7 +165,7 @@ public: // who cares
 		glm::mat4 perspective;
 	} matrices[2]; // left, right, firsthit, current
 
-	bool m_bShowSingleLayer;
+	bool m_bShowDebugView;
 	
 	float m_fDisplayedLayer;
 
@@ -255,7 +258,7 @@ public:
 
 CMainApplication::CMainApplication(int argc, char *argv[])
 	: m_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES))
-	, m_bShowSingleLayer(false)
+	, m_bShowDebugView(false)
 	, m_fElapsedTime(0.0f)
 	, m_fDisplayedLayer(0.0f)
 	, m_fpsCounter(120)
@@ -484,10 +487,14 @@ void CMainApplication::loadShaders()
 	m_pShowLayerShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(1,"ARRAY_TEXTURE"));DEBUGLOG->outdent();
 	
 	DEBUGLOG->log("Shader Compilation: show texture shader"); DEBUGLOG->indent();
-	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);DEBUGLOG->outdent();
+	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(1,"LEVEL_OF_DETAIL"));DEBUGLOG->outdent();
 
 	DEBUGLOG->log("Shader Compilation: square error shader"); DEBUGLOG->indent();
 	m_pErrorShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/error.frag", m_shaderDefines); DEBUGLOG->outdent();
+
+	DEBUGLOG->log("Shader Compilation: mipmap compute"); DEBUGLOG->indent();
+	std::vector<std::string> shaderDefinesMipmapCompute(1, "AVERAGE_MIPMAP");
+	m_pMipmapComputeShader = new ShaderProgram("/compute/mipmap.glsl", shaderDefinesMipmapCompute); DEBUGLOG->outdent();
 }
 
 void CMainApplication::initRaycastingFramebuffers()
@@ -525,6 +532,23 @@ void CMainApplication::initFramebuffers()
 
 	initLayerTexture();
 
+	DEBUGLOG->log("FrameBufferObject Creation: error evaluation"); DEBUGLOG->indent();
+	int numMipmaps = (int) (std::log( std::max(m_textureResolution.x, m_textureResolution.y) ) / std::log( 2.0f ) );
+	FrameBufferObject::s_useTexStorage2D = true;
+	FrameBufferObject::s_numLevels = numMipmaps + 1;
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
+
+	m_pFBO_error = new FrameBufferObject(m_pErrorShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	OPENGLCONTEXT->bindTexture(0);
+	FrameBufferObject::s_internalFormat = GL_RGBA8;
+	FrameBufferObject::s_useTexStorage2D = false;
+	FrameBufferObject::s_numLevels = 1;
+
+	DEBUGLOG->outdent();
 }
 
 
@@ -572,9 +596,13 @@ void CMainApplication::initRenderPasses()
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("RenderPass Creation: square error"); DEBUGLOG->indent();
-	m_pError = new RenderPass(m_pErrorShader, 0);
-	m_pError->addRenderable(m_pQuad);
-	m_pError->addDisable(GL_BLEND);
+	m_pError = new RenderPass(m_pErrorShader, m_pFBO_error);
+	m_pError->addRenderable(m_pQuad);	
+	m_pError->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	DEBUGLOG->outdent();
+	
+	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
+	m_pMipmapCompute = new ComputePass(m_pMipmapComputeShader);
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
@@ -915,7 +943,7 @@ void CMainApplication::updateGui()
 
 	ImGui::Checkbox("Use Compute", &m_bUseCompute);
 
-	ImGui::Checkbox("Show Single Layer", &m_bShowSingleLayer);
+	ImGui::Checkbox("Show Debug View", &m_bShowDebugView);
 	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
 
 	if (ImGui::Button("Recompile Shaders"))
@@ -1366,14 +1394,46 @@ void CMainApplication::renderViews()
 
 	m_pShowTexShader->updateAndBindTexture("tex", 10, m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
 	m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
-	if (!m_bShowSingleLayer)
+	if (!m_bShowDebugView)
 	{
 		m_pShowTex->render();
 	}
 	else
 	{
-		m_pError->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+		//+++++++++++++++ DEBUG ++++++++++++++++++++++++
+		// compute dssim
 		m_pError->render();
+
+		// compute average dssim by mipmapping
+		// option 1: use OpenGL mipmapping func
+		OPENGLCONTEXT->activeTexture( GL_TEXTURE11 );
+		OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE_2D);
+		glGenerateMipmap(GL_TEXTURE_2D);
+		checkGLError();
+
+		int numMipmaps = (int) (std::log( std::max( (float) m_pFBO_error->getWidth(), (float) m_pFBO_error->getHeight()) ) / std::log( 2.0f ) );
+		// option 2: use compute shader
+		//int mipmapBase = 0;
+		//int mipmapTarget = 1;
+		//glm::ivec2 curRes(m_pFBO_error->getWidth(), m_pFBO_error->getHeight());
+		//for (int i = 0; i < numMipmaps; i++)
+		//{
+		//	curRes /= 2;
+		//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA16F, GL_READ_ONLY, mipmapBase + i, GL_FALSE);
+		//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1, GL_RGBA16F, GL_WRITE_ONLY, mipmapTarget + i, GL_FALSE);
+		//	m_pMipmapCompute->dispatch( curRes.x / m_pMipmapCompute->getLocalGroupSize().x + 1, curRes.y / m_pMipmapCompute->getLocalGroupSize().y + 1);
+		//}
+
+		m_pShowTexShader->updateAndBindTexture( "tex", 11, m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+
+		static float level = 0.0;
+		ImGui::SliderFloat("Debug level", &level, 0.0f, (float) numMipmaps);
+		m_pShowTexShader->update("level", level);
+		m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+		m_pShowTex->render();
+		m_pShowTexShader->update("level", 0.0f);
+		//++++++++++++++++++++++++++++++++++++++++++++++
+		
 		//m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
 		//m_pShowLayerShader->update("layer", m_fDisplayedLayer);
 		//m_pShowLayer->render();
@@ -1448,6 +1508,7 @@ void CMainApplication::rebuildFramebuffers()
 	delete m_pFBO_r;
 	delete m_pFBO_single;
 	delete m_pFBO_single_r;
+	delete m_pFBO_error;
 
 	// delete texture array
 	std::vector<GLuint> textures;
@@ -1468,11 +1529,13 @@ void CMainApplication::rebuildFramebuffers()
 	m_pSimpleRaycast->setFrameBufferObject(m_pFBO);
 	m_pStereoRaycast->setFrameBufferObject(m_pFBO_single);
 	m_pComposeTexArray->setFrameBufferObject(m_pFBO_single_r);
+	m_pError->setFrameBufferObject(m_pFBO_error);
 
 	m_pUvw->setViewport(0,0, m_pUvwFBO->getWidth(),m_pUvwFBO->getHeight());
 	m_pSimpleRaycast->setViewport(0,0, m_pFBO->getWidth(),m_pFBO->getHeight());
 	m_pStereoRaycast->setViewport(0,0, m_pFBO_single->getWidth(),m_pFBO_single->getHeight());
 	m_pComposeTexArray->setViewport(0,0, m_pFBO_single_r->getWidth(),m_pFBO_single_r->getHeight());
+	m_pError->setViewport(0,0, m_pFBO_error->getWidth(),m_pFBO_error->getHeight());
 
 	// bind textures
 	initTextureUnits();

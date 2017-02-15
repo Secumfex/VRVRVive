@@ -34,6 +34,7 @@ public:
 	static GLenum s_format; //!< used as parameter to allocate color attachment texture memory using glTexImage2D
 	static bool s_useTexStorage2D; //!< describes whether glTexStorage2D is used in favor of glTexImage2D (default: false)
 	static GLenum s_type; //!< used as parameter to allocate color attachment texture memory using glTexImage2D
+	static int s_numLevels; //!< used as parameter to allocate color attachment texture memory using glTexImage2D
 
 	FrameBufferObject(int width = 800, int height = 600); //!< creates a fbo containing a depth buffer but no color attachments
 

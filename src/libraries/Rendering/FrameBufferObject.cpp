@@ -8,6 +8,7 @@ GLenum FrameBufferObject::s_internalDepthFormat  = GL_DEPTH_COMPONENT24;	// defa
 GLenum FrameBufferObject::s_internalFormat  = GL_RGBA;	// default
 GLenum FrameBufferObject::s_format 			= GL_RGBA;	// default
 GLenum FrameBufferObject::s_type 			= GL_UNSIGNED_BYTE;	// default
+int	   FrameBufferObject::s_numLevels = 1; // default
 bool FrameBufferObject::s_useTexStorage2D	= false;	// default
 
 FrameBufferObject::FrameBufferObject(int width, int height)
@@ -48,7 +49,7 @@ GLuint FrameBufferObject::createFramebufferTexture()
 	if ( s_useTexStorage2D )
 	{
 		// for testing purposes
-		glTexStorage2D(GL_TEXTURE_2D, 1, s_internalFormat, m_width, m_height);	
+		glTexStorage2D(GL_TEXTURE_2D, s_numLevels, s_internalFormat, m_width, m_height);	
 	}
 	else
 	{
@@ -60,7 +61,7 @@ GLuint FrameBufferObject::createFramebufferTexture()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, s_numLevels-1);
 	OPENGLCONTEXT->bindTexture(0);
 	return textureHandle;
 }
