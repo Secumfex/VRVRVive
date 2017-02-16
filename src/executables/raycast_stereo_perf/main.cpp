@@ -137,6 +137,7 @@ public: // who cares
 	struct Frame{
 		Profiler FrameProfiler;
 		SimpleDoubleBuffer<OpenGLTimings> Timings;
+		SimpleDoubleBuffer<glm::vec4> AvgError;
 	} m_frame;
 
 	//========== MISC ================
@@ -234,6 +235,7 @@ public:
 	void clearOutputTexture(GLuint texture);
 	void loadShaderDefines();
 	void handleCsvProfiling();
+	void updateError();
 
 	void handleVolume();
 	void handleResolutionPreset(int resolution);
@@ -939,12 +941,6 @@ void CMainApplication::updateGui()
 	ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
 	}
 	}}
-	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
-
-	ImGui::Checkbox("Use Compute", &m_bUseCompute);
-
-	ImGui::Checkbox("Show Debug View", &m_bShowDebugView);
-	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
 
 	if (ImGui::Button("Recompile Shaders"))
 	{
@@ -1056,11 +1052,54 @@ void CMainApplication::updateGui()
 
 		
 	//DEBUG Output to profiler file
-	if (!pause_frame_profiler) m_frame.Timings.swap();
+	if (!pause_frame_profiler) { m_frame.Timings.swap(); m_frame.AvgError.swap(); }
 	m_frame.Timings.getBack().timestamp("Frame Begin");
 
-    //////////////////////////////////////////////////////////////////////////////
+    // DSSIM
+	ImGui::Separator();
+	float avgErrorArr[4] = {m_frame.AvgError.getFront().x, m_frame.AvgError.getFront().y, m_frame.AvgError.getFront().z, m_frame.AvgError.getFront().w};
+	ImGui::InputFloat4("Avg DSSIM Channels", avgErrorArr, 3);
+	ImGui::Value("AVG DSSIM", ((avgErrorArr[0] + avgErrorArr[1] + avgErrorArr[2] + avgErrorArr[3]) / 4.0f));
+	ImGui::Separator();
+
+	//////////////////////////////////////////////////////////////////////////////
+
+	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
+	ImGui::Checkbox("Use Compute", &m_bUseCompute);
+	ImGui::Checkbox("Show Debug View", &m_bShowDebugView);
+	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
+
+
 }
+
+void CMainApplication::updateError()
+{
+	// compute dssim
+	m_pError->render();
+
+	// compute average dssim by mipmapping
+	// option 1: use OpenGL mipmapping func
+	OPENGLCONTEXT->activeTexture( GL_TEXTURE11 );
+	OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE_2D);
+	glGenerateMipmap(GL_TEXTURE_2D);
+
+	int numMipmaps = (int) (std::log( std::max( (float) m_pFBO_error->getWidth(), (float) m_pFBO_error->getHeight()) ) / std::log( 2.0f ) );
+
+	// option 2: use compute shader
+	//int mipmapBase = 0;
+	//int mipmapTarget = 1;
+	//glm::ivec2 curRes(m_pFBO_error->getWidth(), m_pFBO_error->getHeight());
+	//for (int i = 0; i < numMipmaps; i++)
+	//{
+	//	curRes /= 2;
+	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA16F, GL_READ_ONLY, mipmapBase + i, GL_FALSE);
+	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1, GL_RGBA16F, GL_WRITE_ONLY, mipmapTarget + i, GL_FALSE);
+	//	m_pMipmapCompute->dispatch( curRes.x / m_pMipmapCompute->getLocalGroupSize().x + 1, curRes.y / m_pMipmapCompute->getLocalGroupSize().y + 1);
+	//}
+
+	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, glm::value_ptr( m_frame.AvgError.getBack() ));
+}
+
 
 void CMainApplication::handleCsvProfiling()
 {
@@ -1087,7 +1126,8 @@ void CMainApplication::handleCsvProfiling()
 		// additional headers
 		headers.push_back("Total Stereo");
 		headers.push_back("Total Single");
-		headers.push_back("Percentage");
+		headers.push_back("Time-Saving");
+		headers.push_back("Average DSSIM");
 
 		m_configHelper.timings.setHeaders(headers);
 
@@ -1104,12 +1144,22 @@ void CMainApplication::handleCsvProfiling()
 		std::vector<std::string> row;
 		float totalStereo = 0.0f;
 		float totalSingle = 0.0f;
+		float totalLeft = 0.0f;
+		float totalRight = 0.0f;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed )
 		{
 			row.push_back( std::to_string( e.second.lastTiming ) );
 
-			if( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos) // contains an L or R suffix --> from stereo rendering
+			if ( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos)
 			{
+				if( e.first.find("_R") != e.first.npos )
+				{
+					totalRight =+ e.second.lastTiming;
+				}
+				if( e.first.find("_L") != e.first.npos) // contains an L or R suffix --> from stereo rendering
+				{
+					totalLeft += e.second.lastTiming;
+				}
 				totalStereo += e.second.lastTiming;
 			}
 			else
@@ -1117,11 +1167,14 @@ void CMainApplication::handleCsvProfiling()
 				totalSingle += e.second.lastTiming;
 			}
 		}
-			
+		
+		float speedup = 1.0f - ((totalSingle - totalLeft) / totalRight);
+
 		// additional values
 		row.push_back(std::to_string(totalStereo)); // total stereo rendering time
 		row.push_back(std::to_string(totalSingle)); // total single pass time
-		row.push_back(std::to_string(totalSingle / totalStereo)); // percentage of total single pass to total stereo passes time
+		row.push_back(std::to_string( speedup ) ); // time-saving of total single pass to total stereo passes time
+		row.push_back(std::to_string( (m_frame.AvgError.getFront().x + m_frame.AvgError.getFront().y +m_frame.AvgError.getFront().z +m_frame.AvgError.getFront().w) / 4.0f ) ); // time-saving of total single pass to total stereo passes time
 
 		m_configHelper.timings.addRow(row);
 	}
@@ -1379,36 +1432,8 @@ void CMainApplication::renderViews()
 	}
 	m_frame.Timings.getBack().timestamp("Finished");
 
-
-	//+++++++++++++++ DEBUG ++++++++++++++++++++++++
-	// compute dssim
-	m_pError->render();
-
-	// compute average dssim by mipmapping
-	// option 1: use OpenGL mipmapping func
-	OPENGLCONTEXT->activeTexture( GL_TEXTURE11 );
-	OPENGLCONTEXT->bindTexture( m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE_2D);
-	glGenerateMipmap(GL_TEXTURE_2D);
-	checkGLError();
-
-	int numMipmaps = (int) (std::log( std::max( (float) m_pFBO_error->getWidth(), (float) m_pFBO_error->getHeight()) ) / std::log( 2.0f ) );
-	// option 2: use compute shader
-	//int mipmapBase = 0;
-	//int mipmapTarget = 1;
-	//glm::ivec2 curRes(m_pFBO_error->getWidth(), m_pFBO_error->getHeight());
-	//for (int i = 0; i < numMipmaps; i++)
-	//{
-	//	curRes /= 2;
-	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 0, GL_RGBA16F, GL_READ_ONLY, mipmapBase + i, GL_FALSE);
-	//	OPENGLCONTEXT->bindImageTextureToUnit(m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), 1, GL_RGBA16F, GL_WRITE_ONLY, mipmapTarget + i, GL_FALSE);
-	//	m_pMipmapCompute->dispatch( curRes.x / m_pMipmapCompute->getLocalGroupSize().x + 1, curRes.y / m_pMipmapCompute->getLocalGroupSize().y + 1);
-	//}
-
-	float avg[4];
-	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, &avg[0]);
-	ImGui::InputFloat4("Avg DSSIM Channels", avg, 3);
-	ImGui::Value("AVG DSSIM", ((avg[0] + avg[1] + avg[2] + avg[3]) / 4.0f));
-	//++++++++++++++++++++++++++++++++++++++++++++++
+	////////////////////////////////  Update DSSIM ///////////////////////////////// 
+	updateError();
 
 	// display fbo contents
 	m_pShowTexShader->updateAndBindTexture("tex", 7, m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
@@ -1434,6 +1459,8 @@ void CMainApplication::renderViews()
 		m_pShowTexShader->updateAndBindTexture( "tex", 11, m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 
 		static float level = 0.0;
+		int numMipmaps = (int) (std::log( std::max(m_textureResolution.x, m_textureResolution.y) ) / std::log( 2.0f ) );
+
 		ImGui::SliderFloat("Debug level", &level, 0.0f, (float) numMipmaps);
 		m_pShowTexShader->update("level", level);
 		m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
