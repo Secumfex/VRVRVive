@@ -13,7 +13,8 @@ protected:
 public:
 	Turntable(float sensitivity = 0.01f);
 	virtual ~Turntable();
-
+	
+	inline void setRotationMatrix(glm::mat4& rotation){ m_rotation = rotation; }
 	inline glm::mat4 getRotationMatrix(){ return m_rotation; }
 	inline void setDragActive(bool drag){m_dragActive = drag;}
 	inline bool getDragActive(){return m_dragActive;}

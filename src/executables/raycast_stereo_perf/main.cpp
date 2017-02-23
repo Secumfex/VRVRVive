@@ -387,11 +387,11 @@ void CMainApplication::loadVolumes()
 	std::string file = RESOURCES_PATH;
 		
 	m_volumeData[0] = Importer::load3DData<float>(file + "/volumes/CTHead/CThead", 256, 256, 113, 2);
-	m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 4, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[0].data.clear(); // set free	
 
 	m_volumeData[1] = Importer::loadBruder<float>();
-	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 4, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[1].data.clear(); // set free
 
 	m_volumeData[2] = Importer::load3DDataPVM<float>(file + "/volumes/SolidBox/Box.pvm");
@@ -403,11 +403,11 @@ void CMainApplication::loadVolumes()
 	m_volumeData[3].data.clear(); // set free	
 
 	m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
-	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 4, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
 	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/Engine/Engine.pvm");
-	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 3, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 4, GL_R16F, GL_RED, GL_FLOAT);
 
 	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
@@ -595,6 +595,7 @@ void CMainApplication::initRenderPasses()
 	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
 	m_pShowTex = new RenderPass(m_pShowTexShader, 0);
 	m_pShowTex->addRenderable(m_pQuad);
+	m_pShowTex->addEnable(GL_BLEND);
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("RenderPass Creation: square error"); DEBUGLOG->indent();
@@ -603,7 +604,7 @@ void CMainApplication::initRenderPasses()
 	m_pError->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	DEBUGLOG->outdent();
 	
-	DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
+	DEBUGLOG->log("RenderPass Creation: mip map compute"); DEBUGLOG->indent();
 	m_pMipmapCompute = new ComputePass(m_pMipmapComputeShader);
 	DEBUGLOG->outdent();
 
@@ -782,17 +783,24 @@ void CMainApplication::handleVolume()
 	activateVolume(m_volumeData[m_iActiveModel]);
 	// adjust scale
 	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain ) {
-		s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+		s_rotation = glm::rotate(glm::radians(205.0f), glm::vec3(0.0f,1.0f,0.0f));
 		s_scale = glm::scale(glm::vec3(1.0f, 0.79166, 1.0f));
 	}		
 	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain_Stanford ) {
+		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(90.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f));
 		s_scale = glm::scale(glm::vec3(1.0f, 1.5f * 0.42578125f, 1.0f));
 	}
 	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::CT_Head ) {
+		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 		s_scale = glm::scale(glm::vec3(1.0f, 0.8828f, 1.0f));
 	}
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Bucky_Ball || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::SolidBox || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Engine) {
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Bucky_Ball || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::SolidBox ) {
 		s_scale = glm::scale(glm::vec3(1.0f));
+		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(1.0f,0.0f,0.0f)) * glm::rotate(glm::radians(30.0f), glm::vec3(0.0f,1.0f,0.0f));
+	}
+	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Engine ) {
+		s_scale = glm::scale(glm::vec3(1.0f));
+		s_rotation = glm::rotate(glm::radians(-40.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f));
 	}
 
 	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
@@ -830,6 +838,10 @@ void CMainApplication::handleNumLayersPreset(int numLayers)
 	rebuildLayerTexture();
 
 	s_near = getIdealNearValue();
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+		s_lodBegin = s_near;
+		s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+	}}	
 	
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
 	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
@@ -851,6 +863,12 @@ void CMainApplication::handleResolutionPreset(int resolution)
 	//  compute ideal model position
 	s_near = getIdealNearValue();
 
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+		s_lodBegin = s_near;
+		s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+	}}	
+
+
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
 	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
 	updateModel();
@@ -867,6 +885,12 @@ void CMainApplication::handleFieldOfViewPreset(float fov)
 
 	// compute ideal model position
 	s_near = getIdealNearValue();
+
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+		s_lodBegin = s_near;
+		s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+	}}	
+
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
 	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
@@ -1139,13 +1163,17 @@ void CMainApplication::handleCsvProfiling()
 		m_configHelper.timings.clearData();
 	}
 
-	if ( m_bCsvDoRun &&  m_iCsvCounter > 0 && m_iCsvCounter <= m_iCsvNumFramesToProfile ) // going to profile 1000 frames
+	if ( m_bCsvDoRun &&  m_iCsvCounter > 0 && m_iCsvCounter <= m_iCsvNumFramesToProfile ) // profiling running
 	{
 		std::vector<std::string> row;
 		float totalStereo = 0.0f;
 		float totalSingle = 0.0f;
 		float totalLeft = 0.0f;
 		float totalRight = 0.0f;
+		
+		float rotationStepSize = (1.0f / (float) m_iCsvNumFramesToProfile) * glm::two_pi<float>();
+		m_turntable.setRotationMatrix( m_turntable.getRotationMatrix() * glm::rotate(glm::mat4(1.0f), rotationStepSize, glm::vec3(0.0f, 1.0f, 0.0f)) );
+		
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed )
 		{
 			row.push_back( std::to_string( e.second.lastTiming ) );
@@ -1379,7 +1407,9 @@ void CMainApplication::renderViews()
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 		
 	OPENGLCONTEXT->bindFBO(0);
+	glClearColor(1.0,1.0,1.0,0.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClearColor(0.0,0.0,0.0,0.0);
 
 	// reset atomic buffers
 	GLuint a[3] = {0,0,0};
