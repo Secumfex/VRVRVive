@@ -39,7 +39,7 @@ static const char* s_models[]  = {
 	"MRT Brain",
 	"Solid Box",
 	"Bucky Ball",
-	"MRT Brain Stanford",
+	"Foot",
 	"Engine"
 };
 static TransferFunctionPresets::Preset s_modelToPresets[] =  { 
@@ -47,7 +47,7 @@ static TransferFunctionPresets::Preset s_modelToPresets[] =  {
 	TransferFunctionPresets::MRT_Brain, 
 	TransferFunctionPresets::SolidBox, 
 	TransferFunctionPresets::Bucky_Ball, 
-	TransferFunctionPresets::MRT_Brain_Stanford, 
+	TransferFunctionPresets::Foot, 
 	TransferFunctionPresets::Engine 
 };
 
@@ -402,7 +402,11 @@ void CMainApplication::loadVolumes()
 	m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 1, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[3].data.clear(); // set free	
 
-	m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
+	//m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
+	//m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 4, GL_R16F, GL_RED, GL_FLOAT);
+	//m_volumeData[4].data.clear(); // set free	
+
+	m_volumeData[4] = Importer::load3DDataPVM<float>(file + "/volumes/Foot/Foot.pvm");
 	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 4, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
