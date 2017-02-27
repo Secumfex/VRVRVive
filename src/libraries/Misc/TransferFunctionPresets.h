@@ -105,11 +105,13 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Pre
 	else if( preset == Preset::Foot)
 	{
 		transferFunction.getValues().push_back(0.0f);
-		transferFunction.getColors().push_back(glm::vec4(120.0f/255.0f, 227.0f/255.0f, 135.0f/255.0f, 0.0f));
-		transferFunction.getValues().push_back(0.2f);
+		transferFunction.getColors().push_back(glm::vec4(120.0f/255.0f, 227.0f/255.0f, 135.0f/255.0f, 17.0f/255.0f));
+		transferFunction.getValues().push_back(0.268f);
 		transferFunction.getColors().push_back(glm::vec4(192.0f/255.0f, 86.0f/255.0f, 0.0f, 28.0f/255.0f));
+		transferFunction.getValues().push_back(0.354f);
+		transferFunction.getColors().push_back(glm::vec4(155.0f/255.0f, 11.0f/255.0f, 157.0f/255.0f, 1.0f));
 		transferFunction.getValues().push_back(0.5f);
-		transferFunction.getColors().push_back(glm::vec4(0.0f, 11.0f/255.0f, 157.0f/255.0f, 1.0f));
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 185.0f/255.0f, 255.0f/255.0f, 36.0f/255.0f));
 	}
 	else if( preset == Preset::Engine)
 	{
@@ -117,6 +119,8 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Pre
 		transferFunction.getColors().push_back(glm::vec4(1.0f, 1.0f, 1.0f, 35.0f/255.0f));
 		transferFunction.getValues().push_back(0.606f);
 		transferFunction.getColors().push_back(glm::vec4(173.0f/255.0f, 60.0f/255.0f, 0.02f, 8.0f/255.0f));
+		transferFunction.getValues().push_back(0.660f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f,0.0f,0.0f, 1.0f));
 		transferFunction.getValues().push_back(0.769f);
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 113.0f/255.0f, 185.0f/255.0f, 1.0f));
 	}

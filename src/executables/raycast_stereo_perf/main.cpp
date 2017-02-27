@@ -35,10 +35,10 @@
 
 ////////////////////// PARAMETERS /////////////////////////////
 static const char* s_models[]  = {
-	"CT Head",
-	"MRT Brain",
-	"Solid Box",
-	"Bucky Ball",
+	"CT-Head",
+	"MRT-Brain",
+	"Solid-Box",
+	"Bucky-Ball",
 	"Foot",
 	"Engine"
 };
@@ -180,9 +180,10 @@ public: // who cares
 	{
 		std::string prefix; // i.e. timestamp or other uid
 
-		CSVWriter timings;
-		CSVWriter shader;
-		CSVWriter render;
+		CSVWriter<float> timings;
+		CSVWriter<std::string> shader;
+		CSVWriter<std::string> render;
+		CSVWriter<float> averages;
 
 		ConfigHelper();
 		void saveImages(CMainApplication* mainApp);
@@ -383,15 +384,20 @@ void CMainApplication::loadShaderDefines()
 
 void CMainApplication::loadVolumes()
 {
+	int numLevels = 1;
+	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+		numLevels = 4;
+	}}
+
 	// load data set: CT of a Head	// load into 3d texture
 	std::string file = RESOURCES_PATH;
 		
 	m_volumeData[0] = Importer::load3DData<float>(file + "/volumes/CTHead/CThead", 256, 256, 113, 2);
-	m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 4, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], numLevels, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[0].data.clear(); // set free	
 
 	m_volumeData[1] = Importer::loadBruder<float>();
-	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 4, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], numLevels, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[1].data.clear(); // set free
 
 	m_volumeData[2] = Importer::load3DDataPVM<float>(file + "/volumes/SolidBox/Box.pvm");
@@ -407,11 +413,11 @@ void CMainApplication::loadVolumes()
 	//m_volumeData[4].data.clear(); // set free	
 
 	m_volumeData[4] = Importer::load3DDataPVM<float>(file + "/volumes/Foot/Foot.pvm");
-	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 4, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], numLevels, GL_R16F, GL_RED, GL_FLOAT);
 	m_volumeData[4].data.clear(); // set free	
 
 	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/Engine/Engine.pvm");
-	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], 4, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], numLevels, GL_R16F, GL_RED, GL_FLOAT);
 
 	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
@@ -1143,7 +1149,7 @@ void CMainApplication::handleCsvProfiling()
 
 	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
-		m_configHelper.prefix = "profile_" + std::to_string( (std::time(0) / 6) % 10000) + "_";
+		m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) + "_" + std::to_string((int) m_textureResolution.x) + "_" + std::to_string(m_iNumLayers) + "_" + s_models[m_iActiveModel] + "_";
 
 		std::vector<std::string> headers;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed)
@@ -1159,28 +1165,33 @@ void CMainApplication::handleCsvProfiling()
 
 		m_configHelper.timings.setHeaders(headers);
 
+		// averages
+		m_configHelper.averages.setHeaders(headers); // same headers
+
 		m_configHelper.copyRenderConfig( this );
 		m_configHelper.copyShaderConfig( this );
 		m_configHelper.saveImages( this );
 
 		// clear timings
 		m_configHelper.timings.clearData();
+		m_configHelper.averages.clearData();
 	}
 
-	if ( m_bCsvDoRun &&  m_iCsvCounter > 0 && m_iCsvCounter <= m_iCsvNumFramesToProfile ) // profiling running
+	if ( m_bCsvDoRun &&  m_iCsvCounter > 2 && m_iCsvCounter <= m_iCsvNumFramesToProfile + 2 ) // profiling running
 	{
-		std::vector<std::string> row;
+		std::vector<float> row;
 		float totalStereo = 0.0f;
 		float totalSingle = 0.0f;
 		float totalLeft = 0.0f;
 		float totalRight = 0.0f;
 		
 		float rotationStepSize = (1.0f / (float) m_iCsvNumFramesToProfile) * glm::two_pi<float>();
-		m_turntable.setRotationMatrix( m_turntable.getRotationMatrix() * glm::rotate(glm::mat4(1.0f), rotationStepSize, glm::vec3(0.0f, 1.0f, 0.0f)) );
+		m_turntable.setRotationMatrix( glm::rotate(glm::mat4(1.0f), rotationStepSize, glm::vec3(0.0f, 1.0f, 0.0f)) * m_turntable.getRotationMatrix() );
 		
+		int i = 0;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed )
 		{
-			row.push_back( std::to_string( e.second.lastTiming ) );
+			row.push_back( e.second.lastTiming );
 
 			if ( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos)
 			{
@@ -1203,16 +1214,38 @@ void CMainApplication::handleCsvProfiling()
 		float speedup = 1.0f - ((totalSingle - totalLeft) / totalRight);
 
 		// additional values
-		row.push_back(std::to_string(totalStereo)); // total stereo rendering time
-		row.push_back(std::to_string(totalSingle)); // total single pass time
-		row.push_back(std::to_string( speedup ) ); // time-saving of total single pass to total stereo passes time
-		row.push_back(std::to_string( (m_frame.AvgError.getFront().x + m_frame.AvgError.getFront().y +m_frame.AvgError.getFront().z +m_frame.AvgError.getFront().w) / 4.0f ) ); // time-saving of total single pass to total stereo passes time
+		row.push_back(totalStereo); // total stereo rendering time
+		row.push_back(totalSingle); // total single pass time
+		row.push_back(speedup ); // time-saving of total single pass to total stereo passes time
+		row.push_back( (m_frame.AvgError.getFront().x + m_frame.AvgError.getFront().y +m_frame.AvgError.getFront().z +m_frame.AvgError.getFront().w) / 4.0f ); // time-saving of total single pass to total stereo passes time
 
 		m_configHelper.timings.addRow(row);
 	}
 
-	if ( m_bCsvDoRun && m_iCsvCounter > m_iCsvNumFramesToProfile ) // write when finished
+	if ( m_bCsvDoRun && m_iCsvCounter > m_iCsvNumFramesToProfile + 2) // write when finished
 	{
+		////////////////////
+		// compute averages
+		auto data = m_configHelper.timings.getData();
+		const int rowLength = m_configHelper.timings.getHeaders().size();
+		const int numRows = (data.size() / rowLength);
+		std::vector<float> averagesRow(rowLength, 0.0f); 
+
+		for ( int row = 0; row < numRows; row++ )
+		{
+			int idx = row * rowLength;
+			for (int col = 0; col < rowLength; col++)
+			{
+				averagesRow[col] += data[idx + col];
+			}
+		}
+		for (int col = 0; col < rowLength; col++)
+		{
+			averagesRow[col] /= (float) numRows;
+		}
+		m_configHelper.averages.addRow(averagesRow);
+		///////////////////
+
 		m_configHelper.writeToFiles();
 		m_iCsvCounter = 0;
 		m_bCsvDoRun = false;
@@ -1719,10 +1752,10 @@ void CMainApplication::ConfigHelper::copyRenderConfig(CMainApplication* mainApp)
 	row.push_back(std::to_string(mainApp->m_iNumLayers));
 		
 	headers.push_back( "Texture Size" );
-	row.push_back(std::to_string(mainApp->m_textureResolution.x));
+	row.push_back(std::to_string((int)mainApp->m_textureResolution.x));
 		
 	headers.push_back( "Field of View" );
-	row.push_back(std::to_string(s_fovY));
+	row.push_back(std::to_string((int)s_fovY));
 		
 	headers.push_back( "Near" );
 	row.push_back(std::to_string(s_near));
@@ -1753,6 +1786,7 @@ void CMainApplication::ConfigHelper::writeToFiles()
 	render.writeToFile(  prefix + "RENDER"  + ".csv" );
 	shader.writeToFile(  prefix + "SHADER"  + ".csv" );
 	timings.writeToFile( prefix + "TIMINGS" + ".csv" );
+	averages.writeToFile( prefix + "AVERAGES" + ".csv" );
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
