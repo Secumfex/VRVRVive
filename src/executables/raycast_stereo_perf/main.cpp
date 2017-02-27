@@ -51,8 +51,8 @@ static TransferFunctionPresets::Preset s_modelToPresets[] =  {
 	TransferFunctionPresets::Engine 
 };
 
-static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)"};
-static const int resolutionPresets[]  = {256, 512, 768, 1080};
+static const char* resolutionPresetsStr[]  = {"256", "512", "768", "1024","Vive (1080)"};
+static const int resolutionPresets[]  = {256, 512, 768, 1024, 1080};
 static const char* numLayersPresetsStr[]  = {"24", "32", "48", "64"};
 static const int numLayersPresets[]  = {24, 32, 48, 64};
 static const char* fovPresetsStr[]  = {"45", "55", "Vive (110)"};
