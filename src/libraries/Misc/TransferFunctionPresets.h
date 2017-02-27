@@ -101,6 +101,10 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Pre
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 1.0f, 0.85f, 0.12f));
 		transferFunction.getValues().push_back(0.6f);
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 1.0f, 0.15f));
+		transferFunction.getValues().push_back(0.75f);
+		transferFunction.getColors().push_back(glm::vec4(1.0f, 1.0f, 0.0f, 0.15f));
+		transferFunction.getValues().push_back(1.0f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	}
 	else if( preset == Preset::Foot)
 	{

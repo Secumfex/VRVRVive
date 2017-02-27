@@ -51,12 +51,12 @@ static TransferFunctionPresets::Preset s_modelToPresets[] =  {
 	TransferFunctionPresets::Engine 
 };
 
-static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)", "1.4x Vive (1512)", "2.0x Vive (2160)"};
-static const int resolutionPresets[]  = {256, 512, 768, 1080, 1512, 2160};
-static const char* numLayersPresetsStr[]  = {"16", "32", "64", "96"};
-static const int numLayersPresets[]  = {16, 32, 64, 96};
-static const char* fovPresetsStr[]  = {"45", "90", "Vive (110)"};
-static const float fovPresets[]  = {45, 90, 110};
+static const char* resolutionPresetsStr[]  = {"256", "512", "768", "Vive (1080)"};
+static const int resolutionPresets[]  = {256, 512, 768, 1080};
+static const char* numLayersPresetsStr[]  = {"24", "32", "48", "64"};
+static const int numLayersPresets[]  = {24, 32, 48, 64};
+static const char* fovPresetsStr[]  = {"45", "55", "Vive (110)"};
+static const float fovPresets[]  = {45, 55, 110};
 
 const char* SHADER_DEFINES[] = {
 	"FIRST_HIT",
@@ -204,6 +204,8 @@ public: // who cares
 
 	bool m_bUseCompute;
 
+	bool m_bAutoTranslate;
+
 public:
 
 	void profileFPS(float fps);
@@ -274,6 +276,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_bCsvDoRun(false)
 	, m_iActiveModel(0)
 	, m_bUseCompute(false)
+	, m_bAutoTranslate(false)
 {
 	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
 
@@ -854,7 +857,7 @@ void CMainApplication::handleNumLayersPreset(int numLayers)
 	}}	
 	
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	if ( m_bAutoTranslate) s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
 	updateModel();
 
 	updateNearHeightWidth();
@@ -880,7 +883,7 @@ void CMainApplication::handleResolutionPreset(int resolution)
 
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	if ( m_bAutoTranslate) s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
 	updateModel();
 
 	updateNearHeightWidth();
@@ -903,7 +906,7 @@ void CMainApplication::handleFieldOfViewPreset(float fov)
 
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
-	s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+	if ( m_bAutoTranslate) s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
 	updateModel();
 
 	updateNearHeightWidth();
@@ -1030,6 +1033,14 @@ void CMainApplication::updateGui()
 	ImGui::EndGroup();
 
 	ImGui::PopItemWidth();
+	}
+	
+	{
+		ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
+		ImGui::SliderFloat("Translation Z", &s_translation[3][2], -2.5f, 2.5f); 
+		ImGui::SameLine();
+		ImGui::Checkbox("Auto-Translate", &m_bAutoTranslate);
+		ImGui::PopItemWidth();
 	}
 	/////////// PROFILING /////////////////////
 	static bool frame_profiler_visible = false;
