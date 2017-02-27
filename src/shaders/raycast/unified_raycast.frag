@@ -5,6 +5,7 @@
 /*********** LIST OF POSSIBLE DEFINES ***********
 	ALPHA_SCALE <float>
 	AMBIENT_OCCLUSION
+		AMBIENT_OCCLUSION_SCALE <float>
 	ERT_THRESHOLD <float>
 	EMISSION_ABSORPTION_RAW
 		EMISSION_SCALE <float>
@@ -42,6 +43,22 @@ float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noi
 
 	#ifndef ABSORPTION_SCALE
 	#define ABSORPTION_SCALE 10.0
+	#endif
+#endif
+
+#ifdef AMBIENT_OCCLUSION
+	#ifndef AMBIENT_OCCLUSION_SCALE
+	#define AMBIENT_OCCLUSION_SCALE 2.0
+	#endif
+
+	#ifndef AMBIENT_OCCLUSION_RADIUS
+	#define AMBIENT_OCCLUSION_RADIUS 2.0
+	#endif
+#endif
+
+#ifdef SHADOW_SAMPLING
+	#ifndef SHADOW_SCALE
+	#define SHADOW_SCALE 1.0
 	#endif
 #endif
 ///////////////////////////////////////////////////////////////////////////////////
@@ -300,7 +317,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			float numSamples = 8.0;
 			for (int i = -1; i <= 1; i+= 2) {	for (int j = -1; j <= 1; j+= 2) { for (int k = -1; k <= 1; k+= 2)
 			{	
-				vec3 ao_uvw = curUVW + ( vec3(float(i), float(j), float(k)) ) * ( 2.0 * curStepSize );
+				vec3 ao_uvw = curUVW + ( vec3(float(i), float(j), float(k)) ) * ( (AMBIENT_OCCLUSION_RADIUS/1.414) * curStepSize );
 
 				#ifdef LEVEL_OF_DETAIL
 					float ao_value = textureLod(volume_texture, ao_uvw, curLod).r;
@@ -314,7 +331,38 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 					occlusion += transferFunction(ao_value, curStepSize ).a;
 				#endif
 			}}}
+
+			// top bottom left right front back
+			numSamples += 6.0;
+			for (int i = -1; i <= 1; i+= 2)
+			{	
+				vec3 ao_uvwX = curUVW + ( vec3(float(i), 0.0, 0.0) ) * ( AMBIENT_OCCLUSION_RADIUS * curStepSize );
+				vec3 ao_uvwY = curUVW + ( vec3(0.0, float(i), 0.0) ) * ( AMBIENT_OCCLUSION_RADIUS * curStepSize );
+				vec3 ao_uvwZ = curUVW + ( vec3(0.0, 0.0, float(i)) ) * ( AMBIENT_OCCLUSION_RADIUS * curStepSize );
+
+				#ifdef LEVEL_OF_DETAIL
+					float ao_valueX = textureLod(volume_texture, ao_uvwX, curLod).r;
+					float ao_valueY = textureLod(volume_texture, ao_uvwY, curLod).r;
+					float ao_valueZ = textureLod(volume_texture, ao_uvwZ, curLod).r;
+				#else
+					float ao_valueX = texture(volume_texture, ao_uvwX).r;
+					float ao_valueY = texture(volume_texture, ao_uvwY).r;
+					float ao_valueZ = texture(volume_texture, ao_uvwZ).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					occlusion += 1.0 - exp( - (pow(transferFunctionRaw( ao_valueX ).a * ABSORPTION_SCALE, 2.0) ) * distanceStepSize );
+					occlusion += 1.0 - exp( - (pow(transferFunctionRaw( ao_valueY ).a * ABSORPTION_SCALE, 2.0) ) * distanceStepSize );
+					occlusion += 1.0 - exp( - (pow(transferFunctionRaw( ao_valueZ ).a * ABSORPTION_SCALE, 2.0) ) * distanceStepSize );
+				#else
+					occlusion += transferFunction(ao_valueX, curStepSize ).a;
+					occlusion += transferFunction(ao_valueY, curStepSize ).a;
+					occlusion += transferFunction(ao_valueZ, curStepSize ).a;
+				#endif
+			}
+
 			occlusion -= sampleColor.a; // to remove "self-occlusion"
+			occlusion *= AMBIENT_OCCLUSION_SCALE;
 
 			sampleColor.rgb *= max(0.0, min( 1.0, 1.0 - (occlusion / numSamples)));
 		#endif
@@ -344,6 +392,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 				
 				shadow = (1.0 - shadow) * shadow_alpha + shadow;
 			}
+
+			shadow *= SHADOW_SCALE;
 			
 			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
 		#endif

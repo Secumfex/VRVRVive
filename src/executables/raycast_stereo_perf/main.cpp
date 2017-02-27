@@ -1313,7 +1313,7 @@ void CMainApplication::updateCommonUniforms()
 	static float angles[2] = {-0.5f, -0.5f};
 	float alpha = angles[0] * glm::pi<float>();
 	float beta  = angles[1] * glm::half_pi<float>();
-	static int numSteps = 8;
+	static int numSteps = 16;
 	static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
 	if (ImGui::CollapsingHeader("Shadow Properties"))
     {	
