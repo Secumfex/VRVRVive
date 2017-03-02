@@ -32,25 +32,9 @@
 
 #include <Misc/TransferFunctionPresets.h>>
 #include <Misc/Parameters.h>
+#include <Misc/VolumePresets.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[]  = {
-	"CT-Head",
-	"MRT-Brain",
-	"Solid-Box",
-	"Bucky-Ball",
-	"Foot",
-	"Engine"
-};
-static TransferFunctionPresets::Preset s_modelToPresets[] =  { 
-	TransferFunctionPresets::CT_Head, 
-	TransferFunctionPresets::MRT_Brain, 
-	TransferFunctionPresets::SolidBox, 
-	TransferFunctionPresets::Bucky_Ball, 
-	TransferFunctionPresets::Foot, 
-	TransferFunctionPresets::Engine 
-};
-
 static const char* resolutionPresetsStr[]  = {"256", "512", "768", "1024","Vive (1080)"};
 static const int resolutionPresets[]  = {256, 512, 768, 1024, 1080};
 static const char* numLayersPresetsStr[]  = {"24", "32", "48", "64"};
@@ -90,8 +74,8 @@ public: // who cares
 	SDL_GLContext m_pContext;
 
 	// Render objects bookkeeping
-	VolumeData<float> m_volumeData[6];
-	GLuint m_volumeTexture[6];
+	VolumeData<float> m_volumeData;
+	GLuint m_volumeTexture;
 	Quad*	m_pQuad;
 	Grid*	m_pGrid;
 	VertexGrid* m_pVertexGrid;
@@ -230,7 +214,7 @@ public:
 	void loadShaders();
 	void loadGeometries();
 	void initSceneVariables();
-	void loadVolumes();
+	void loadVolume();
 
 	CMainApplication( int argc, char *argv[] );
 	virtual ~CMainApplication();
@@ -336,7 +320,7 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	// set volume specific parameters
 	s_minValue = volumeData.min;
 	s_maxValue = volumeData.max;
-	s_rayStepSize = 1.0f / (2.0f * volumeData.size_x); // this seems a reasonable size
+	s_rayStepSize = 1.0f / (2.0f * std::max(volumeData.size_x, std::max(volumeData.size_y, volumeData.size_z))); // this seems a reasonable size
 	s_windowingMinValue = (float) volumeData.min;
 	s_windowingMaxValue = (float) volumeData.max;
 	s_windowingRange = s_windowingMaxValue - s_windowingMinValue;
@@ -385,44 +369,17 @@ void CMainApplication::loadShaderDefines()
 
 }
 
-void CMainApplication::loadVolumes()
+void CMainApplication::loadVolume()
 {
 	int numLevels = 1;
 	{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 		numLevels = 4;
 	}}
 
-	// load data set: CT of a Head	// load into 3d texture
-	std::string file = RESOURCES_PATH;
-		
-	m_volumeData[0] = Importer::load3DData<float>(file + "/volumes/CTHead/CThead", 256, 256, 113, 2);
-	m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], numLevels, GL_R16F, GL_RED, GL_FLOAT);
-	m_volumeData[0].data.clear(); // set free	
+	VolumePresets::loadPreset( m_volumeData, (VolumePresets::Preset) m_iActiveModel);
+	m_volumeTexture = loadTo3DTexture<float>(m_volumeData, numLevels, GL_R16F, GL_RED, GL_FLOAT);
+	m_volumeData.data.clear(); // set free	
 
-	m_volumeData[1] = Importer::loadBruder<float>();
-	m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], numLevels, GL_R16F, GL_RED, GL_FLOAT);
-	m_volumeData[1].data.clear(); // set free
-
-	m_volumeData[2] = Importer::load3DDataPVM<float>(file + "/volumes/SolidBox/Box.pvm");
-	m_volumeTexture[2] =  loadTo3DTexture<float>(m_volumeData[2], 1, GL_R16F, GL_RED, GL_FLOAT);
-	m_volumeData[2].data.clear(); // set free	
-
-	m_volumeData[3] = Importer::load3DDataPVM<float>(file + "/volumes/BuckyBall/Bucky.pvm");
-	m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 1, GL_R16F, GL_RED, GL_FLOAT);
-	m_volumeData[3].data.clear(); // set free	
-
-	//m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
-	//m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 4, GL_R16F, GL_RED, GL_FLOAT);
-	//m_volumeData[4].data.clear(); // set free	
-
-	m_volumeData[4] = Importer::load3DDataPVM<float>(file + "/volumes/Foot/Foot.pvm");
-	m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], numLevels, GL_R16F, GL_RED, GL_FLOAT);
-	m_volumeData[4].data.clear(); // set free	
-
-	m_volumeData[5] = Importer::load3DDataPVM<float>(file + "/volumes/Engine/Engine.pvm");
-	m_volumeTexture[5] = loadTo3DTexture<float>(m_volumeData[5], numLevels, GL_R16F, GL_RED, GL_FLOAT);
-
-	handleVolume();
 	DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
 	checkGLError(true);
 }
@@ -515,9 +472,11 @@ void CMainApplication::loadShaders()
 void CMainApplication::initRaycastingFramebuffers()
 {
 	DEBUGLOG->log("FrameBufferObject Creation: raycasting results"); DEBUGLOG->indent();
+	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	m_pFBO = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	m_pFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	m_pFBO_single = new FrameBufferObject(m_pRaycastStereoShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
+	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo compositing result"); DEBUGLOG->indent();
@@ -630,7 +589,7 @@ void CMainApplication::initRenderPasses()
 
 void CMainApplication::initTextureUnits()
 {
-	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
 	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D);
 
 	OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2, GL_TEXTURE_2D); // left uvw back
@@ -793,31 +752,19 @@ void CMainApplication::pollEvents()
 
 void CMainApplication::handleVolume()
 {
-	activateVolume(m_volumeData[m_iActiveModel]);
-	// adjust scale
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain ) {
-		s_rotation = glm::rotate(glm::radians(205.0f), glm::vec3(0.0f,1.0f,0.0f));
-		s_scale = glm::scale(glm::vec3(1.0f, 0.79166, 1.0f));
-	}		
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::MRT_Brain_Stanford ) {
-		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(90.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f));
-		s_scale = glm::scale(glm::vec3(1.0f, 1.5f * 0.42578125f, 1.0f));
-	}
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::CT_Head ) {
-		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-		s_scale = glm::scale(glm::vec3(1.0f, 0.8828f, 1.0f));
-	}
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Bucky_Ball || s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::SolidBox ) {
-		s_scale = glm::scale(glm::vec3(1.0f));
-		s_rotation = glm::rotate(glm::radians(25.0f), glm::vec3(1.0f,0.0f,0.0f)) * glm::rotate(glm::radians(30.0f), glm::vec3(0.0f,1.0f,0.0f));
-	}
-	if ( s_modelToPresets[m_iActiveModel] == TransferFunctionPresets::Engine ) {
-		s_scale = glm::scale(glm::vec3(1.0f));
-		s_rotation = glm::rotate(glm::radians(-40.0f), glm::vec3(0.0f,1.0f,0.0f)) * glm::rotate(glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f));
-	}
+	glDeleteTextures(1, &m_volumeTexture);
+	OPENGLCONTEXT->bindTextureToUnit(0, GL_TEXTURE0, GL_TEXTURE_3D);
+	
+	loadVolume();
 
-	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
-	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, s_modelToPresets[m_iActiveModel]);
+	activateVolume(m_volumeData);
+
+	// adjust scale
+	s_scale = VolumePresets::getScalation((VolumePresets::Preset) m_iActiveModel);
+	s_rotation = VolumePresets::getRotation((VolumePresets::Preset) m_iActiveModel);
+
+	OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
+	TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (VolumePresets::Preset) m_iActiveModel );
 }
 
 float CMainApplication::getIdealNearValue()
@@ -934,7 +881,7 @@ void CMainApplication::updateGui()
 	
 	ImGui::Text("Active Model");
 	ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
-	if (ImGui::ListBox("##activemodel", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 3))
+	if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
     {
 		handleVolume();
     }
@@ -1160,7 +1107,7 @@ void CMainApplication::handleCsvProfiling()
 
 	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
-		m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) + "_" + std::to_string((int) m_textureResolution.x) + "_" + std::to_string(m_iNumLayers) + "_" + s_models[m_iActiveModel] + "_";
+		m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) + "_" + std::to_string((int) m_textureResolution.x) + "_" + std::to_string(m_iNumLayers) + "_" + VolumePresets::s_models[m_iActiveModel] + "_";
 		if (m_bUseCompute) { m_configHelper.prefix += "GPGPU_"; }
 
 		std::vector<std::string> headers;
@@ -1516,19 +1463,19 @@ void CMainApplication::renderViews()
 
 	// display fbo contents
 	m_pShowTexShader->updateAndBindTexture("tex", 7, m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-	m_pShowTex->setViewport((int)0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+	m_pShowTex->setViewport((int)0, 0, (int) std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
 	m_pShowTex->render();
 
 	m_pShowTexShader->updateAndBindTexture("tex", 8, m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-	m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+	m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, 0, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
 	m_pShowTex->render();
 
 	m_pShowTexShader->updateAndBindTexture("tex", 9, m_pFBO_single->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-	m_pShowTex->setViewport((int)0, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+	m_pShowTex->setViewport((int)0, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
 	m_pShowTex->render();
 
 	m_pShowTexShader->updateAndBindTexture("tex", 10, m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0));
-	m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+	m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
 	if (!m_bShowDebugView)
 	{
 		m_pShowTex->render();
@@ -1542,7 +1489,7 @@ void CMainApplication::renderViews()
 
 		ImGui::SliderFloat("Debug level", &level, 0.0f, (float) numMipmaps);
 		m_pShowTexShader->update("level", level);
-		m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y / 2);
+		m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
 		m_pShowTex->render();
 		m_pShowTexShader->update("level", 0.0f);
 		
@@ -1732,7 +1679,7 @@ CMainApplication::~CMainApplication()
 	glDeleteTextures(textures.size(), &textures[0]);
 
 	// volume textures
-	glDeleteTextures( sizeof(m_volumeTexture)/sizeof(GLuint), m_volumeTexture);
+	glDeleteTextures( 1, &m_volumeTexture);
 }
 
 ////////////////////////////// CONFIG HELPER ///////////////////////////////////////
@@ -1773,13 +1720,13 @@ void CMainApplication::ConfigHelper::copyRenderConfig(CMainApplication* mainApp)
 	row.push_back(std::to_string(s_near));
 
 	headers.push_back( "Volume Name" );
-	row.push_back( s_models[mainApp->m_iActiveModel] );
+	row.push_back( VolumePresets::s_models[mainApp->m_iActiveModel] );
 	headers.push_back( "Volume Res X" );
-	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_x ));
+	row.push_back(std::to_string( mainApp->m_volumeData.size_x ));
 	headers.push_back( "Volume Res Y" );
-	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_y ));
+	row.push_back(std::to_string( mainApp->m_volumeData.size_y ));
 	headers.push_back( "Volume Res Z" );
-	row.push_back(std::to_string( mainApp->m_volumeData[mainApp->m_iActiveModel].size_z ));
+	row.push_back(std::to_string( mainApp->m_volumeData.size_z ));
 
 	render.setHeaders(headers);
 	render.setData(row);
@@ -1815,7 +1762,7 @@ int main(int argc, char *argv[])
 
 	pMainApplication->initSceneVariables();
 
-	pMainApplication->loadVolumes();
+	pMainApplication->handleVolume();
 
 	pMainApplication->loadGeometries();
 
