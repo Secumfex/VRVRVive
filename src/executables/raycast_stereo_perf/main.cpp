@@ -1161,6 +1161,7 @@ void CMainApplication::handleCsvProfiling()
 	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
 		m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) + "_" + std::to_string((int) m_textureResolution.x) + "_" + std::to_string(m_iNumLayers) + "_" + s_models[m_iActiveModel] + "_";
+		if (m_bUseCompute) { m_configHelper.prefix += "GPGPU_"; }
 
 		std::vector<std::string> headers;
 		for (auto e : m_frame.Timings.getFront().m_timersElapsed)

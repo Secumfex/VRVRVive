@@ -132,18 +132,36 @@ namespace Importer {
 		}
    
 
+
 		volData.real_size_x = 1.0f / (float) width;
-		volData.real_size_y = 1.0f / (float) depth;
-		volData.real_size_z = 1.0f / (float) height;
+		volData.real_size_z = 1.0f / (float) depth; // y, z are swapped for PVM data
+		volData.real_size_y = 1.0f / (float) height;
 		volData.size_x = width;
-		volData.size_y = depth;
-		volData.size_z = height;
+		volData.size_z = depth;
+		volData.size_y = height;
+
 		//volData.data.resize(width * height * depth * sizeof(char));
 		volData.data.resize(width * height * depth);
-		std::copy(volume, volume + width * height * depth * sizeof(char),volData.data.begin());
+		if (components == 1)
+		{
+			std::copy(volume, volume + width * height * depth * sizeof(char), volData.data.begin());
+			volData.min = CHAR_MAX;
+			volData.max = CHAR_MIN;
+		}
+		else if (components == 2)
+		{
+			for (int i = 0; i < width * height * depth; i++)
+			{
+				int val = volume[ 2 * i];
+				val = (val << 8) + volume[ 2 * i + 1];
+				volData.data[i] = (T) val;
+			}
 
-		volData.min = CHAR_MAX;
-		volData.max = CHAR_MIN;
+			//std::copy((short*) volume, (short*) volume + width * height * depth, volData.data.begin());
+			volData.min = SHRT_MAX;
+			volData.max = SHRT_MIN;
+		}
+
 		for (auto v : volData.data)
 		{
 			volData.min = std::min<T>(v, volData.min);
