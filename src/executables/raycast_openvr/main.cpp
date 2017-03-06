@@ -43,13 +43,13 @@ static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_R
 
 const char* SHADER_DEFINES[] = {
 	//"AMBIENT_OCCLUSION",
-	"RANDOM_OFFSET",
+	//"RANDOM_OFFSET",
 	//"WARP_SET_FAR_PLANE"
-	"OCCLUSION_MAP",
-	"EMISSION_ABSORPTION_RAW",
+	//"OCCLUSION_MAP",
+	//"EMISSION_ABSORPTION_RAW",
 	"SCENE_DEPTH",
-	"SHADOW_SAMPLING",
-	"LEVEL_OF_DETAIL",
+	//"SHADOW_SAMPLING",
+	//"LEVEL_OF_DETAIL",
 	"LAST_RESULT",
 	"FIRST_HIT"
 };
@@ -258,6 +258,8 @@ public:
 	void initFramebuffers();
 	void initUniforms();
 	void loadShaderDefines();
+	void recompileShaders();
+	void loadRaycastingShaders();
 	void loadShaders();
 	void loadGeometries();
 	void initSceneVariables();
@@ -398,10 +400,16 @@ public:
 		m_pNdcCube = new Volume(1.0f); // a cube that spans -1 .. 1 
 	}
 
+	void CMainApplication::loadRaycastingShaders()
+	{
+		DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
+		m_pRaycastShader = m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
+	}
+
 	void CMainApplication::loadShaders()
 	{
 		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines);
-		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
+		loadRaycastingShaders();
 		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines);
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
@@ -995,6 +1003,10 @@ public:
 			ImGui::Text("Parameters related to m_pVolume rendering");
 			ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
         	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+			{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
+				ImGui::SliderFloat3("Cull Max", glm::value_ptr(s_cullMax),0.0f, 1.0f);
+				ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
+			}}
 		}
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
@@ -1009,10 +1021,20 @@ public:
 		
 		ImGui::Separator();
 
-		ImGui::DragFloat("Lod Max Level",   &s_lodMaxLevel,   0.1f, 0.0f, 8.0f);
-		ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
-		ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(s_near, s_far - s_lodBegin) );
+		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+		if (ImGui::CollapsingHeader("Level of Detail Settings"))
+		{
+			ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
+			ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
+			ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
+		}
+		}}
 		
+		if (ImGui::Button("Recompile Shaders"))
+		{
+			recompileShaders();
+		}
+
 		ImGui::Separator();
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
@@ -1148,11 +1170,20 @@ public:
 	void CMainApplication::updateCommonUniforms()
 	{
 		/************* update color mapping parameters ******************/
-		// 
 		m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
-		m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
-		m_pRaycastShader->update("uLodBegin", s_lodBegin);
-		m_pRaycastShader->update("uLodRange", s_lodRange);  
+
+		// Level of Detail
+		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+			m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
+			m_pRaycastShader->update("uLodBegin", s_lodBegin);
+			m_pRaycastShader->update("uLodRange", s_lodRange);
+		}}
+
+		// cull planes
+		{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
+			m_pRaycastShader->update("uCullMin", s_cullMin);
+			m_pRaycastShader->update("uCullMax", s_cullMax);
+		}}
 
 		// color mapping parameters
 		m_pRaycastShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
@@ -1556,6 +1587,31 @@ public:
 		}
 	}
 
+	void CMainApplication::recompileShaders()
+	{
+		DEBUGLOG->log("Recompiling Shaders"); DEBUGLOG->indent();
+		DEBUGLOG->log("Deleting Shaders");
+	
+		// delete shaders
+		delete m_pRaycastShader;
+
+		// reload shader defines
+		loadShaderDefines();
+
+		// reload shaders
+		loadRaycastingShaders();
+	
+		// set ShaderProgram References
+		m_pRaycast[LEFT]->setShaderProgram(m_pRaycastShader);
+		m_pRaycast[RIGHT]->setShaderProgram(m_pRaycastShader);
+
+		// update uniforms
+		initTextureUniforms();
+		initUniforms();
+
+		DEBUGLOG->outdent();
+	}
+
 	//////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////// RENDER LOOP /////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
@@ -1709,6 +1765,8 @@ public:
 int main(int argc, char *argv[])
 {
 	CMainApplication *pMainApplication = new CMainApplication( argc, argv );
+
+	pMainApplication->loadShaderDefines();
 
 	pMainApplication->initOpenVR();
 
