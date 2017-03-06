@@ -5,6 +5,7 @@
 
 #include <Core/Timer.h>
 #include <Core/DoubleBuffer.h>
+#include <Core/FileReader.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -25,6 +26,7 @@
 
 #include <Misc/TransferFunctionPresets.h>
 #include <Misc/Parameters.h>
+#include <Misc/VolumePresets.h>
 
 // openvr includes
 #include <openvr.h>
@@ -102,8 +104,8 @@ private:
 	OpenVRSystem* m_pOvr;
 
 	// Render objects bookkeeping
-	VolumeData<float> m_volumeData[5];
-	GLuint m_volumeTexture[5];
+	VolumeData<float> m_volumeData;
+	GLuint m_volumeTexture;
 	Quad*	m_pQuad;
 	Grid*	m_pGrid;
 	VertexGrid* m_pVertexGrid;
@@ -209,6 +211,8 @@ private:
 
 	float m_fElapsedTime;
 	float m_fMirrorScreenTimer;
+	
+	std::string m_executableName;
 
 	struct MatrixSet
 	{
@@ -253,11 +257,14 @@ public:
 	void initTextureUnits();
 	void initFramebuffers();
 	void initUniforms();
+	void loadShaderDefines();
 	void loadShaders();
 	void loadGeometries();
 	void initSceneVariables();
-	void loadVolumes();
+	void handleVolume();
+	void loadVolume();
 	void initOpenVR();
+	
 	CMainApplication( int argc, char *argv[] );
 };
 
@@ -285,6 +292,11 @@ public:
 		, m_iActiveWarpingTechnique(QUAD)
 	{
 		DEBUGLOG->setAutoPrint(true);
+
+		std::string fullExecutableName( argv[0] );
+		m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
+		m_executableName = m_executableName.substr(0, m_executableName.find(".exe"));
+		DEBUGLOG->log("Executable name: " + m_executableName);
 
 		// create m_pWindow and opengl context
 		m_pWindow = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
@@ -322,36 +334,19 @@ public:
 	/////////////////////// VOLUME DATA LOADING //////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////
 	
-	void CMainApplication::loadVolumes()
+	void CMainApplication::loadVolume()
 	{
-		// load data set: CT of a Head	// load into 3d texture
-		std::string file = RESOURCES_PATH;
-		
-		m_volumeData[0] = Importer::load3DData<float>(file + "/volumes/CTHead/CThead", 256, 256, 113, 2);
-		m_volumeTexture[0] = loadTo3DTexture<float>(m_volumeData[0], 5, GL_R16F, GL_RED, GL_FLOAT);
-		m_volumeData[0].data.clear(); // set free	
+		int numLevels = 1;
+		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+			numLevels = 4;
+		}}
 
-		m_volumeData[1] = Importer::loadBruder<float>();
-		m_volumeTexture[1] =  loadTo3DTexture<float>(m_volumeData[1], 5, GL_R16F, GL_RED, GL_FLOAT);
-		m_volumeData[1].data.clear(); // set free
+		VolumePresets::loadPreset( m_volumeData, (VolumePresets::Preset) m_iActiveModel);
+		m_volumeTexture = loadTo3DTexture<float>(m_volumeData, numLevels, GL_R16F, GL_RED, GL_FLOAT);
+		m_volumeData.data.clear(); // set free	
 
-		m_volumeData[2] = SyntheticVolume::generateHomogeneousVolume<float>(32, 32, 32, 1000.0f);
-		m_volumeTexture[2] =  loadTo3DTexture<float>(m_volumeData[2], 1, GL_R16F, GL_RED, GL_FLOAT);
-		m_volumeData[2].data.clear(); // set free	
-
-		m_volumeData[3] = SyntheticVolume::generateRadialGradientVolume<float>( 32,32,32,1000.0f,0.0f);
-		m_volumeTexture[3] =  loadTo3DTexture<float>(m_volumeData[3], 3, GL_R16F, GL_RED, GL_FLOAT);
-		m_volumeData[3].data.clear(); // set free	
-
-		m_volumeData[4] = Importer::load3DData<float>(file + "/volumes/MRbrain/MRbrain", 256,256, 109, 2);
-		m_volumeTexture[4] =  loadTo3DTexture<float>(m_volumeData[4], 3, GL_R16F, GL_RED, GL_FLOAT);
-		m_volumeData[4].data.clear(); // set free	
-
-		// TODO wtf is going on here, why does it get corrupted?? 
 		DEBUGLOG->log("Initial ray sampling step size: ", s_rayStepSize);
-
-		activateVolume<float>(m_volumeData[0]);
-		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, TransferFunctionPresets::CT_Head);
+		checkGLError(true);
 	}
 
 	void CMainApplication::initSceneVariables()
@@ -580,7 +575,7 @@ public:
 
 	void CMainApplication::initTextureUnits()
 	{
-		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
+		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
 		OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE1, GL_TEXTURE_1D); // transfer function
 
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[LEFT]->getColorAttachmentTextureHandle(  GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * UVW_BACK + LEFT, GL_TEXTURE_2D); // left uvw back
@@ -941,6 +936,23 @@ public:
 		m_trackpadEventFunc(m_bIsTouchpadTouched, m_iTouchpadTrackedDeviceIdx); // handle trackpad touch seperately
 	}
 	
+	void CMainApplication::handleVolume()
+	{
+		glDeleteTextures(1, &m_volumeTexture);
+		OPENGLCONTEXT->bindTextureToUnit(0, GL_TEXTURE0, GL_TEXTURE_3D);
+	
+		loadVolume();
+
+		activateVolume(m_volumeData);
+
+		// adjust scale
+		s_scale = VolumePresets::getScalation((VolumePresets::Preset) m_iActiveModel);
+		s_rotation = VolumePresets::getRotation((VolumePresets::Preset) m_iActiveModel);
+
+		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
+		TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (VolumePresets::Preset) m_iActiveModel );
+	}
+
 	////////////////////////////////     GUI      ////////////////////////////////
 	void CMainApplication::updateGui()
 	{
@@ -987,22 +999,12 @@ public:
         
 		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 		
-    	if (ImGui::ListBox("active model", &m_iActiveModel, s_models, (int)(sizeof(s_models)/sizeof(*s_models)), 2))
-    	{
-			activateVolume(m_volumeData[m_iActiveModel]);
-			{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-				static glm::vec3 shadowDir = glm::normalize(glm::vec3(0.0f,-0.5f,1.0f));
-				if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain ) {
-					shadowDir = glm::normalize(glm::vec3(0.0f,0.5f,1.0f));
-					s_rotation = s_rotation * glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
-				}
-				if ( m_iActiveModel == TransferFunctionPresets::MRT_Brain_Stanford ) {shadowDir = glm::normalize(glm::vec3(-0.5f,-.5f,1.0f));}
-				m_pRaycastShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-				m_pRaycastLayersShader->update("uShadowRayDirection", shadowDir ); // full range of values in window
-			}}
-			OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture[m_iActiveModel], GL_TEXTURE0, GL_TEXTURE_3D);
-			TransferFunctionPresets::loadPreset(TransferFunctionPresets::s_transferFunction, (TransferFunctionPresets::Preset) m_iActiveModel);
-    	}
+    	ImGui::Text("Active Model");
+		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
+		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
+		{
+			handleVolume();
+		}
 		ImGui::PopItemWidth();
 		
 		ImGui::Separator();
@@ -1602,6 +1604,44 @@ public:
 		m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
 	}
 
+	
+	void CMainApplication::loadShaderDefines()
+	{
+		m_shaderDefines.clear();
+		m_shaderDefines.insert(m_shaderDefines.end(), SHADER_DEFINES, std::end(SHADER_DEFINES));
+
+		DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
+		std::string definitionsFile = m_executableName + ".defs";
+
+		DEBUGLOG->log("Looking for shader definitions file: " + definitionsFile);
+
+		FileReader fileReader;
+		// load data
+		if ( fileReader.readFileToBuffer(definitionsFile) )
+		{
+			std::vector<std::string> fileDefines = fileReader.getLines();
+			std::vector<std::string> activeDefines;
+			for (auto e: fileDefines)
+			{
+				if (e.length() >= (2 * sizeof(char)) && e[0] == '/' && e[1] == '/' ) { // "Commented" out
+					continue; 
+				}
+				else
+				{
+					activeDefines.push_back(e);
+				}
+			}
+			m_shaderDefines.insert(m_shaderDefines.end(), activeDefines.begin(), activeDefines.end());
+		}
+		else
+		{
+			DEBUGLOG->log("ERROR: Could not find shader definitions file");
+		}
+
+		DEBUGLOG->outdent();
+
+	}
+
 	CMainApplication::~CMainApplication()
 	{
 		delete m_pOvr;
@@ -1674,7 +1714,7 @@ int main(int argc, char *argv[])
 
 	pMainApplication->initSceneVariables();
 
-	pMainApplication->loadVolumes();
+	pMainApplication->handleVolume();
 
 	pMainApplication->loadGeometries();
 
