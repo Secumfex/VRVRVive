@@ -131,8 +131,8 @@ glm::mat4 VolumePresets::getRotation(Preset preset)
 		// case Preset::CTChest: return 
 		// case Preset::Lobster: return 
 		// case Preset::SheepHeart: return 
-		// case Preset::Tooth: return 
-		// case Preset::VisMale: return 
+		case Preset::Tooth: return glm::mat4(1.0f);
+		case Preset::VisMale: return glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 		// case Preset::XMasTree: return 
 		default: return glm::rotate(glm::radians(-90.0f), glm::vec3(1.0f,0.0f,0.0f));
 	}

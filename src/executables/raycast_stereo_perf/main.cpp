@@ -422,7 +422,7 @@ void CMainApplication::loadGeometries(){
 	DEBUGLOG->log("Geometry Creation"); DEBUGLOG->indent();
 	m_pVolume = new VolumeSubdiv(0.5f * s_volumeSize.x, 0.5f * s_volumeSize.y, 0.5f * s_volumeSize.z , 6);
 	m_pVertexGrid = new VertexGrid(m_textureResolution.x, m_textureResolution.y, true, VertexGrid::TOP_RIGHT_COLUMNWISE, glm::ivec2(-1));
-	m_pQuad = new Quad();;
+	m_pQuad = new Quad();
 	m_pGrid = new Grid(100, 100, 0.1f, 0.1f);
 	DEBUGLOG->outdent();
 }
@@ -914,6 +914,11 @@ void CMainApplication::updateGui()
         ImGui::Text("Parameters related to volume rendering");
         ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 5.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
         ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+		{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
+			ImGui::SliderFloat3("Cull Max", glm::value_ptr(s_cullMax),0.0f, 1.0f);
+			ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
+		}}
+
     }
 	ImGui::PopItemWidth();
 
@@ -1244,7 +1249,17 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastStereoComputeShader->update("uLodMaxLevel", s_lodMaxLevel);
 	m_pRaycastStereoComputeShader->update("uLodBegin", s_lodBegin);
 	m_pRaycastStereoComputeShader->update("uLodRange", s_lodRange);
-	}}	
+	}}
+
+	{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
+		m_pRaycastShader->update("uCullMin", s_cullMin);
+		m_pRaycastShader->update("uCullMax", s_cullMax);
+		m_pRaycastStereoShader->update("uCullMin", s_cullMin);
+		m_pRaycastStereoShader->update("uCullMax", s_cullMax);
+		m_pRaycastStereoComputeShader->update("uCullMin", s_cullMin);
+		m_pRaycastStereoComputeShader->update("uCullMax", s_cullMax);
+	}}
+
 	// color mapping parameters
 	m_pRaycastStereoShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 	m_pRaycastStereoShader->update("uWindowingRange", s_windowingMaxValue - s_windowingMinValue); // full range of values in m_pWindow

@@ -6,6 +6,7 @@
 	ALPHA_SCALE <float>
 	AMBIENT_OCCLUSION
 		AMBIENT_OCCLUSION_SCALE <float>
+	CULL_PLANES
 	ERT_THRESHOLD <float>
 	EMISSION_ABSORPTION_RAW
 		EMISSION_SCALE <float>
@@ -15,6 +16,8 @@
 	OCCLUSION_MAP
 	RANDOM_OFFSET
 	SCENE_DEPTH
+	SHADOW_SAMPLING
+		SHADOW_SCALE <float>
 	STEREO_SINGLE_PASS
 		STEREO_SINGLE_OUTPUT
 ***********/
@@ -121,6 +124,12 @@ uniform mat4 uProjection;
 	uniform vec3 uShadowRayDirection; // simplified: in texture space
 	uniform int uShadowRayNumSteps;
 #endif
+
+#ifdef CULL_PLANES
+	uniform vec3 uCullMin; // min UVR
+	uniform vec3 uCullMax; // max UVR
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
@@ -258,6 +267,14 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		
+		#ifdef CULL_PLANES // lazy 
+			if ( any( lessThan(curUVW, uCullMin) ) ||  any( greaterThan(curUVW, uCullMax) ) ) // outside bounds?
+			{
+				t += parameterStepSize;
+				continue; // skip sample
+			}
+		#endif
+
 		float curDepth = mix( startDepth, endDepth, t);
 
 		VolumeSample curSample;

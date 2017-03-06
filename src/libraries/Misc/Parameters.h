@@ -25,6 +25,10 @@ namespace RaycastingParameters
 	static float s_lodMaxLevel = 2.5f;
 	static float s_lodBegin  = 0.25f;
 	static float s_lodRange  = 3.0f;
+
+	static glm::vec3 s_cullMin(0.0f); // minimal culling texture coordinates
+	static glm::vec3 s_cullMax(1.0f); // maximal culling texture coordinates
+
 };
 
 namespace ViewParameters

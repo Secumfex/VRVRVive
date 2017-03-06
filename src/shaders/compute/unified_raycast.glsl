@@ -6,6 +6,7 @@
 	ALPHA_SCALE <float>
 	AMBIENT_OCCLUSION
 		AMBIENT_OCCLUSION_SCALE <float>
+	CULL_PLANES
 	ERT_THRESHOLD <float>
 	EMISSION_ABSORPTION_RAW
 		EMISSION_SCALE <float>
@@ -15,6 +16,8 @@
 	OCCLUSION_MAP
 	RANDOM_OFFSET
 	SCENE_DEPTH
+	SHADOW_SAMPLING
+		SHADOW_SCALE <float>
 	STEREO_SINGLE_PASS
 		STEREO_SINGLE_OUTPUT
 ***********/
@@ -56,13 +59,18 @@ float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noi
 	#endif
 #endif
 
+#ifdef SHADOW_SAMPLING
+	#ifndef SHADOW_SCALE
+	#define SHADOW_SCALE 1.0
+	#endif
+#endif
+
 #ifndef LOCAL_SIZE_X
 #define LOCAL_SIZE_X 1
 #endif
 #ifndef LOCAL_SIZE_Y
 #define LOCAL_SIZE_Y 1024
 #endif
-
 ///////////////////////////////////////////////////////////////////////////////////
 
 // specify local work group size
@@ -131,6 +139,12 @@ uniform mat4 uProjection;
 	uniform vec3 uShadowRayDirection; // simplified: in texture space
 	uniform int uShadowRayNumSteps;
 #endif
+
+#ifdef CULL_PLANES
+	uniform vec3 uCullMin; // min UVR
+	uniform vec3 uCullMax; // max UVR
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -265,6 +279,14 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 	{
 		vec3 curUVW = mix( startUVW, endUVW, t);
 		
+		#ifdef CULL_PLANES // lazy plane culling
+			if ( any( lessThan(curUVW, uCullMin) ) ||  any( greaterThan(curUVW, uCullMax) ) ) // outside bounds?
+			{
+				t += parameterStepSize;
+				continue; // skip sample
+			}
+		#endif
+
 		float curDepth = mix( startDepth, endDepth, t);
 
 		VolumeSample curSample;
@@ -399,6 +421,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 				shadow = (1.0 - shadow) * shadow_alpha + shadow;
 			}
 			
+			shadow *= SHADOW_SCALE;
+
 			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
 		#endif
 
