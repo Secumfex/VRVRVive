@@ -27,12 +27,13 @@ Profiler::Profiler()
 
 }
 
-void Profiler::imguiInterface(float startTime, float endTime, bool* open)
+void Profiler::imguiInterface(float startTime, float endTime, bool* open, std::string prefix)
 {
+	std::string windowName = prefix;
+	windowName += "Profiler";
+	if (!ImGui::Begin( windowName.c_str(), open, ImVec2(600,120), -1.0f, ImGuiWindowFlags_NoCollapse)) return;
 
-	if (!ImGui::Begin("Profiler", open, ImVec2(600,120), -1.0f, ImGuiWindowFlags_NoCollapse)) return;
-
-	ImGui::SetWindowSize("Profiler", ImVec2( ImGui::GetWindowWidth(),120) );
+	ImGui::SetWindowSize(windowName.c_str(), ImVec2( ImGui::GetWindowWidth(),120) );
 	
 	// range
 	float wWidth = (float) ImGui::GetWindowContentRegionWidth();

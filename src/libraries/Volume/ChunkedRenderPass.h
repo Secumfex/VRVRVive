@@ -94,7 +94,7 @@ public:
 	inline int& getLastNumFramesElapsed() { return m_lastNumFramesElapsed; }
 
 	//++ ImGui++//
-	void imguiInterface(bool* open = NULL);
+	void imguiInterface(bool* open = NULL, std::string prefix = "");
 };
 
 

@@ -42,7 +42,7 @@ public:
 
 	void clear();
 
-	void imguiInterface(float startTime, float endTime, bool* open = NULL);
+	void imguiInterface(float startTime, float endTime, bool* open = NULL, std::string prefix = "");
 };
 
 inline bool operator<(const Profiler::Entry &lhs, const Profiler::Entry &rhs) { return lhs.times[0] < rhs.times[0]; }

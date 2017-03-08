@@ -295,9 +295,11 @@ namespace { static std::vector< std::pair<ChunkedAdaptiveRenderPass*, int>* > s_
 static void clearRefs() {for (auto r : s_refs) { delete r;}}
 }
 #include <UI/imgui/imgui.h>
-void ChunkedAdaptiveRenderPass::imguiInterface(bool* open)
+void ChunkedAdaptiveRenderPass::imguiInterface(bool* open, std::string prefix)
 {
-	if (!ImGui::Begin("Chunk Profiler", open, ImVec2(300, 370), -1.0f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) return;
+	std::string windowName =  prefix;
+	windowName += "Chunk Profiler";
+	if (!ImGui::Begin(windowName.c_str(), open, ImVec2(300, 370), -1.0f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) return;
 
 	int numCols = std::ceil( (float) m_viewportSize.x / (float) m_chunkSize.x);
 	int numRows = std::ceil( (float) m_viewportSize.y / (float) m_chunkSize.y);

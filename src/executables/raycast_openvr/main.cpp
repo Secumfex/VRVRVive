@@ -1039,10 +1039,10 @@ public:
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
-		if (profiler_visible) { m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible); };
+		if (profiler_visible) { m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible, "LEFT "); };
 		ImGui::NextColumn();
 		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
-		if (profiler_visible_r) { m_pRaycastChunked[RIGHT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible_r); };
+		if (profiler_visible_r) { m_pRaycastChunked[RIGHT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible_r, "RIGHT "); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		
@@ -1583,7 +1583,7 @@ public:
 		}
 		else
 		{
-			glFlush(); // just Flush
+			glFinish(); // just Flush
 		}
 	}
 
