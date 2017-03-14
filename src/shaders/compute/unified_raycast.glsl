@@ -116,6 +116,19 @@ uniform sampler3D volume_texture; // volume 3D integer texture sampler
 	//uniform bool uPauseStereo; // if true, no write commands are executed
 #endif
 
+#ifdef CUBEMAP_SAMPLING
+	uniform samplerCube cube_map;
+	uniform int uNumSamples;
+	#ifndef CUBEMAP_STRENGTH
+		uniform float uCubemapStrength;
+	#endif
+	#ifndef RANDOM_OFFSET
+	float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+		return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+	}
+	#endif
+#endif
+
 ////////////////////////////////     UNIFORMS      ////////////////////////////////
 // color mapping related uniforms 
 uniform float uWindowingRange;  // windowing value range
@@ -425,6 +438,59 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDep
 			shadow *= SHADOW_SCALE;
 
 			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
+		#endif
+		
+		#ifdef CUBEMAP_SAMPLING
+			vec4 cubemapColor = vec4(0.0);
+			int num_opacity_samples = 4;
+			for (int i = 0; i < int(ceil( float(uNumSamples) / float(num_opacity_samples))); i++)
+			{
+				vec2 seed = vec2(i);
+				vec3 cubemapSampleDir = normalize( vec3( 
+					2.0 * rand(curUVW.xy + vec2(gl_GlobalInvocationID.xy) + seed) - 1.0,
+					2.0 * rand(curUVW.yz + vec2(gl_GlobalInvocationID.xy) + seed) - 1.0, 
+					2.0 * rand(curUVW.zx + vec2(gl_GlobalInvocationID.xy) + seed) - 1.0 
+					) );
+				//cubemapSampleDir = normalize( vec3(curUVW.x, 1.0 - curUVW.z, curUVW.y) * 2.0 - 1.0);
+				
+				vec4 cubemapSampleColor = vec4(0.0);
+				//cubemapSampleColor = texture(cube_map, cubemapSampleDir);
+				//cubemapSampleColor = max(vec4(0), (cubemapSampleColor - 0.1) * 5.0);
+				cubemapSampleColor = max(vec4(0), (vec4(cubemapSampleDir,0)) * 3.0);
+
+				float shadow = 0.0;
+				for (int j = 1; j <= min(uNumSamples - (i * num_opacity_samples), num_opacity_samples); j++)
+				{
+					vec3 opacitySampleUVW = curUVW + curStepSize * 1.0 * pow(2.0,float(j)) * vec3(cubemapSampleDir.x, (cubemapSampleDir.z), -cubemapSampleDir.y);
+					
+					#ifdef CULL_PLANES // lazy 
+					if ( any( lessThan(opacitySampleUVW, uCullMin) ) ||  any( greaterThan(opacitySampleUVW, uCullMax) ) ) // outside bounds?
+					{
+						continue; // skip sample
+					}
+					#endif
+					
+					float shadow_alpha = transferFunction( 
+						texture(volume_texture, opacitySampleUVW ).r, 
+						curStepSize * 1.0 * pow(2.0,float(j))).a;
+				
+					shadow = (1.0 - shadow) * shadow_alpha + shadow;
+				}
+				shadow *= 1.0;
+
+				float cubemapSampleStrength = 1.0 - shadow;
+				cubemapSampleColor *= cubemapSampleStrength;
+				cubemapColor += cubemapSampleColor;
+				//cubemapColor += vec4(cubemapSampleDir,0.0) * cubemapSampleStrength;
+			}
+			cubemapColor /= ceil( float(uNumSamples) / float(num_opacity_samples));
+			sampleColor.rgb = mix( sampleColor.rgb, cubemapColor.rgb * sampleColor.a,
+			#ifdef CUBEMAP_STRENGTH
+				CUBEMAP_STRENGTH
+			#else
+				uCubemapStrength
+			#endif
+			);
 		#endif
 
 		#ifdef STEREO_SINGLE_PASS

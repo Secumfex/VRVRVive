@@ -16,10 +16,13 @@ namespace VolumePresets
 		SolidBox, 
 		Foot, 
 		Engine, 
-		Bonsai3, 
+		Bonsai3,
+		Carp,
 		Clouds, 
 		CTA_Brain, 
 		CTChest, 
+		Daisy,
+		DTI,
 		Lobster, 
 		SheepHeart, 
 		Tooth, 
@@ -39,9 +42,12 @@ namespace VolumePresets
 		"Foot",
 		"Engine", 
 		"Bonsai3", 
+		"Carp",
 		"Clouds", 
 		"CTA-Brain", 
-		"CT-Chest", 
+		"CT-Chest",
+		"Daisy",
+		"DTI",
 		"Lobster", 
 		"Sheep-Heart", 
 		"Tooth", 
@@ -71,9 +77,12 @@ std::string VolumePresets::getPath(Preset preset)
 		case Preset::Foot: return "/volumes/Foot/Foot.pvm";
 		case Preset::Engine: return "/volumes/Engine/Engine.pvm";
 		case Preset::Bonsai3: return "/volumes/Bonsai3/Bonsai3-LO.pvm";
+		case Preset::Carp: return "/volumes/Carp/Carp.pvm";
 		case Preset::Clouds: return "/volumes/Clouds/Clouds.pvm";
 		case Preset::CTA_Brain: return "/volumes/CTA-Brain/CTA-Brain.pvm";
 		case Preset::CTChest: return "/volumes/CTChest/CT-Chest.pvm";
+		case Preset::Daisy: return "/volumes/Daisy/Daisy.pvm";
+		case Preset::DTI: return "/volumes/DTI/DTI-B0.pvm";
 		case Preset::Lobster: return "/volumes/Lobster/Lobster.pvm";
 		case Preset::SheepHeart: return "/volumes/SheepHeart/Sheep.pvm";
 		case Preset::Tooth: return "/volumes/Tooth/Tooth.pvm";
@@ -151,9 +160,12 @@ glm::mat4 VolumePresets::getScalation(Preset preset)
 		case Preset::Foot: return glm::scale(glm::vec3(1.0f));
 		case Preset::Engine: return glm::scale(glm::vec3(1.0f));
 		case Preset::Bonsai3: return glm::scale(glm::vec3(1.0f, 0.747654f, 1.0f));
+		case Preset::Carp: return glm::scale(glm::vec3(0.78125f * 0.5f,1.0f, 0.390625f * 0.5f));
 		case Preset::Clouds: return glm::scale(glm::vec3(1.0f,0.0625f,1.0f));
 		case Preset::CTA_Brain: return glm::scale(glm::vec3(1.0f,0.54545f, 1.0f));
 		case Preset::CTChest: return glm::scale(glm::vec3(1.0f,0.625f,1.0f));
+		case Preset::Daisy: return glm::scale(glm::vec3(1.0f, 0.875f, 0.9375f));
+		case Preset::DTI: return glm::scale(glm::vec3(1.0f, 0.453125f, 1.0f));
 		case Preset::Lobster: return glm::scale(glm::vec3(0.9292f, 0.24197f, 1.0f ));
 		case Preset::SheepHeart: return glm::scale(glm::vec3(1.0f,0.7272f, 1.0f));
 		case Preset::Tooth: return glm::scale(glm::vec3(1.0f,0.62890f, 1.0f));

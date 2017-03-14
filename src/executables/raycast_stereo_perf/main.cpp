@@ -80,6 +80,7 @@ public: // who cares
 	Grid*	m_pGrid;
 	VertexGrid* m_pVertexGrid;
 	VolumeSubdiv* m_pVolume;
+	GLuint m_cubemapTexture;
 
 	// Shader bookkeeping
 	ShaderProgram* m_pUvwShader;
@@ -190,6 +191,8 @@ public: // who cares
 
 	bool m_bAutoTranslate;
 
+	int m_iNumSamples;
+	int m_iCsvMaxNumSamples;
 public:
 
 	void profileFPS(float fps);
@@ -256,11 +259,14 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_textureResolution(768, 768)
 	, m_pboHandle(-1)
 	, m_iCsvCounter(0)
-	, m_iCsvNumFramesToProfile(150)
+	, m_iCsvNumFramesToProfile(50)
 	, m_bCsvDoRun(false)
 	, m_iActiveModel(0)
 	, m_bUseCompute(false)
 	, m_bAutoTranslate(false)
+	, m_cubemapTexture(0)
+	, m_iNumSamples(4) 
+	, m_iCsvMaxNumSamples(32)
 {
 	m_texData.resize((int) m_textureResolution.x * (int) m_textureResolution.y * 4, 0.0f);
 
@@ -425,6 +431,20 @@ void CMainApplication::loadGeometries(){
 	m_pQuad = new Quad();
 	m_pGrid = new Grid(100, 100, 0.1f, 0.1f);
 	DEBUGLOG->outdent();
+
+	{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
+	DEBUGLOG->log("Loading Cubemap"); DEBUGLOG->indent();
+	//m_cubemapTexture = TextureTools::loadDefaultCubemap();
+	std::vector<std::string> cubeMapFiles;
+    cubeMapFiles.push_back("cubemap/vendetta-cove_rt.tga");
+    cubeMapFiles.push_back("cubemap/vendetta-cove_lf.tga");
+    cubeMapFiles.push_back("cubemap/vendetta-cove_up.tga");
+    cubeMapFiles.push_back("cubemap/vendetta-cove_dn.tga");
+    cubeMapFiles.push_back("cubemap/vendetta-cove_ft.tga");
+    cubeMapFiles.push_back("cubemap/vendetta-cove_bk.tga");
+	m_cubemapTexture = TextureTools::loadCubemapFromResourceFolder( cubeMapFiles );
+	DEBUGLOG->outdent();
+	}}
 }
 
 void CMainApplication::loadRaycastingShaders()
@@ -603,6 +623,8 @@ void CMainApplication::initTextureUnits()
 	
 	OPENGLCONTEXT->bindTextureToUnit(m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE8, GL_TEXTURE_2D);
 	OPENGLCONTEXT->bindTextureToUnit(m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D);
+
+	OPENGLCONTEXT->bindTextureToUnit(m_cubemapTexture, GL_TEXTURE12, GL_TEXTURE_CUBE_MAP);
 }
 
 void CMainApplication::initTextureUniforms()
@@ -621,6 +643,14 @@ void CMainApplication::initTextureUniforms()
 	m_pRaycastStereoComputeShader->update("transferFunctionTex", 1);
 	m_pRaycastStereoComputeShader->update("back_uvw_map", 2);
 	m_pRaycastStereoComputeShader->update("front_uvw_map", 4);
+	
+	if (m_cubemapTexture != 0)
+	{
+		m_pRaycastShader->update("cube_map", 12);
+		m_pRaycastStereoShader->update("cube_map", 12);
+		m_pRaycastStereoComputeShader->update("cube_map", 12);
+	}
+
 
 	m_pComposeTexArrayShader->update( "tex", 6);
 
@@ -935,6 +965,15 @@ void CMainApplication::updateGui()
 	{
 		recompileShaders();
 	}
+	
+	if (ImGui::Button("Save Images"))
+	{
+		std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+		TextureTools::saveTexture(prefix + "LEFT.png", m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture(prefix + "RIGHT.png", m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture(prefix + "RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		TextureTools::saveTexture(prefix + "DSSIM.png", m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+	}
 
 	if (ImGui::CollapsingHeader("Preset Settings"))
 	{
@@ -943,13 +982,6 @@ void CMainApplication::updateGui()
 	if (ImGui::Button("Rebuild Framebuffers"))
 	{
 		rebuildFramebuffers();
-	}
-
-	if (ImGui::Button("Save Images"))
-	{
-		TextureTools::saveTexture("LEFT.png", m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		TextureTools::saveTexture("RIGHT.png", m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		TextureTools::saveTexture("RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 	}
 
 	ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
@@ -1098,6 +1130,219 @@ void CMainApplication::updateError()
 }
 
 
+static enum ProfilingStates 
+{
+	DONE,
+	//NEXTVOLUME,
+	NEXTCOMPLEX,
+	PROFILING,
+	PUSHING,
+	WRITING,
+	PREPARESCREENSHOTS,
+	PREPARESCREENSHOTSWAIT,
+	SCREENSHOTS
+} profilerstate = DONE;
+
+void CMainApplication::handleCsvProfiling()
+{
+	ImGui::Separator();
+	if (ImGui::Button("Run CSV Profiling") && !m_bCsvDoRun)
+	{
+		m_bCsvDoRun = true;
+	}
+	ImGui::SameLine(); ImGui::Value("Running", m_bCsvDoRun);
+	ImGui::SameLine(); ImGui::Value("Frame",   m_iCsvCounter);
+	ImGui::SliderInt("Num Frames To Profile", &m_iCsvNumFramesToProfile, 1, 150);
+	ImGui::SliderInt("Max Shading Samples", &m_iCsvMaxNumSamples, 1, 128);
+	ImGui::Separator();
+	
+	// STATE MACHINE
+	std::vector<std::string> headers;
+	std::vector<float> row;
+	std::vector<float> data;
+	std::vector<float> averagesRow;
+
+	static glm::mat4 tmp_rotation;
+
+	if ( m_bCsvDoRun )
+	{
+		switch (profilerstate)
+		{
+		case DONE: // Setup data structures
+		{
+			m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) 
+				+ "_" + std::to_string((int) m_textureResolution.x) 
+				+ "_" + std::to_string(m_iNumLayers) 
+				+ "_" + VolumePresets::s_models[m_iActiveModel] 
+				+ "_";
+			if (m_bUseCompute) { m_configHelper.prefix += "GPGPU_"; }
+
+			for (auto e : m_frame.Timings.getFront().m_timersElapsed)
+			{
+				headers.push_back(e.first);
+			}
+
+			// additional headers
+			headers.push_back("Num Samples");
+			headers.push_back("Total Stereo");
+			headers.push_back("Total Single");
+			headers.push_back("Time-Saving");
+			headers.push_back("Average DSSIM");
+
+			m_configHelper.timings.setHeaders(headers);
+
+			// averages
+			m_configHelper.averages.setHeaders(headers); // same headers
+
+			m_configHelper.copyRenderConfig( this );
+			m_configHelper.copyShaderConfig( this );
+
+			// clear timings
+			m_configHelper.timings.clearData();
+			m_configHelper.averages.clearData();
+			
+			m_iNumSamples = 0;
+			tmp_rotation = m_turntable.getRotationMatrix();
+			profilerstate = PROFILING;
+		}
+		break;
+		case PROFILING:
+		{
+			float totalStereo = 0.0f;
+			float totalSingle = 0.0f;
+			float totalLeft = 0.0f;
+			float totalRight = 0.0f;
+		
+			float rotationStepSize = (1.0f / (float) m_iCsvNumFramesToProfile) * glm::two_pi<float>();
+			m_turntable.setRotationMatrix( glm::rotate(glm::mat4(1.0f), m_iCsvCounter * rotationStepSize, glm::vec3(0.0f, 1.0f, 0.0f)) * tmp_rotation );
+		
+			int i = 0;
+			for (auto e : m_frame.Timings.getFront().m_timersElapsed )
+			{
+				row.push_back( e.second.lastTiming );
+
+				if ( e.first.find("_R") != e.first.npos || e.first.find("_L") != e.first.npos)
+				{
+					if( e.first.find("_R") != e.first.npos )
+					{
+						totalRight =+ e.second.lastTiming;
+					}
+					if( e.first.find("_L") != e.first.npos) // contains an L or R suffix --> from stereo rendering
+					{
+						totalLeft += e.second.lastTiming;
+					}
+					totalStereo += e.second.lastTiming;
+				}
+				else
+				{
+					totalSingle += e.second.lastTiming;
+				}
+			}
+		
+			float speedup = 1.0f - ((totalSingle - totalLeft) / totalRight);
+
+			// additional values
+			row.push_back( m_iNumSamples );
+			row.push_back( totalStereo ); // total stereo rendering time
+			row.push_back( totalSingle ); // total single pass time
+			row.push_back( speedup ); // time-saving of total single pass to total stereo passes time
+			row.push_back( (m_frame.AvgError.getFront().x + m_frame.AvgError.getFront().y +m_frame.AvgError.getFront().z +m_frame.AvgError.getFront().w) / 4.0f ); // time-saving of total single pass to total stereo passes time
+
+			m_configHelper.timings.addRow(row);
+
+			if ( m_iCsvCounter > m_iCsvNumFramesToProfile )
+			{
+				m_iCsvCounter = 0;
+				m_turntable.setRotationMatrix( tmp_rotation );
+				profilerstate = PUSHING;
+			}
+			else
+			{
+				m_iCsvCounter ++;
+				profilerstate = PROFILING;
+			}
+		}
+		break;
+		
+		case PUSHING:
+		{
+			// compute averages
+			data = m_configHelper.timings.getData();
+			const int rowLength = m_configHelper.timings.getHeaders().size();
+			const int numRows = (data.size() / rowLength);
+			averagesRow.resize(rowLength, 0.0f); 
+
+			for ( int row = 0; row < numRows; row++ )
+			{
+				int idx = row * rowLength;
+				for (int col = 0; col < rowLength; col++)
+				{
+					averagesRow[col] += data[idx + col];
+				}
+			}
+			for (int col = 0; col < rowLength; col++)
+			{
+				averagesRow[col] /= (float) numRows;
+			}
+			m_configHelper.averages.addRow(averagesRow);
+
+			// clear profiling times for next iteration
+			m_configHelper.timings.clearData();
+			
+			profilerstate = NEXTCOMPLEX;
+		}
+		break;
+		case NEXTCOMPLEX:
+		{
+			// next complexity state
+			if ( m_iNumSamples >= m_iCsvMaxNumSamples )
+			{
+				m_iNumSamples = 0;
+				profilerstate = PREPARESCREENSHOTS;
+			}
+			else
+			{
+				m_iNumSamples += 4;
+				profilerstate = PROFILING;
+			}
+		}
+		break;
+		case PREPARESCREENSHOTS:
+		{
+			m_iNumSamples = m_iCsvMaxNumSamples;
+			profilerstate = PREPARESCREENSHOTSWAIT;
+		}
+		break;
+		case PREPARESCREENSHOTSWAIT: // to render back buffer
+		{
+			profilerstate = SCREENSHOTS; 
+		}
+		break;
+		case SCREENSHOTS:
+		{
+			m_configHelper.saveImages(this);
+			m_iNumSamples = 0;
+
+			profilerstate = WRITING;
+		}
+		break;
+		case WRITING:
+		{
+			m_configHelper.writeToFiles();
+
+			// reset
+			m_configHelper.averages.clearData();
+			m_iCsvCounter = 0;
+			m_bCsvDoRun = false;
+			profilerstate = DONE;
+
+		}
+		break;
+		}
+	}
+}		
+
+/**
 void CMainApplication::handleCsvProfiling()
 {
 	ImGui::Separator();
@@ -1220,7 +1465,7 @@ void CMainApplication::handleCsvProfiling()
 		m_iCsvCounter++;
 	}
 }
-
+*/
 
 void CMainApplication::updateCommonUniforms()
 {
@@ -1292,6 +1537,13 @@ void CMainApplication::updateCommonUniforms()
 	m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 	  // lower grayscale ramp boundary
 	m_pRaycastStereoComputeShader->update("uShadowRayDirection", glm::normalize(shadowDir)); // full range of values in m_pWindow
 	m_pRaycastStereoComputeShader->update("uShadowRayNumSteps", numSteps); 	  // lower grayscale ramp boundary
+	}}
+
+	{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
+		ImGui::SliderInt("Num Samples", &m_iNumSamples, 0, 128);
+		m_pRaycastStereoShader->update("uNumSamples", m_iNumSamples); 	  // lower grayscale ramp boundary
+		m_pRaycastShader->update("uNumSamples", m_iNumSamples); 	  // lower grayscale ramp boundary
+		m_pRaycastStereoComputeShader->update("uNumSamples", m_iNumSamples); 	  // lower grayscale ramp boundary
 	}}
 
 	float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
@@ -1695,6 +1947,8 @@ CMainApplication::~CMainApplication()
 
 	// volume textures
 	glDeleteTextures( 1, &m_volumeTexture);
+	
+	glDeleteTextures( 1, &m_cubemapTexture);
 }
 
 ////////////////////////////// CONFIG HELPER ///////////////////////////////////////
@@ -1752,7 +2006,7 @@ void CMainApplication::ConfigHelper::saveImages(CMainApplication* mainApp)
 	TextureTools::saveTexture( prefix  + "L.png",		 mainApp->m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 	TextureTools::saveTexture( prefix  + "R.png",		 mainApp->m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 	TextureTools::saveTexture( prefix  + "R_SINGLE.png", mainApp->m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-
+	TextureTools::saveTexture( prefix  + "DSSIM.png",    mainApp->m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 }
 
 void CMainApplication::ConfigHelper::writeToFiles()
