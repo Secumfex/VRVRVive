@@ -970,13 +970,17 @@ void CMainApplication::updateGui()
 		recompileShaders();
 	}
 	
-	if (ImGui::Button("Save Images"))
+	if (ImGui::Button("Save Current"))
 	{
 		std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
 		TextureTools::saveTexture(prefix + "LEFT.png", m_pFBO->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture(prefix + "RIGHT.png", m_pFBO_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture(prefix + "RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture(prefix + "DSSIM.png", m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		CSVWriter<float> writer;
+		writer.setHeaders(std::vector<std::string>({ "DSSIM" }));
+		writer.setData(std::vector<float>(1, glm::dot(m_frame.AvgError.getFront(), glm::vec4(1.0f / 4.0f))));
+		writer.writeToFile(prefix + "DSSIM.csv");
 	}
 
 	if (ImGui::CollapsingHeader("Preset Settings"))
