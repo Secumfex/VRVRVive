@@ -152,6 +152,7 @@ public: // who cares
 	} matrices[2]; // left, right, firsthit, current
 
 	bool m_bShowDebugView;
+	bool m_bDebugShowLayers;
 	
 	float m_fDisplayedLayer;
 
@@ -225,6 +226,8 @@ public:
 	void clearOutputTexture(GLuint texture);
 	void loadShaderDefines();
 	void handleCsvProfiling();
+	void handleCsvProfilingBasic(); // CSV Profiling when envmap sampling is enabled
+	void handleCsvProfilingShadingComplexity(); // CSV Profiling when envmap sampling is enabled
 	void updateError();
 
 	void handleVolume();
@@ -251,6 +254,7 @@ public:
 CMainApplication::CMainApplication(int argc, char *argv[])
 	: m_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES))
 	, m_bShowDebugView(false)
+	, m_bDebugShowLayers(false)
 	, m_fElapsedTime(0.0f)
 	, m_fDisplayedLayer(0.0f)
 	, m_fpsCounter(120)
@@ -1096,9 +1100,11 @@ void CMainApplication::updateGui()
 	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 	ImGui::Checkbox("Use Compute", &m_bUseCompute);
 	ImGui::Checkbox("Show Debug View", &m_bShowDebugView);
-	ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers-1);
-
-
+	ImGui::Checkbox("Debug Show Layers", &m_bDebugShowLayers);
+	if (m_bDebugShowLayers)
+	{
+		ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers - 1);
+	}
 }
 
 void CMainApplication::updateError()
@@ -1143,16 +1149,8 @@ static enum ProfilingStates
 	SCREENSHOTS
 } profilerstate = DONE;
 
-void CMainApplication::handleCsvProfiling()
+void CMainApplication::handleCsvProfilingShadingComplexity()
 {
-	ImGui::Separator();
-	if (ImGui::Button("Run CSV Profiling") && !m_bCsvDoRun)
-	{
-		m_bCsvDoRun = true;
-	}
-	ImGui::SameLine(); ImGui::Value("Running", m_bCsvDoRun);
-	ImGui::SameLine(); ImGui::Value("Frame",   m_iCsvCounter);
-	ImGui::SliderInt("Num Frames To Profile", &m_iCsvNumFramesToProfile, 1, 150);
 	ImGui::SliderInt("Max Shading Samples", &m_iCsvMaxNumSamples, 1, 128);
 	ImGui::Separator();
 	
@@ -1302,7 +1300,14 @@ void CMainApplication::handleCsvProfiling()
 			}
 			else
 			{
-				m_iNumSamples += 4;
+				if (m_iNumSamples < 4) 
+				{ 
+					m_iNumSamples++; 
+				}
+				else
+				{
+					m_iNumSamples += 4;
+				}
 				profilerstate = PROFILING;
 			}
 		}
@@ -1342,7 +1347,7 @@ void CMainApplication::handleCsvProfiling()
 	}
 }		
 
-/**
+
 void CMainApplication::handleCsvProfiling()
 {
 	ImGui::Separator();
@@ -1351,10 +1356,21 @@ void CMainApplication::handleCsvProfiling()
 		m_bCsvDoRun = true;
 	}
 	ImGui::SameLine(); ImGui::Value("Running", m_bCsvDoRun);
-	ImGui::SameLine(); ImGui::Value("Frame",   m_iCsvCounter);
+	ImGui::SameLine(); ImGui::Value("Frame", m_iCsvCounter);
 	ImGui::SliderInt("Num Frames To Profile", &m_iCsvNumFramesToProfile, 1, 1000);
 	ImGui::Separator();
 
+	{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if (hasCubemap) {
+		handleCsvProfilingShadingComplexity();
+	}
+	else
+	{
+		handleCsvProfilingBasic();
+	}}
+}
+
+void CMainApplication::handleCsvProfilingBasic()
+{
 	if ( m_bCsvDoRun && m_iCsvCounter == 0) // just not frame one, okay?
 	{
 		m_configHelper.prefix = "prf_" + std::to_string( (std::time(0) / 6) % 10000) + "_" + std::to_string((int) m_textureResolution.x) + "_" + std::to_string(m_iNumLayers) + "_" + VolumePresets::s_models[m_iActiveModel] + "_";
@@ -1465,7 +1481,6 @@ void CMainApplication::handleCsvProfiling()
 		m_iCsvCounter++;
 	}
 }
-*/
 
 void CMainApplication::updateCommonUniforms()
 {
@@ -1751,18 +1766,23 @@ void CMainApplication::renderViews()
 	{
 		m_pShowTexShader->updateAndBindTexture( "tex", 11, m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 
-		static float level = 0.0;
-		int numMipmaps = (int) (std::log( std::max(m_textureResolution.x, m_textureResolution.y) ) / std::log( 2.0f ) );
+		if (!m_bDebugShowLayers)
+		{
+			static float level = 0.0;
+			int numMipmaps = (int)(std::log(std::max(m_textureResolution.x, m_textureResolution.y)) / std::log(2.0f));
 
-		ImGui::SliderFloat("Debug level", &level, 0.0f, (float) numMipmaps);
-		m_pShowTexShader->update("level", level);
-		m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
-		m_pShowTex->render();
-		m_pShowTexShader->update("level", 0.0f);
-		
-		//m_pShowLayer->setViewport(getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2, getResolution(m_pWindow).x / 2, getResolution(m_pWindow).y / 2);
-		//m_pShowLayerShader->update("layer", m_fDisplayedLayer);
-		//m_pShowLayer->render();
+			ImGui::SliderFloat("Debug level", &level, 0.0f, (float)numMipmaps);
+			m_pShowTexShader->update("level", level);
+			m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y,getResolution(m_pWindow).x) / 2);
+			m_pShowTex->render();
+			m_pShowTexShader->update("level", 0.0f);
+		}
+		else
+		{
+			m_pShowLayer->setViewport((int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x) / 2, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x) / 2);
+			m_pShowLayerShader->update("layer", m_fDisplayedLayer);
+			m_pShowLayer->render();
+		}
 	}
 
 	m_frame.Timings.getBack().timestamp("Frame End");
