@@ -994,6 +994,51 @@ void CMainApplication::updateGui()
 	if (ImGui::Button("Rebuild Framebuffers"))
 	{
 		rebuildFramebuffers();
+
+		//  compute ideal model position
+		s_near = getIdealNearValue();
+
+		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+			s_lodBegin = s_near;
+			s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+		}}	
+
+		float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+		if ( m_bAutoTranslate) s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+		updateModel();
+
+		updateNearHeightWidth();
+		updatePerspective();
+		updateScreenToViewMatrix();
+	}
+
+	///////////////////// DEBUG ///////////////////////////
+	{
+	static CSVWriter<float> writer;
+	if (ImGui::Button("Push Overhead Times"))
+	{
+		if (writer.getHeaders().empty()) {
+			const char* headers[] = {"Resolution", "Layers", "Clear", "Compose"};
+			writer.setHeaders( std::vector<std::string>(headers, std::end(headers)) );
+		}
+		std::vector<float> row;
+		row.push_back( m_textureResolution.x );
+		row.push_back( (float) m_iNumLayers );
+		row.push_back( m_frame.Timings.getFront().m_timersElapsed.at("Clear Array").lastTiming);
+		row.push_back( m_frame.Timings.getFront().m_timersElapsed.at("Compose").lastTiming);
+		writer.addRow(row);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Write Overhead Times"))
+	{
+		std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+		writer.writeToFile(prefix + "OVERHEAD_TIMES.csv");
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Clear Overhead Times"))
+	{
+		writer.clearData();
+	}
 	}
 
 	ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
