@@ -1039,7 +1039,15 @@ void CMainApplication::updateGui()
 	{
 		writer.clearData();
 	}
+	if (writer.getData().size() >= 4){ 
+		std::string last = "Last Added: " + 
+			std::to_string(writer.getData()[writer.getData().size()-4]) + ", "
+			+ std::to_string(writer.getData()[writer.getData().size()-3]) + ", "
+			+ std::to_string(writer.getData()[writer.getData().size()-2]) + ", "
+			+ std::to_string(writer.getData()[writer.getData().size()-1]); 
+		ImGui::Text(last.c_str()); };
 	}
+	///////////////////////////////////////////////
 
 	ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
 	{static int selectedPreset = 2;
