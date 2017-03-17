@@ -1046,7 +1046,75 @@ void CMainApplication::updateGui()
 			+ std::to_string(writer.getData()[writer.getData().size()-2]) + ", "
 			+ std::to_string(writer.getData()[writer.getData().size()-1]); 
 		ImGui::Text(last.c_str()); };
+	
+	static int autoProfile = -1;
+	static int wait = 0;
+	if (autoProfile >= 0 && autoProfile < (3 * 12))
+	{
+		static int res[] = {512, 768, 1024};
+		static int residx = 0;
+		residx = (autoProfile / 12);
+		int r = res[residx];
+		int layers = (autoProfile % 12) * 4 + 12;
+		
+		m_iNumLayers = layers;
+		m_textureResolution = glm::vec2(r);
+		
+		if (wait == 0)
+		{
+			rebuildFramebuffers();
+
+			//  compute ideal model position
+			s_near = getIdealNearValue();
+
+			{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+				s_lodBegin = s_near;
+				s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+			}}	
+
+			float radius = sqrtf( powf( s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+			if ( m_bAutoTranslate) s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -( s_near + radius )));
+			updateModel();
+
+			updateNearHeightWidth();
+			updatePerspective();
+			updateScreenToViewMatrix();
+			wait++;
+		}
+		if (wait < 10)
+		{
+			wait++;
+		}
+		if (wait == 10)
+		{
+			if (writer.getHeaders().empty()) {
+				const char* headers[] = {"Resolution", "Layers", "Clear", "Compose"};
+				writer.setHeaders( std::vector<std::string>(headers, std::end(headers)) );
+			}
+			std::vector<float> row;
+			row.push_back( m_textureResolution.x );
+			row.push_back( (float) m_iNumLayers );
+			row.push_back( m_frame.Timings.getFront().m_timersElapsed.at("Clear Array").lastTiming);
+			row.push_back( m_frame.Timings.getFront().m_timersElapsed.at("Compose").lastTiming);
+			writer.addRow(row);
+
+			wait = 0;
+			autoProfile++;
+		}
 	}
+	if (autoProfile >= (3 * 12)) 
+	{
+		std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+		writer.writeToFile(prefix + "OVERHEAD_TIMES.csv");
+		autoProfile = -1;
+	}
+	if (ImGui::Button("Auto Profile"))
+	{
+		autoProfile = 0;
+	}
+	}
+	
+
 	///////////////////////////////////////////////
 
 	ImGui::PushItemWidth( ImGui::GetContentRegionAvailWidth() / 3.f );
