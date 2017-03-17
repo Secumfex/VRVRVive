@@ -31,7 +31,7 @@
 #define COLOR_SCALE 1.0
 #endif
 
-#ifdef RANDOM_OFFSET 
+#ifdef RANDOM_OFFSET //
 float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
 	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -564,6 +564,20 @@ void main()
 	{
 		uvwStart.xyz = (uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
 	}
+
+	//#ifdef CULL_PLANES
+	//	vec4 rayDir = uvwEnd - uvwStart;
+	//	vec2 tX = (uCullX - uvwStart.xx)/rayDir.xx;
+	//	vec2 tY = (uCullY - uvwStart.yy)/rayDir.yy;
+	//	vec2 tZ = (uCullZ - uvwStart.zz)/rayDir.zz;
+
+	//	// variables indicating the direction of the ray (which scalar coordinates will increment, which will decrement)
+	//	vec3 stepDir = 
+	//		  vec3( -1.0 ) * vec3( lessThan(	rayDir, vec3(0.0) ) ) // scalars that will decrement 
+	//		+ vec3(  1.0 ) * vec3( greaterThanEqual( rayDir, vec3(0.0)  ) );// scalars that will increment
+
+	//	tX = min(vec2(0.0, 1.0), tX )
+	//#endif
 
 	#ifdef OCCLUSION_MAP
 		vec4 clipFrustumFront = texture(occlusion_clip_frustum_front, passUV);

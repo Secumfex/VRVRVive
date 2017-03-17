@@ -496,11 +496,9 @@ void CMainApplication::loadShaders()
 void CMainApplication::initRaycastingFramebuffers()
 {
 	DEBUGLOG->log("FrameBufferObject Creation: raycasting results"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA16F;
 	m_pFBO = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	m_pFBO_r = new FrameBufferObject(m_pRaycastShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
 	m_pFBO_single = new FrameBufferObject(m_pRaycastStereoShader->getOutputInfoMap(), (int)m_textureResolution.x, (int)m_textureResolution.y);
-	FrameBufferObject::s_internalFormat = GL_RGBA;
 	DEBUGLOG->outdent();
 
 	DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo compositing result"); DEBUGLOG->indent();
@@ -978,9 +976,15 @@ void CMainApplication::updateGui()
 		TextureTools::saveTexture(prefix + "RIGHT_SINGLE.png", m_pFBO_single_r->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		TextureTools::saveTexture(prefix + "DSSIM.png", m_pFBO_error->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		CSVWriter<float> writer;
-		writer.setHeaders(std::vector<std::string>({ "DSSIM" }));
+		writer.setHeaders(std::vector<std::string>(1, "DSSIM" ));
 		writer.setData(std::vector<float>(1, glm::dot(m_frame.AvgError.getFront(), glm::vec4(1.0f / 4.0f))));
 		writer.writeToFile(prefix + "DSSIM.csv");
+
+		if (m_bShowDebugView && m_bDebugShowLayers) // also output the layer
+		{
+			TextureTools::saveTextureArrayLayer(prefix + "LAYER_" + std::to_string(int(m_fDisplayedLayer)) + ".png", m_stereoOutputTextureArray, int(m_fDisplayedLayer));
+		}
+
 	}
 
 	if (ImGui::CollapsingHeader("Preset Settings"))
@@ -1108,6 +1112,17 @@ void CMainApplication::updateGui()
 	if (m_bDebugShowLayers)
 	{
 		ImGui::SliderFloat("Displayed Layer", &m_fDisplayedLayer, 0.0f, m_iNumLayers - 1);
+		if (ImGui::Button("Save Layer"))
+		{
+			std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+			TextureTools::saveTextureArrayLayer(prefix + "LAYER_" + std::to_string(int(m_fDisplayedLayer)) + ".png", m_stereoOutputTextureArray, int(m_fDisplayedLayer));
+		}
+		ImGui::SameLine();
+		if ( ImGui::Button("Save Texture Array") )
+		{
+			std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+			TextureTools::saveTextureArray(prefix + "LAYER", m_stereoOutputTextureArray);
+		}
 	}
 }
 
