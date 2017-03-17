@@ -40,6 +40,8 @@ namespace TextureTools {
 	GLuint loadDefaultCubemap(bool generateMipMaps = true);
 
 	bool saveTexture(std::string fileName, GLuint texture);
+	bool saveTextureArray(std::string fileName, GLuint texture);
+	bool saveTextureArrayLayer(std::string fileName, GLuint texture, int layer);
 }
 
 #endif

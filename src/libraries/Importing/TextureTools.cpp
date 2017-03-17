@@ -218,5 +218,99 @@ namespace TextureTools {
 		return stbi_write_png( fileName.c_str(), width, height, comp, &data[0], stride_in_bytes );
 	}
 
+	bool saveTextureArrayLayer(std::string fileName, GLuint texture, int layer)
+	{
+		int width, height, depth = -1;
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE30);
+		OPENGLCONTEXT->bindTexture(0, GL_TEXTURE_2D_ARRAY);
+		OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D_ARRAY);
+		
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_WIDTH,  &width);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_HEIGHT, &height);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_DEPTH, &depth);
+		//glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &comp);
+
+		if (width == -1 || height == -1|| depth == -1) 
+		{
+			DEBUGLOG->log("ERROR: couldn't retrieve width/height/depth!"); return false;
+		}
+		if ( layer < 0 || layer >= depth ) 
+		{
+			DEBUGLOG->log("ERROR: parameter 'layer' out of texture bounds!"); return false;
+		}
+
+		std::vector<unsigned char> data(width * height * depth * 4 );
+		glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, GL_UNSIGNED_BYTE, &data[0]);
+
+		// flip y
+		int offset = width * height * 4 * layer;
+		for (int i = 0; i < height/2; i++)
+		{
+			// save top line
+			std::vector<unsigned char> tmp(data.begin() +  ( (offset) + (i) * (width * 4) ), data.begin() + ( (offset) + (i+1) * (width * 4)) ); 
+
+			// copy from bottom to top
+			std::copy(data.begin() + (offset) + ( (height - 1 - i) * (width * 4) ), data.begin() + (offset) + ( (height - i) * (width * 4) ), data.begin() + (offset) + ( (i) * (width * 4) ) );
+
+			// coppy from top to bottom
+			std::copy(tmp.begin(), tmp.end(),  data.begin() + (offset) + ( (height - 1 - i) * (width * 4) ) );
+		}
+
+		int comp = 4;
+		int stride_in_bytes = width * comp * sizeof(unsigned char);
+
+		// *data points to top-left-most pixel
+		// For PNG, "stride_in_bytes" is the distance in bytes from the first byte of
+		// a row of pixels to the first byte of the next row of pixels.
+		return stbi_write_png( fileName.c_str(), width, height, comp, &data[ (offset) ], stride_in_bytes );
+	}
+
+	bool saveTextureArray(std::string fileName, GLuint texture)
+	{
+		int width, height, depth = -1;
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE30);
+		OPENGLCONTEXT->bindTexture(0, GL_TEXTURE_2D_ARRAY);
+		OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D_ARRAY);
+		
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_WIDTH,  &width);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_HEIGHT, &height);
+		glGetTexLevelParameteriv(GL_TEXTURE_2D_ARRAY, 0, GL_TEXTURE_DEPTH, &depth);
+		//glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &comp);
+
+		if (width == -1 || height == -1|| depth == -1) 
+		{
+			DEBUGLOG->log("ERROR: couldn't retrieve width/height/depth!"); return false;
+		}
+
+		std::vector<unsigned char> data(width * height * depth * 4 );
+		glGetTexImage(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, GL_UNSIGNED_BYTE, &data[0]);
+
+		bool success = true;
+		int offset = width * height * 4;
+		for (int j = 0; j < depth; j++)
+		{
+		// flip y
+		for (int i = 0; i < height/2; i++)
+		{
+			// save top line
+			std::vector<unsigned char> tmp(data.begin() +  ( (offset * j) + (i) * (width * 4) ), data.begin() + ( (offset * j) + (i+1) * (width * 4)) ); 
+
+			// copy from bottom to top
+			std::copy(data.begin() + (offset * j) + ( (height - 1 - i) * (width * 4) ), data.begin() + (offset * j) + ( (height - i) * (width * 4) ), data.begin() + (offset * j) + ( (i) * (width * 4) ) );
+
+			// coppy from top to bottom
+			std::copy(tmp.begin(), tmp.end(),  data.begin() + (offset * j) + ( (height - 1 - i) * (width * 4) ) );
+		}
+
+		int comp = 4;
+		int stride_in_bytes = width * comp * sizeof(unsigned char);
+
+		// *data points to top-left-most pixel
+		// For PNG, "stride_in_bytes" is the distance in bytes from the first byte of
+		// a row of pixels to the first byte of the next row of pixels.
+		success &= stbi_write_png( (fileName + "_" + std::to_string(j) + ".png").c_str(), width, height, comp, &data[ (offset * j) ], stride_in_bytes );
+		}
+		return success;
+	}
 }
 
