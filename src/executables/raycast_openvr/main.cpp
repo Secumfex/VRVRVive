@@ -214,6 +214,8 @@ private:
 	
 	std::string m_executableName;
 
+	glm::mat4 m_volumeScale;
+
 	struct MatrixSet
 	{
 		glm::mat4 model;
@@ -422,7 +424,7 @@ public:
 
 	void CMainApplication::initUniforms()
 	{
-		m_pUvwShader->update("model", s_translation * s_rotation * s_scale);
+		m_pUvwShader->update("model", s_translation * s_rotation * s_scale * m_volumeScale);
 		m_pUvwShader->update("view", s_view);
 		m_pUvwShader->update("projection", s_perspective);
 
@@ -954,7 +956,7 @@ public:
 		activateVolume(m_volumeData);
 
 		// adjust scale
-		s_scale = VolumePresets::getScalation((VolumePresets::Preset) m_iActiveModel);
+		m_volumeScale = VolumePresets::getScalation((VolumePresets::Preset) m_iActiveModel);
 		s_rotation = VolumePresets::getRotation((VolumePresets::Preset) m_iActiveModel);
 
 		OPENGLCONTEXT->bindTextureToUnit(m_volumeTexture, GL_TEXTURE0, GL_TEXTURE_3D);
@@ -1053,9 +1055,10 @@ public:
 		ImGui::Columns(1);
 		ImGui::Separator();
 
-		static float warpFarPlane = s_far;
-
-		if (ImGui::SliderFloat("Near", &s_near, 0.1f, s_far))
+		{bool changed = false;
+		changed |= ImGui::SliderFloat("Near", &s_near, 0.1f, s_far);
+		changed |= ImGui::SliderFloat("Far", &s_far, s_near, 100.0f);
+		if ( changed )
 		{
 			updateNearHeightWidth();
 			updatePerspective();
@@ -1067,26 +1070,16 @@ public:
 			if (m_pOvr->m_pHMD)
 			{
 				m_pOvr->m_near = s_near;
+				m_pOvr->m_far = s_far;
 			}
-		}
-
-		if (ImGui::SliderFloat("Far", &warpFarPlane, s_near, s_far))
-		{
-			m_pQuadWarpShader->update( "uFarPlane", warpFarPlane ); 
-		}
+		}}
 
 		{
 			static float scale = s_scale[0][0];
-			static float scaleY = 1.0f;
-			if (ImGui::SliderFloat("Scale", &scale, 0.01f, 5.0f))
+			if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 100.0f))
 			{
-				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
+				s_scale = glm::scale(glm::vec3(scale));
 			}
-			if (ImGui::SliderFloat("Scale Y", &scaleY, 0.5f, 1.5f))
-			{
-				s_scale = glm::scale(glm::vec3(scale, scaleY * scale, scale));
-			}
-
 		}
 
 		static bool frame_profiler_visible = false;
@@ -1515,6 +1508,9 @@ public:
 
 	void CMainApplication::renderToScreen()
 	{
+		OPENGLCONTEXT->bindFBO(0);
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		{
 			m_pShowTexShader->update("tex", m_iLeftDebugView);
 			m_pShowTex->setViewport(0, 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
@@ -1648,7 +1644,7 @@ public:
 			
 			//////////////////////////////////////////////////////////////////////////////
 			//updateModel(); 
-			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale;
+			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 			
 			//////////////////////////////////////////////////////////////////////////////
 			m_frame.Timings.getBack().timestamp("Frame Begin");
