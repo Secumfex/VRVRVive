@@ -196,6 +196,7 @@ private:
 	bool m_bPredictPose;
 	
 	bool m_bAnimateView;
+	bool m_bAnimateRotation;
 	bool m_bAnimateTranslation;
 
 	bool  m_bIsTouchpadTouched;
@@ -294,6 +295,7 @@ public:
 		, m_fMirrorScreenTimer(0.f)
 		, m_fElapsedTime(0.f)
 		, m_bAnimateView(false)
+		, m_bAnimateRotation(false)
 		, m_bAnimateTranslation(false)
 		, m_iActiveWarpingTechnique(QUAD)
 		, m_iNumSamples(4)
@@ -1163,11 +1165,19 @@ public:
 		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Animate Translation", &m_bAnimateTranslation);
 		if (m_bAnimateView)
 		{
-			glm::vec4 warpCenter  = glm::vec4(sin(m_fElapsedTime*2.0)*0.25f, cos(m_fElapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+			glm::vec4 warpCenter = s_center;
 			glm::vec4 warpEye = s_eye;
+			glm::vec3 warpUp = glm::vec3(s_up);
+
+			if (m_bAnimateRotation)
+			{
+				warpCenter  = glm::vec4(sin(m_fElapsedTime*2.0)*0.25f, cos(m_fElapsedTime*2.0)*0.125f, 0.0f, 1.0f);
+				warpUp = glm::normalize(glm::vec3( sin(m_fElapsedTime)*0.25f, 1.0f, 0.0f));
+			}
 			if (m_bAnimateTranslation) warpEye = s_eye + glm::vec4(-sin(m_fElapsedTime*1.0)*0.125f, -cos(m_fElapsedTime*2.0)*0.125f, 0.0f, 1.0f);
-			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(m_fElapsedTime)*0.25f, 1.0f, 0.0f)));
-			s_view_r = glm::lookAt(glm::vec3(warpEye) +  glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(m_fElapsedTime)*0.25f, 1.0f, 0.0f)));
+
+			s_view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), warpUp);
+			s_view_r = glm::lookAt(glm::vec3(warpEye) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter) + glm::vec3(s_eyeDistance,0.0,0.0), warpUp);
 		}
 
 		ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
@@ -1270,10 +1280,18 @@ public:
 		{
 			if (m_bAnimateView)
 			{
-				glm::vec4 warpCenter = glm::vec4(sin((m_fElapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((m_fElapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+				glm::vec4 warpCenter = s_center;
 				glm::vec4 warpEye = s_eye;
+				glm::vec3 warpUp = glm::vec3(s_up);
+
+				if (m_bAnimateRotation)
+				{
+					warpCenter  = glm::vec4(sin((m_fElapsedTime + predictSecondsAhead)*2.0)*0.25f, cos((m_fElapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
+					warpUp = glm::normalize(glm::vec3(sin((m_fElapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f));
+				}
 				if (m_bAnimateTranslation) warpEye = s_eye + glm::vec4(-sin((m_fElapsedTime + predictSecondsAhead)*1.0)*0.125f, -cos((m_fElapsedTime + predictSecondsAhead)*2.0)*0.125f, 0.0f, 1.0f);
-				matrices[eye][CURRENT].view = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3(sin((m_fElapsedTime + predictSecondsAhead))*0.25f, 1.0f, 0.0f)));
+
+				matrices[eye][CURRENT].view = glm::lookAt( (eye == LEFT) ? glm::vec3(warpEye) : glm::vec3(warpEye) + glm::vec3(s_eyeDistance,0.0,0.0), (eye == LEFT) ? glm::vec3(warpCenter) : glm::vec3(warpCenter) + glm::vec3(s_eyeDistance,0.0,0.0), warpUp);
 			}
 		}
 	}
