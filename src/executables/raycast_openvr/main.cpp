@@ -216,6 +216,8 @@ private:
 
 	glm::mat4 m_volumeScale;
 
+	int m_iNumSamples;
+
 	struct MatrixSet
 	{
 		glm::mat4 model;
@@ -294,6 +296,7 @@ public:
 		, m_bAnimateView(false)
 		, m_bAnimateTranslation(false)
 		, m_iActiveWarpingTechnique(QUAD)
+		, m_iNumSamples(4)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -405,11 +408,14 @@ public:
 	void CMainApplication::loadRaycastingShaders()
 	{
 		DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-		m_pRaycastShader = m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
+		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
+		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); 
+		DEBUGLOG->outdent();
 	}
 
 	void CMainApplication::loadShaders()
 	{
+		DEBUGLOG->log("Shader Compilation: shaders"); DEBUGLOG->indent();
 		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines);
 		loadRaycastingShaders();
 		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines);
@@ -419,7 +425,7 @@ public:
 		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
-		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); DEBUGLOG->outdent();
+		DEBUGLOG->outdent();
 	}
 
 	void CMainApplication::initUniforms()
@@ -442,7 +448,6 @@ public:
 		}}
 
 		m_pQuadWarpShader->update( "blendColor", 1.0f );
-		m_pQuadWarpShader->update( "uFarPlane", s_far );
 
 		m_pOcclusionFrustumShader->update("uOcclusionBlockSize", m_iOcclusionBlockSize);
 		m_pOcclusionFrustumShader->update("uGridSize", glm::vec4(m_iVertexGridWidth, m_iVertexGridHeight, 1.0f / (float) m_iVertexGridWidth, 1.0f / m_iVertexGridHeight));
@@ -1180,37 +1185,64 @@ public:
 	{
 		/************* update color mapping parameters ******************/
 		m_pRaycastShader->update("uStepSize", s_rayStepSize); 	  // ray step size
+		m_pRaycastLayersShader->update("uStepSize", s_rayStepSize); 	  // ray step size
 
 		// Level of Detail
 		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 			m_pRaycastShader->update("uLodMaxLevel", s_lodMaxLevel);
 			m_pRaycastShader->update("uLodBegin", s_lodBegin);
 			m_pRaycastShader->update("uLodRange", s_lodRange);
+			
+			m_pRaycastLayersShader->update("uLodMaxLevel", s_lodMaxLevel);
+			m_pRaycastLayersShader->update("uLodBegin", s_lodBegin);
+			m_pRaycastLayersShader->update("uLodRange", s_lodRange);  
 		}}
 
 		// cull planes
 		{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
 			m_pRaycastShader->update("uCullMin", s_cullMin);
 			m_pRaycastShader->update("uCullMax", s_cullMax);
+			
+			m_pRaycastLayersShader->update("uCullMin", s_cullMin);
+			m_pRaycastLayersShader->update("uCullMax", s_cullMax); 
 		}}
 
 		// color mapping parameters
 		m_pRaycastShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		m_pRaycastShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 		m_pRaycastShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-
-
-		// 
-		m_pRaycastLayersShader->update("uStepSize", s_rayStepSize); 	  // ray step size
-		m_pRaycastLayersShader->update("uLodMaxLevel", s_lodMaxLevel);
-		m_pRaycastLayersShader->update("uLodBegin", s_lodBegin);
-		m_pRaycastLayersShader->update("uLodRange", s_lodRange);  
-
-		// color mapping parameters
 		m_pRaycastLayersShader->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		m_pRaycastLayersShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 		m_pRaycastLayersShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
+		
+		/************* update experimental  parameters ******************/
+		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
+			static float angles[2] = {-0.5f, -0.5f};
+			float alpha = angles[0] * glm::pi<float>();
+			float beta  = angles[1] * glm::half_pi<float>();
+			static int numSteps = 16;
+			static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+			if (ImGui::CollapsingHeader("Shadow Properties"))
+			{	
+				if (ImGui::SliderFloat2("Shadow Dir", angles, -0.999f, 0.999f) )
+				{
+					shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+				}
+				ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
+			}
 
+			m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); 
+			m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 
+
+			m_pRaycastLayersShader->update("uShadowRayDirection", glm::normalize(shadowDir));
+			m_pRaycastLayersShader->update("uShadowRayNumSteps", numSteps); 
+		}}
+
+		{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
+			ImGui::SliderInt("Num Samples", &m_iNumSamples, 0, 128);
+			m_pRaycastShader->update("uNumSamples", m_iNumSamples);
+			m_pRaycastLayersShader->update("uNumSamples", m_iNumSamples);
+		}}
 	}
 
 	void CMainApplication::predictPose(int eye)
@@ -1329,9 +1361,15 @@ public:
 		m_pRaycastShader->update( "uProjection", matrices[eye][CURRENT].perspective);
 		m_pRaycastShader->update( "back_uvw_map",  2 + 2 * UVW_BACK + eye );
 		m_pRaycastShader->update( "front_uvw_map", 2 + 2 * UVW_FRONT + eye );
-		m_pRaycastShader->update( "scene_depth_map",2 + 2 * SCENE_DEPTH  + eye );
-		m_pRaycastShader->update( "occlusion_map", 2 + 2 * OCCLUSION + eye );
-		m_pRaycastShader->update( "occlusion_clip_frustum_front", 2 + 2 * OCCLUSION_CLIP_FRUSTUM_FRONT + eye );
+		
+		{bool hasProperty= false; for (auto e : m_shaderDefines) { hasProperty |= (e == "SCENE_DEPTH"); } if ( hasProperty){
+			m_pRaycastShader->update( "scene_depth_map",2 + 2 * SCENE_DEPTH  + eye );
+		}}
+
+		{bool hasProperty= false; for (auto e : m_shaderDefines) { hasProperty |= (e == "OCCLUSION_MAP"); } if ( hasProperty){
+			m_pRaycastShader->update( "occlusion_map", 2 + 2 * OCCLUSION + eye );
+			m_pRaycastShader->update( "occlusion_clip_frustum_front", 2 + 2 * OCCLUSION_CLIP_FRUSTUM_FRONT + eye );
+		}}
 
 		m_frame.Timings.getBack().beginTimer("Chunked Raycast" + STR_SUFFIX[eye]);
 		m_pRaycastChunked[eye]->render();
@@ -1606,6 +1644,7 @@ public:
 	
 		// delete shaders
 		delete m_pRaycastShader;
+		delete m_pRaycastLayersShader;
 
 		// reload shader defines
 		loadShaderDefines();
@@ -1616,6 +1655,8 @@ public:
 		// set ShaderProgram References
 		m_pRaycast[LEFT]->setShaderProgram(m_pRaycastShader);
 		m_pRaycast[RIGHT]->setShaderProgram(m_pRaycastShader);
+		m_pRaycast[2 + LEFT]->setShaderProgram(m_pRaycastLayersShader);
+		m_pRaycast[2 + RIGHT]->setShaderProgram(m_pRaycastLayersShader);
 
 		// update uniforms
 		initTextureUniforms();
