@@ -111,6 +111,21 @@ namespace VolumeParameters
 		) // swap components	
 		* glm:: inverse(glm::scale( 2.0f * s_volumeSize) ) // moves origin to front left
 		* glm::translate( glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z) ); // const from model coordinates to texture coordinates
+
+	//!< call when s_volumeSize changed
+	inline void updateModelToTexture()
+	{
+		s_modelToTexture =	
+		glm::mat4( 
+			glm::vec4(1.0f, 0.0f, 0.0f, 0.0f),  // column 1
+			glm::vec4(0.0f, 0.0f, 1.0f, 0.0f),  // column 2
+			glm::vec4(0.0f, -1.0f, 0.0f, 0.0f), //column 3
+			glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)	//column 4 
+		) // swap components	
+		* glm:: inverse(glm::scale( 2.0f * s_volumeSize) ) // moves origin to front left
+		* glm::translate( glm::vec3(s_volumeSize.x, s_volumeSize.y, -s_volumeSize.z) ); // const from model coordinates to texture coordinates
+	}
+
 };
 
 #endif

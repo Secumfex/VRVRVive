@@ -37,7 +37,7 @@ static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial 
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static float FRAMEBUFFER_SCALE = 1.0f;
+static float FRAMEBUFFER_SCALE = 0.75f;
 static glm::vec2 FRAMEBUFFER_RESOLUTION(700.f,700.f);
 static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_RESOLUTION.y);
 
@@ -121,10 +121,11 @@ private:
 	ShaderProgram* m_pQuadWarpShader;
 	ShaderProgram* m_pGridWarpShader;
 	ShaderProgram* m_pNovelViewWarpShader;
+	ShaderProgram* m_pComposeTexArrayShader;
 	ShaderProgram* m_pShowTexShader;
 	ShaderProgram* m_pDepthToTextureShader;
 
-	// m_pRaycastFBO bookkeeping
+	// FBO bookkeeping
 	FrameBufferObject* m_pOcclusionFrustumFBO[2];
 	FrameBufferObject* m_pUvwFBO[4];
 	SimpleDoubleBuffer<FrameBufferObject*> m_pRaycastFBO[4];
@@ -132,6 +133,8 @@ private:
 	FrameBufferObject* m_pWarpFBO[2];
 	FrameBufferObject* m_pSceneDepthFBO[2];
 	FrameBufferObject* m_pDebugDepthFBO[2];
+
+	GLuint m_stereoOutputTextureArray; // singlepass stereo reprojection buffer
 
 	// Renderpass bookkeeping
 	RenderPass* m_pUvw; 		
@@ -143,6 +146,7 @@ private:
 	RenderPass* m_pGridWarp; 		
 	RenderPass* m_pNovelViewWarp;
 	RenderPass* m_pShowTex; 		
+	RenderPass* m_pComposeTexArray;
 	RenderPass* m_pDebugDepthToTexture; 	
 
 	// Event handler bookkeeping
@@ -218,6 +222,10 @@ private:
 	glm::mat4 m_volumeScale;
 
 	int m_iNumSamples;
+	int m_iNumLayers;
+	
+	std::vector<float> m_texData;
+	GLuint m_pboHandle; // PBO 
 
 	struct MatrixSet
 	{
@@ -245,12 +253,13 @@ public:
 	void clearWarpFBO(int eye);
 	void renderModels(int eye);
 	void renderImage(int eye);
+	void renderNextBaseData(int eye);
 	void renderVolumeLayersIteration(int eye, MatrixSet& matrixSet);
 	void renderVolumeIteration(int eye, MatrixSet& matrixSet);
 	void renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last);
 	void renderUVWs(int eye, MatrixSet& matrixSet );
 	void renderModelsDepth(int eye);
-	void copyResult(int eye);
+	//void copyResult(int eye);
 	void predictPose(int eye);
 	void updateCommonUniforms();
 	void updateGui();
@@ -260,8 +269,10 @@ public:
 	void initRenderPasses();
 	void initTextureUniforms();
 	void initTextureUnits();
+	void initLayerTexture();
 	void initFramebuffers();
 	void initUniforms();
+	void clearLayerTexture();
 	void loadShaderDefines();
 	void recompileShaders();
 	void loadRaycastingShaders();
@@ -271,6 +282,8 @@ public:
 	void handleVolume();
 	void loadVolume();
 	void initOpenVR();
+
+	float getIdealNearValue(); //!< returns the computed 'near' value
 	
 	CMainApplication( int argc, char *argv[] );
 };
@@ -284,6 +297,7 @@ public:
 		, m_iActiveView(WARPED)
 		, m_iLeftDebugView(14)
 		, m_iRightDebugView(15)
+		, m_iNumLayers(32)
 		, m_fOldX(0.0f)
 		, m_fOldY(0.0f)
 		, m_fOldTouchX(0.5f)
@@ -299,8 +313,11 @@ public:
 		, m_bAnimateTranslation(false)
 		, m_iActiveWarpingTechnique(QUAD)
 		, m_iNumSamples(4)
+		, m_pboHandle(-1) // PBO 
 	{
 		DEBUGLOG->setAutoPrint(true);
+
+		m_texData.resize((int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, 0.0f);
 
 		std::string fullExecutableName( argv[0] );
 		m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
@@ -361,6 +378,9 @@ public:
 	void CMainApplication::initSceneVariables()
 	{
 		/////////////////////     Scene / View Settings     //////////////////////////
+		s_volumeSize = glm::vec3(1.0f);
+		updateModelToTexture();
+
 		if (m_pOvr->m_pHMD)
 		{
 			s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
@@ -369,9 +389,18 @@ public:
 		else
 		{	
 			s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
-			s_scale = glm::scale(glm::vec3(1.0f,1.0f,1.0f));
+			s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 		}
 		s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+
+		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+			s_near = getIdealNearValue();
+			updatePerspective();
+			if (m_pOvr->m_pHMD)
+			{
+				m_pOvr->setNear(s_near);
+			}
+		}}
 
 		// use waitgetPoses to update matrices
 		if (!m_pOvr->m_pHMD)
@@ -386,9 +415,33 @@ public:
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 		}
-	
+
 		updateNearHeightWidth();
 		updateScreenToViewMatrix();
+	}
+
+	float CMainApplication::getIdealNearValue()
+	{
+		// what we have right now
+		float b = s_eyeDistance;
+		float w = FRAMEBUFFER_RESOLUTION.x;
+		float d_p = (float) m_iNumLayers + 1; // plus for rounding to bigger range
+		float alpha = glm::radians(s_fovY * 0.5f);
+		
+		glm::vec3 sceneVolSize = glm::vec3(s_scale * m_volumeScale * glm::vec4(s_volumeSize, 0.0f));
+		float radius = sqrtf( powf( sceneVolSize.x, 2.0f) + powf(sceneVolSize.y, 2.0f) + powf(sceneVolSize.z, 2.0f));
+
+		// variant 1: ray from near to infinity
+		//float f = b / ( tanf( alpha ) * (2.0f / w) * d_p );
+
+		// variant 2: ray from near to outer bounds
+		float r = radius;
+		float s = d_p * tanf(alpha) * (2.0f / w);
+		float p = 2.0f * r;
+		float q = -( (b * 2.0f * r) / s );
+		float f = -(p /2.0f) + sqrtf( powf(p/2.0f,2.0f) - q); 
+
+		return f;
 	}
 
 	void CMainApplication::loadGeometries()
@@ -413,6 +466,9 @@ public:
 		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
 		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); 
 		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
+		m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
 	}
 
 	void CMainApplication::loadShaders()
@@ -457,6 +513,37 @@ public:
 		m_pNovelViewWarpShader->update("uThreshold", 100);
 
 	}
+	void CMainApplication::initLayerTexture()
+	{
+		DEBUGLOG->log("FrameBufferObject Creation: single-pass stereo output texture array"); DEBUGLOG->indent();
+		m_stereoOutputTextureArray = createTextureArray((int)FRAMEBUFFER_RESOLUTION.x, (int)FRAMEBUFFER_RESOLUTION.y, m_iNumLayers, GL_RGBA16F);
+		DEBUGLOG->outdent();
+	}
+
+	void CMainApplication::clearLayerTexture()
+	{
+		if(m_pboHandle == -1)
+		{
+			glGenBuffers(1,&m_pboHandle);
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
+			glBufferStorage(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * m_iNumLayers * 4, NULL, GL_DYNAMIC_STORAGE_BIT);
+			checkGLError(true);
+			for (int i = 0; i < m_iNumLayers; i++)
+			{
+				glBufferSubData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) *  (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * i * 4, m_texData.size(), &m_texData[0]);
+			}
+			checkGLError(true);
+			//glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * m_iNumLayers * 4, &m_texData[0], GL_STATIC_DRAW);
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		}
+	
+		OPENGLCONTEXT->activeTexture(GL_TEXTURE26);
+		OPENGLCONTEXT->bindTexture(m_stereoOutputTextureArray, GL_TEXTURE_2D_ARRAY);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0,  (int)FRAMEBUFFER_RESOLUTION.x, (int)FRAMEBUFFER_RESOLUTION.y, m_iNumLayers, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	}
+
 
 	void CMainApplication::initFramebuffers()
 	{
@@ -622,6 +709,9 @@ public:
 		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + LEFT, GL_TEXTURE_2D); // left layer raycast result
 		OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[2 + RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE2 + 2 * RAYCAST_LAYERS_DEBUG + RIGHT, GL_TEXTURE_2D);// right layer raycast result
 
+		OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
+		OPENGLCONTEXT->bindTextureToUnit(m_stereoOutputTextureArray, GL_TEXTURE26, GL_TEXTURE_2D_ARRAY); // for display
+
 		OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 	}
 
@@ -639,16 +729,21 @@ public:
 		m_pNovelViewWarpShader->update("layer4", 23);
 		m_pNovelViewWarpShader->update("depth0", 24);
 		m_pNovelViewWarpShader->update("depth",  25);
+
+		m_pComposeTexArrayShader->update( "tex", 26);
 	}
 
 	void CMainApplication::initRenderPasses()
 	{
+		DEBUGLOG->log("RenderPass Creation: uvw coords"); DEBUGLOG->indent();
 		m_pUvw = new RenderPass(m_pUvwShader, m_pUvwFBO[LEFT]);
 		m_pUvw->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		m_pUvw->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
 		m_pUvw->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
 		m_pUvw->addRenderable(m_pVolume);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: raycast"); DEBUGLOG->indent();
 		m_pRaycast[LEFT] = new RenderPass(m_pRaycastShader, m_pRaycastFBO[LEFT].getBack());
 		m_pRaycast[LEFT]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		m_pRaycast[LEFT]->addRenderable(m_pQuad);
@@ -662,7 +757,9 @@ public:
 		m_pRaycast[RIGHT]->addEnable(GL_DEPTH_TEST); // to allow write to gl_FragDepth (first-hit)
 		//m_pRaycast[RIGHT]->addEnable(GL_STENCIL_TEST); // to allow write to gl_FragDepth (first-hit)
 		m_pRaycast[RIGHT]->addDisable(GL_BLEND);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: chunked renderpass"); DEBUGLOG->indent();
 		glm::ivec2 viewportSize = glm::ivec2((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		glm::ivec2 chunkSize = glm::ivec2(96,96);
 		m_pRaycastChunked[LEFT] = new ChunkedAdaptiveRenderPass(
@@ -670,19 +767,23 @@ public:
 			viewportSize,
 			chunkSize,
 			8,
-			6.0f
+			6.0f,
+			1.25f
 			);
 		m_pRaycastChunked[RIGHT] = new ChunkedAdaptiveRenderPass(
 			m_pRaycast[RIGHT],
 			viewportSize,
 			chunkSize,
 			8,
-			6.0f
+			6.0f,
+			1.25f
 			);
+		DEBUGLOG->outdent();
 		
 		//m_pRaycastChunked->activateClearbits();
 		//m_pRaycastChunked[RIGHT]->activateClearbits();
 
+		DEBUGLOG->log("RenderPass Creation: occlusion frustum"); DEBUGLOG->indent();
 		m_pOcclusionFrustum = new RenderPass(m_pOcclusionFrustumShader, m_pOcclusionFrustumFBO[LEFT]);
 		m_pOcclusionFrustum->addRenderable(m_pVertexGrid);
 		m_pOcclusionFrustum->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -694,25 +795,36 @@ public:
 		m_pOcclusionClipFrustum->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 		m_pOcclusionClipFrustum->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
 		m_pOcclusionClipFrustum->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: quad warp"); DEBUGLOG->indent();
 		m_pQuadWarp = new RenderPass(m_pQuadWarpShader, m_pWarpFBO[LEFT]);
 		m_pQuadWarp->addRenderable(m_pQuad);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: grid warp"); DEBUGLOG->indent();
 		m_pGridWarp = new RenderPass(m_pGridWarpShader, m_pWarpFBO[LEFT]);
 		m_pGridWarp->addEnable(GL_DEPTH_TEST);
 		m_pGridWarp->addRenderable(m_pGrid);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: novel view warp"); DEBUGLOG->indent();
 		m_pNovelViewWarp= new RenderPass(m_pNovelViewWarpShader, m_pWarpFBO[LEFT]);
 		m_pNovelViewWarp->addEnable(GL_DEPTH_TEST);
 		m_pNovelViewWarp->addRenderable(m_pQuad);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: show texture"); DEBUGLOG->indent();
 		m_pShowTex = new RenderPass(m_pShowTexShader,0);
 		m_pShowTex->addRenderable(m_pQuad);
+		DEBUGLOG->outdent();
 
+		DEBUGLOG->log("RenderPass Creation: debug depth to texture"); DEBUGLOG->indent();
 		m_pDebugDepthToTexture = new RenderPass(m_pDepthToTextureShader, m_pDebugDepthFBO[LEFT]);
 		m_pDebugDepthToTexture->addClearBit(GL_COLOR_BUFFER_BIT);
 		m_pDebugDepthToTexture->addDisable(GL_DEPTH_TEST);
 		m_pDebugDepthToTexture->addRenderable(m_pQuad);
+		DEBUGLOG->outdent();
 
 		//////////////// NOVEL VIEW SYNTH ////////////////
 		DEBUGLOG->log("Render Pass Configuration: ray cast layers shader"); DEBUGLOG->indent();
@@ -744,6 +856,12 @@ public:
 			8,
 			6.0f
 			);
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("RenderPass Creation: compose texture array"); DEBUGLOG->indent();
+		m_pComposeTexArray = new RenderPass(m_pComposeTexArrayShader,  m_pRaycastFBO[2 + RIGHT].getBack());
+		m_pComposeTexArray->addRenderable(m_pGrid);
+		m_pComposeTexArray->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		DEBUGLOG->outdent();
 	}
 
@@ -1076,8 +1194,11 @@ public:
 			}}
 			if (m_pOvr->m_pHMD)
 			{
-				m_pOvr->m_near = s_near;
-				m_pOvr->m_far = s_far;
+				m_pOvr->setNear(s_near);
+				m_pOvr->setFar(s_far);
+
+				s_perspective = m_pOvr->m_mat4ProjectionLeft; 
+				s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 			}
 		}}
 
@@ -1086,6 +1207,26 @@ public:
 			if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 100.0f))
 			{
 				s_scale = glm::scale(glm::vec3(scale));
+
+				{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+					s_near = getIdealNearValue();
+					updateNearHeightWidth();
+					updatePerspective();
+					updateScreenToViewMatrix();
+
+					if (m_pOvr->m_pHMD)
+					{
+						m_pOvr->setNear(s_near);
+						s_perspective = m_pOvr->m_mat4ProjectionLeft; 
+						s_perspective_r = m_pOvr->m_mat4ProjectionRight;
+					}
+
+					{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+						s_lodBegin = s_near;
+						s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+					}}
+
+				}}
 			}
 		}
 
@@ -1253,6 +1394,49 @@ public:
 			m_pRaycastShader->update("uNumSamples", m_iNumSamples);
 			m_pRaycastLayersShader->update("uNumSamples", m_iNumSamples);
 		}}
+
+		glm::vec3 sceneVolSize = glm::vec3(s_scale * m_volumeScale * glm::vec4(s_volumeSize, 0.0f));
+		float radius = sqrtf( powf( sceneVolSize.x, 2.0f) + powf(sceneVolSize.y, 2.0f) + powf(sceneVolSize.z, 2.0f));
+		glm::vec4 objectCenter = s_view * s_model * glm::vec4(0.0f, 0.0f, 0.0f, 1.0);
+		float s_zRayEnd   = max(s_near, -(objectCenter.z - radius));
+		float s_zRayStart = max(s_near, -(objectCenter.z + radius));
+
+		float t_near = (s_zRayStart) / s_near;
+		float t_far  = (s_zRayEnd)  / s_near;
+		float nW = s_nearW;
+
+		//float pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
+		//float pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
+
+		float b = s_eyeDistance;
+		float w = FRAMEBUFFER_RESOLUTION.x;
+		float alpha = glm::radians(s_fovY * 0.5f);
+		// variant 2: ray from near to outer bounds
+		float s = w / (2.0f * s_near * tanf(alpha) );
+		float imageOffset =  b * s;
+		float pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
+		float pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
+		m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
+		m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
+		//m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
+	
+		if (ImGui::CollapsingHeader("Epipolar Info"))
+		{
+		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
+		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+		ImGui::Value("Pixel Offset of Images", imageOffset);
+		ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
+		ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
+		ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
+		}
+
+		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
+		static int debugIdx = -1;
+		ImGui::SliderInt( "DEBUG LAYER", &debugIdx, -1, m_iNumLayers - 1 ); 
+		if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
+		if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
+		}}
+
 	}
 
 	void CMainApplication::predictPose(int eye)
@@ -1296,6 +1480,7 @@ public:
 		}
 	}
 
+	/*
 	void CMainApplication::copyResult(int eye)
 	{
 		m_frame.Timings.getBack().beginTimerElapsed("Copy Result" + STR_SUFFIX[eye]);
@@ -1321,6 +1506,7 @@ public:
 		copyFBOContent(m_pRaycastFBO[idx].getBack(), m_pRaycastFBO[idx].getFront(), GL_DEPTH_BUFFER_BIT);
 		m_frame.Timings.getBack().stopTimerElapsed();
 	}
+	*/
 
 	void CMainApplication::renderModelsDepth(int eye)
 	{
@@ -1412,32 +1598,7 @@ public:
 	{
 		if (m_pRaycastChunked[eye + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->isFinished())
 		{
-			// first hit map was rendered with last "current" matrices
-			matrices[eye][LAST_RESULT] = matrices[eye][CURRENT]; 
-
-			// overwrite with current matrices
-			matrices[eye][CURRENT].model = s_model; 
-			matrices[eye][CURRENT].view = (eye == LEFT) ? s_view : s_view_r;
-			matrices[eye][CURRENT].perspective = (eye == LEFT) ? s_perspective : s_perspective_r; 
-
-			//++++++++++++++ DEBUG +++++++++++//
-			if (m_bPredictPose)
-			{
-				predictPose(eye);
-			}
-			//++++++++++++++++++++++++++++++++//
-
-			//++++++++++++++ DEBUG +++++++++++//
-			// quickly do a depth pass of the models
-			if ( m_pOvr->m_pHMD )
-			{
-				renderModelsDepth(eye);
-			}
-			//++++++++++++++++++++++++++++++++//
-			
-			renderUVWs(eye, matrices[eye][CURRENT]);
-
-			renderOcclusionMap(eye, matrices[eye][CURRENT], matrices[eye][LAST_RESULT]);
+			renderNextBaseData(eye);
 		}
 
 		if ((m_iActiveWarpingTechnique == NOVELVIEW)){
@@ -1594,12 +1755,51 @@ public:
 		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + m_iLeftDebugView + eye], (vr::Hmd_Eye) eye);
 	}
 
+	void CMainApplication::renderNextBaseData(int eye)
+	{
+		// first hit map was rendered with last "current" matrices
+		matrices[eye][LAST_RESULT] = matrices[eye][CURRENT]; 
+
+		// overwrite with current matrices
+		matrices[eye][CURRENT].model = s_model; 
+		matrices[eye][CURRENT].view = (eye == LEFT) ? s_view : s_view_r;
+		matrices[eye][CURRENT].perspective = (eye == LEFT) ? s_perspective : s_perspective_r; 
+
+		//++++++++++++++ DEBUG +++++++++++//
+		if (m_bPredictPose)
+		{
+			predictPose(eye);
+		}
+		//++++++++++++++++++++++++++++++++//
+
+		//++++++++++++++ DEBUG +++++++++++//
+		// quickly do a depth pass of the models
+		if ( m_pOvr->m_pHMD )
+		{
+			renderModelsDepth(eye);
+		}
+		//++++++++++++++++++++++++++++++++//
+			
+		renderUVWs(eye, matrices[eye][CURRENT]);
+
+		{bool hasProperty= false; for (auto e : m_shaderDefines) { hasProperty |= (e == "OCCLUSION_MAP"); } if ( hasProperty){
+			renderOcclusionMap(eye, matrices[eye][CURRENT], matrices[eye][LAST_RESULT]);
+		}}
+		
+		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+			glm::mat4 textureToProjection_r = s_perspective_r * s_view_r * s_model * glm::inverse( s_modelToTexture ); // texture to model
+			m_pRaycastShader->update( "uTextureToProjection_r", textureToProjection_r ); //since position map contains s_view space coords
+		}}
+	}
+
 
 	////////////////////////////////  RENDERING //// /////////////////////////////
 	void CMainApplication::renderViews()
 	{
 		// check for finished left/right images, copy to Front FBOs
 		int idx = 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW);
+
+		// check if single pass stereo is active
 		if (m_pRaycastChunked[LEFT + idx]->isFinished())
 		{
 			//copyResult(LEFT);
@@ -1611,7 +1811,26 @@ public:
 			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[LEFT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + LEFT, GL_TEXTURE_2D); // left  raycasting result
 			OPENGLCONTEXT->activeTexture(GL_TEXTURE31);
 		}
-		if (m_pRaycastChunked[RIGHT + idx]->isFinished())
+
+		bool isSinglePass = false;
+		for (auto e : m_shaderDefines) { isSinglePass |= (e == "STEREO_SINGLE_PASS"); }
+
+		if (isSinglePass && m_pRaycastChunked[LEFT + idx]->isFinished())
+		{
+			// Compose right image
+			m_pComposeTexArray->setFrameBufferObject(
+				m_pRaycastFBO[RIGHT + idx].getBack()
+			);
+			m_pComposeTexArray->render();
+			m_pRaycastFBO[RIGHT + idx].swap();
+			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D); // left  raycasting result
+
+			m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
+			clearLayerTexture();
+			m_frame.Timings.getBack().stopTimerElapsed();
+		}
+
+		if (!isSinglePass && m_pRaycastChunked[RIGHT + idx]->isFinished())
 		{
 			//copyResult(RIGHT);
 			m_pRaycastFBO[RIGHT + idx].swap();
@@ -1627,7 +1846,10 @@ public:
 		renderImage(LEFT);
 		
 		//%%%%%%%%%%%% render right image
-		renderImage(RIGHT);
+		if (!isSinglePass)
+		{
+			renderImage(RIGHT);
+		}
 
 		//%%%%%%%%%%%% render display images
 		renderDisplayImages();
@@ -1663,6 +1885,7 @@ public:
 		// delete shaders
 		delete m_pRaycastShader;
 		delete m_pRaycastLayersShader;
+		delete m_pComposeTexArrayShader;
 
 		// reload shader defines
 		loadShaderDefines();
@@ -1675,6 +1898,7 @@ public:
 		m_pRaycast[RIGHT]->setShaderProgram(m_pRaycastShader);
 		m_pRaycast[2 + LEFT]->setShaderProgram(m_pRaycastLayersShader);
 		m_pRaycast[2 + RIGHT]->setShaderProgram(m_pRaycastLayersShader);
+		m_pComposeTexArray->setShaderProgram(m_pComposeTexArrayShader);
 
 		// update uniforms
 		initTextureUniforms();
@@ -1853,6 +2077,8 @@ int main(int argc, char *argv[])
 
 	pMainApplication->initRenderPasses();
 	
+	pMainApplication->initLayerTexture();
+
 	pMainApplication->initTextureUnits();
 
 	pMainApplication->initTextureUniforms();
