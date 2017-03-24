@@ -1501,12 +1501,12 @@ public:
 	{
 		{
 			m_pShowTexShader->update("tex", m_iLeftDebugView);
-			m_pShowTex->setViewport(0, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y);
+			m_pShowTex->setViewport(0, 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
 			m_pShowTex->render();
 		}
 		{
 			m_pShowTexShader->update("tex", m_iRightDebugView);
-			m_pShowTex->setViewport((int)getResolution(m_pWindow).x / 2, 0, (int)getResolution(m_pWindow).x / 2, (int)getResolution(m_pWindow).y);
+			m_pShowTex->setViewport((int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
 			m_pShowTex->render();
 		}
 		//////////////////////////////////////////////////////////////////////////////
