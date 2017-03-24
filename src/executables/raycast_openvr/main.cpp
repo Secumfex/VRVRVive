@@ -1162,7 +1162,7 @@ public:
 		// Update Matrices
 
 		//++++++++++++++ DEBUG
-		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Animate Translation", &m_bAnimateTranslation);
+		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Anim Translation", &m_bAnimateTranslation); ImGui::SameLine(); ImGui::Checkbox("Anim Rotation", &m_bAnimateRotation);
 		if (m_bAnimateView)
 		{
 			glm::vec4 warpCenter = s_center;
