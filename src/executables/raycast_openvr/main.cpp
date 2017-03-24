@@ -976,6 +976,14 @@ public:
 		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
 		ImGui::PopStyleColor();
 	
+		ImGui::Text("Active Model");
+		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
+		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
+		{
+			handleVolume();
+		}
+		ImGui::PopItemWidth();
+
 		if (ImGui::CollapsingHeader("Transfer Function Settings"))
 		{
 			ImGui::Columns(2, "mycolumns2", true);
@@ -1008,17 +1016,7 @@ public:
 				ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
 			}}
 		}
-        
-		ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
-		
-    	ImGui::Text("Active Model");
-		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
-		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
-		{
-			handleVolume();
-		}
-		ImGui::PopItemWidth();
-		
+        		
 		ImGui::Separator();
 
 		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
@@ -1056,6 +1054,22 @@ public:
 		ImGui::Separator();
 
 		static float warpFarPlane = s_far;
+
+		if (ImGui::SliderFloat("Near", &s_near, 0.1f, s_far))
+		{
+			updateNearHeightWidth();
+			updatePerspective();
+			updateScreenToViewMatrix();
+			{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
+				s_lodBegin = s_near;
+				s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
+			}}
+			if (m_pOvr->m_pHMD)
+			{
+				m_pOvr->m_near = s_near;
+			}
+		}
+
 		if (ImGui::SliderFloat("Far", &warpFarPlane, s_near, s_far))
 		{
 			m_pQuadWarpShader->update( "uFarPlane", warpFarPlane ); 
@@ -1160,6 +1174,8 @@ public:
 
 		ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
 		//++++++++++++++ DEBUG
+
+		ImGui::Checkbox("Auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
 		//++++++++++++++ DEBUG
 		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
