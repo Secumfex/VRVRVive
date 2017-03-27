@@ -1828,6 +1828,8 @@ public:
 			m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
 			clearLayerTexture();
 			m_frame.Timings.getBack().stopTimerElapsed();
+
+			renderNextBaseData(RIGHT);
 		}
 
 		if (!isSinglePass && m_pRaycastChunked[RIGHT + idx]->isFinished())
