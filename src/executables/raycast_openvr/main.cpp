@@ -324,6 +324,11 @@ public:
 		m_executableName = m_executableName.substr(0, m_executableName.find(".exe"));
 		DEBUGLOG->log("Executable name: " + m_executableName);
 
+		if (argc >= 2)
+		{
+			FRAMEBUFFER_SCALE = atof(argv[1]);
+		}
+
 		// create m_pWindow and opengl context
 		m_pWindow = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
@@ -1422,8 +1427,10 @@ public:
 	
 		if (ImGui::CollapsingHeader("Epipolar Info"))
 		{
+		ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
 		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
 		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+		ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
 		ImGui::Value("Pixel Offset of Images", imageOffset);
 		ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
 		ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
