@@ -92,6 +92,10 @@ public:
 	inline bool& getAutoAdjustRenderTime() {return m_autoAdjustRenderTime;}
 	inline float& getLastTotalRenderTime() {return m_lastTotalRenderTime;}
 	inline int& getLastNumFramesElapsed() { return m_lastNumFramesElapsed; }
+	
+	//++ Setters ++//
+	inline void setRenderTimeBias(float renderTimeBias) {m_renderTimeBias = renderTimeBias;}
+	inline void setTargetRenderTime(float targetRenderTime) {m_targetRenderTime = targetRenderTime;}
 
 	//++ ImGui++//
 	void imguiInterface(bool* open = NULL, std::string prefix = "");
