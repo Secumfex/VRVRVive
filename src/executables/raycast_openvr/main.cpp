@@ -778,6 +778,12 @@ public:
 			6.0f,
 			1.25f
 			);
+
+		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+			m_pRaycastChunked[LEFT]->setTargetRenderTime(10.0f);
+			m_pRaycastChunked[LEFT]->setRenderTimeBias(1.0f);
+		}}
+
 		DEBUGLOG->outdent();
 		
 		//m_pRaycastChunked->activateClearbits();
@@ -1642,9 +1648,17 @@ public:
 		glBlendFunc(GL_ONE, GL_ZERO); // frontmost fragment takes it all
 		m_pGridWarp->setFrameBufferObject(m_pWarpFBO[eye]);
 		m_pGridWarpShader->update( "tex", 2 + 2 * FRONT + eye ); // last result
-		m_pGridWarpShader->update( "depth_map", 2 + 2 * FIRST_HIT_ + eye); // last first hit map
-		m_pGridWarpShader->update( "uViewOld", matrices[eye][LAST_RESULT].view ); // update with old view
 		m_pGridWarpShader->update( "uViewNew", (eye == LEFT) ? s_view : s_view_r); // most current view
+
+		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+			m_pGridWarpShader->update( "depth_map", 2 + 2 * FIRST_HIT_ + LEFT); // last LEFT first hit map
+			m_pGridWarpShader->update( "uViewOld", matrices[LEFT][LAST_RESULT].view ); // update with old LEFT view
+			m_pGridWarpShader->update( "uViewOld_eye", matrices[eye][LAST_RESULT].view ); // update with old view
+		} else {
+			m_pGridWarpShader->update( "depth_map", 2 + 2 * FIRST_HIT_ + eye); // last first hit map
+			m_pGridWarpShader->update( "uViewOld", matrices[eye][LAST_RESULT].view ); // update with old view
+		}}
+
 		m_pGridWarpShader->update( "uProjection",  matrices[eye][LAST_RESULT].perspective ); 
 		m_pGridWarp->render();
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
@@ -1696,6 +1710,7 @@ public:
 		case GRID:
 			renderGridWarp(LEFT);
 			renderGridWarp(RIGHT);
+			
 			break;
 		case NOVELVIEW:
 			renderNovelViewWarp(LEFT);
