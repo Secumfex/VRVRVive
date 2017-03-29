@@ -579,6 +579,13 @@ void main()
 	//	tX = min(vec2(0.0, 1.0), tX )
 	//#endif
 
+	#ifdef STEREO_SINGLE_PASS
+	#ifndef STEREO_SINGLE_OUTPUT
+	ivec3 texSize = imageSize(stereo_image);
+	int layerIdx = texSize.z - ( int(passUV.x * texSize.x) % texSize.z ) - 1;
+	#endif
+	#endif
+
 	#ifdef OCCLUSION_MAP
 		vec4 clipFrustumFront = texture(occlusion_clip_frustum_front, passUV);
 		clipFrustumFront.rgb = (uViewToTexture * getViewCoord( vec3(passUV, clipFrustumFront.a) ) ).xyz;
@@ -591,6 +598,11 @@ void main()
 			uStepSize    			// sampling step size
 			, length( getViewCoord(vec3(passUV, uvwStart.a) ).xyz)
 			, length( getViewCoord(vec3(passUV, min(clipFrustumFront.a, uvwEnd.a) ) ).xyz)
+			#ifdef STEREO_SINGLE_PASS
+				#ifndef STEREO_SINGLE_OUTPUT
+					, layerIdx
+				#endif
+			#endif
 			);
 
 			fragColor = raycastResult.color;
@@ -631,13 +643,6 @@ void main()
 	float endDistance   = length(getViewCoord(vec3(passUV,uvwEnd.a)).xyz);
 	//float startDistance = uvwStart.a;
 	//float endDistance   = uvwEnd.a;
-
-	#ifdef STEREO_SINGLE_PASS
-		#ifndef STEREO_SINGLE_OUTPUT
-		ivec3 texSize = imageSize(stereo_image);
-		int layerIdx = texSize.z - ( int(passUV.x * texSize.x) % texSize.z ) - 1;
-		#endif
-	#endif
 	
 	// EA-raycasting
 	RaycastResult raycastResult = raycast( 
