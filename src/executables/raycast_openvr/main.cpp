@@ -1808,10 +1808,11 @@ public:
 			renderOcclusionMap(eye, matrices[eye][CURRENT], matrices[eye][LAST_RESULT]);
 		}}
 		
-		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
+
+		{if (eye == LEFT) {bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty ){
 			glm::mat4 textureToProjection_r = s_perspective_r * s_view_r * s_model * glm::inverse( s_modelToTexture ); // texture to model
 			m_pRaycastShader->update( "uTextureToProjection_r", textureToProjection_r ); //since position map contains s_view space coords
-		}}
+		}}}
 	}
 
 
