@@ -1294,6 +1294,29 @@ public:
 			}
 
 			m_frame.FrameProfiler.imguiInterface(0.0f, std::max(frame_end-frame_begin, 10.0f), &frame_profiler_visible);
+
+			//++++++++++++ DEBUG ++++++++++++++
+			{static float lastSwapTimeLeft  = 0.0f;
+			static float lastSwapTimeRight = 0.0f;
+			static float lastSwapTimestampLeft  = 0.0f;
+			static float lastSwapTimestampRight = 0.0f;
+			ImGui::Separator();
+			if (m_frame.Timings.getFront().m_timestamps.find("Swap Time" + STR_SUFFIX[LEFT]) != m_frame.Timings.getFront().m_timestamps.end())
+			{
+				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[LEFT]).lastTime;
+				if (t > lastSwapTimestampLeft) { lastSwapTimeLeft = t - lastSwapTimestampLeft; lastSwapTimestampLeft = t; }
+				ImGui::Value("Swap Time Left", lastSwapTimeLeft);
+			}
+			if (m_frame.Timings.getFront().m_timestamps.find("Swap Time" + STR_SUFFIX[RIGHT]) != m_frame.Timings.getFront().m_timestamps.end())
+			{
+				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[RIGHT]).lastTime;
+				if (t > lastSwapTimestampRight) { lastSwapTimeRight = t - lastSwapTimestampRight; lastSwapTimestampRight = t; }
+				ImGui::Value("Swap Time Right", lastSwapTimeRight);
+			}
+			ImGui::Separator();
+			}
+			//+++++++++++++++++++++++++++++++++
+
 		}
 		if(!pause_frame_profiler) m_frame.Timings.swap();
 		//////////////////////////////////////////////////////////////////////////////
@@ -1845,6 +1868,7 @@ public:
 		if (m_pRaycastChunked[LEFT + idx]->isFinished())
 		{
 			//copyResult(LEFT);
+			m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
 			m_pRaycastFBO[LEFT + idx].swap();
 			m_pRaycast[LEFT + idx]->setFrameBufferObject(
 				m_pRaycastFBO[LEFT + idx].getBack()
@@ -1865,10 +1889,12 @@ public:
 			);
 			m_frame.Timings.getBack().beginTimerElapsed("Compose Right");
 			m_pComposeTexArray->render();
+			m_frame.Timings.getBack().stopTimerElapsed();
+			
+			m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[RIGHT]);
 			m_pRaycastFBO[RIGHT + idx].swap();
 			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D); // left  raycasting result
-			m_frame.Timings.getBack().stopTimerElapsed();
-
+			
 			m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
 			clearLayerTexture();
 			m_frame.Timings.getBack().stopTimerElapsed();
@@ -1879,6 +1905,7 @@ public:
 		if (!isSinglePass && m_pRaycastChunked[RIGHT + idx]->isFinished())
 		{
 			//copyResult(RIGHT);
+			m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[RIGHT]);
 			m_pRaycastFBO[RIGHT + idx].swap();
 			m_pRaycast[RIGHT + idx]->setFrameBufferObject(
 				m_pRaycastFBO[RIGHT + idx].getBack()
