@@ -224,6 +224,9 @@ private:
 	int m_iNumSamples;
 	int m_iNumLayers;
 	
+	float m_pixelOffsetNear;
+	float m_pixelOffsetFar;
+
 	std::vector<float> m_texData;
 	GLuint m_pboHandle; // PBO 
 
@@ -254,6 +257,7 @@ public:
 	void renderModels(int eye);
 	void renderImage(int eye);
 	void renderNextBaseData(int eye);
+	void updateSimulationFrameData(int eye);
 	void renderVolumeLayersIteration(int eye, MatrixSet& matrixSet);
 	void renderVolumeIteration(int eye, MatrixSet& matrixSet);
 	void renderOcclusionMap(int eye, MatrixSet& current, MatrixSet& last);
@@ -313,7 +317,9 @@ public:
 		, m_bAnimateTranslation(false)
 		, m_iActiveWarpingTechnique(QUAD)
 		, m_iNumSamples(4)
-		, m_pboHandle(-1) // PBO 
+		, m_pboHandle(-1) // PBO
+		, m_pixelOffsetFar(0.0f)
+		, m_pixelOffsetNear(0.0f)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -1416,8 +1422,8 @@ public:
 		float t_far  = (s_zRayEnd)  / s_near;
 		float nW = s_nearW;
 
-		//float pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
-		//float pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
+		//float m_pixelOffsetFar  = (1.0f / t_far)  * (b * w) / (nW * 2.0f); // pixel offset between points at zRayEnd distance to image planes
+		//float m_pixelOffsetNear = (1.0f / t_near) * (b * w) / (nW * 2.0f); // pixel offset between points at zRayStart distance to image planes
 
 		float b = s_eyeDistance;
 		float w = FRAMEBUFFER_RESOLUTION.x;
@@ -1425,11 +1431,8 @@ public:
 		// variant 2: ray from near to outer bounds
 		float s = w / (2.0f * s_near * tanf(alpha) );
 		float imageOffset =  b * s;
-		float pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
-		float pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
-		m_pComposeTexArrayShader->update("uPixelOffsetFar",  pixelOffsetFar);
-		m_pComposeTexArrayShader->update("uPixelOffsetNear", pixelOffsetNear);
-		//m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
+		m_pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
+		m_pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
 	
 		if (ImGui::CollapsingHeader("Epipolar Info"))
 		{
@@ -1438,9 +1441,9 @@ public:
 		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
 		ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
 		ImGui::Value("Pixel Offset of Images", imageOffset);
-		ImGui::Value("Pixel Offset at Ray Start", pixelOffsetNear);
-		ImGui::Value("Pixel Offset at Ray End", pixelOffsetFar);
-		ImGui::Value("Pixel Range of a Ray", pixelOffsetNear - pixelOffsetFar);
+		ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
+		ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
+		ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
 		}
 
 		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
@@ -1777,7 +1780,7 @@ public:
 		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + m_iLeftDebugView + eye], (vr::Hmd_Eye) eye);
 	}
 
-	void CMainApplication::renderNextBaseData(int eye)
+	void CMainApplication::updateSimulationFrameData(int eye)
 	{
 		// first hit map was rendered with last "current" matrices
 		matrices[eye][LAST_RESULT] = matrices[eye][CURRENT]; 
@@ -1785,7 +1788,16 @@ public:
 		// overwrite with current matrices
 		matrices[eye][CURRENT].model = s_model; 
 		matrices[eye][CURRENT].view = (eye == LEFT) ? s_view : s_view_r;
-		matrices[eye][CURRENT].perspective = (eye == LEFT) ? s_perspective : s_perspective_r; 
+		matrices[eye][CURRENT].perspective = (eye == LEFT) ? s_perspective : s_perspective_r;
+
+		{if (eye == LEFT) {bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty ){
+			glm::mat4 textureToProjection_r = s_perspective_r * s_view_r * s_model * glm::inverse( s_modelToTexture ); // texture to model
+			m_pRaycastShader->update( "uTextureToProjection_r", textureToProjection_r ); //since position map contains s_view space coords
+
+			m_pComposeTexArrayShader->update("uPixelOffsetFar",  m_pixelOffsetFar);
+			m_pComposeTexArrayShader->update("uPixelOffsetNear", m_pixelOffsetNear);
+			//m_pComposeTexArrayShader->update("uImageOffset", imageOffset);
+		}}}
 
 		//++++++++++++++ DEBUG +++++++++++//
 		if (m_bPredictPose)
@@ -1793,6 +1805,11 @@ public:
 			predictPose(eye);
 		}
 		//++++++++++++++++++++++++++++++++//
+	}
+
+	void CMainApplication::renderNextBaseData(int eye)
+	{
+		updateSimulationFrameData(eye);
 
 		//++++++++++++++ DEBUG +++++++++++//
 		// quickly do a depth pass of the models
@@ -1807,12 +1824,6 @@ public:
 		{bool hasProperty= false; for (auto e : m_shaderDefines) { hasProperty |= (e == "OCCLUSION_MAP"); } if ( hasProperty){
 			renderOcclusionMap(eye, matrices[eye][CURRENT], matrices[eye][LAST_RESULT]);
 		}}
-		
-
-		{if (eye == LEFT) {bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty ){
-			glm::mat4 textureToProjection_r = s_perspective_r * s_view_r * s_model * glm::inverse( s_modelToTexture ); // texture to model
-			m_pRaycastShader->update( "uTextureToProjection_r", textureToProjection_r ); //since position map contains s_view space coords
-		}}}
 	}
 
 
@@ -1844,15 +1855,17 @@ public:
 			m_pComposeTexArray->setFrameBufferObject(
 				m_pRaycastFBO[RIGHT + idx].getBack()
 			);
+			m_frame.Timings.getBack().beginTimerElapsed("Compose Right");
 			m_pComposeTexArray->render();
 			m_pRaycastFBO[RIGHT + idx].swap();
 			OPENGLCONTEXT->bindTextureToUnit(m_pRaycastFBO[RIGHT].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 + 2 * FRONT + RIGHT, GL_TEXTURE_2D); // left  raycasting result
+			m_frame.Timings.getBack().stopTimerElapsed();
 
 			m_frame.Timings.getBack().beginTimerElapsed("Clear Array");
 			clearLayerTexture();
 			m_frame.Timings.getBack().stopTimerElapsed();
 
-			renderNextBaseData(RIGHT);
+			updateSimulationFrameData(RIGHT);
 		}
 
 		if (!isSinglePass && m_pRaycastChunked[RIGHT + idx]->isFinished())
