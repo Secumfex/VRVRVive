@@ -288,6 +288,7 @@ public:
 	void handleVolume();
 	void loadVolume();
 	void initOpenVR();
+	void handleFrameType();
 
 	float getIdealNearValue(); //!< returns the computed 'near' value
 	
@@ -322,7 +323,7 @@ public:
 		, m_pboHandle(-1) // PBO
 		, m_pixelOffsetFar(0.0f)
 		, m_pixelOffsetNear(0.0f)
-		, m_clearColor(0.0f)
+		, m_clearColor(0.17f, 0.211f, 0.266f, 0.0f)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -1857,6 +1858,95 @@ public:
 		}}
 	}
 
+	void CMainApplication::handleFrameType()
+	{
+		int idx = 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW);
+		auto timings = m_frame.Timings.getFront();
+
+		bool hasStereo = false; for (auto e : m_shaderDefines) { hasStereo |= (e == "STEREO_SINGLE_PASS"); }
+		bool hasOccl = false; for (auto e : m_shaderDefines) { hasOccl |= (e == "OCCLUSION_MAP"); }
+
+		// gather information about what will be done this frame, and calculate residual available render time
+		float estTime = 0.0f;
+		if (m_pRaycastChunked[LEFT + idx]->isFinished())
+		{
+			
+			if (timings.m_timersElapsed.find("UVW" + STR_SUFFIX[LEFT]) != timings.m_timersElapsed.end())
+			{
+				estTime += timings.m_timersElapsed.at("UVW" + STR_SUFFIX[LEFT]).lastTiming;
+			} else {
+				estTime += 0.5f; // eh...
+			}
+
+			if (hasStereo)
+			{
+				if (timings.m_timersElapsed.find("Clear Array") != timings.m_timersElapsed.end())
+				{
+					estTime += timings.m_timersElapsed.at("Clear Array").lastTiming;
+				} else {
+					estTime += 2.0f; // slow eh...
+				}
+				if (timings.m_timersElapsed.find("Compose Right") != timings.m_timersElapsed.end())
+				{
+					estTime += timings.m_timersElapsed.at("Compose Right").lastTiming;
+				} else {
+					estTime += 1.0f; // eh...
+				}
+			}
+
+			if (hasOccl)
+			{
+				if (timings.m_timersElapsed.find("Occlusion Frustum" + STR_SUFFIX[LEFT]) != timings.m_timersElapsed.end())
+				{
+					estTime += timings.m_timersElapsed.at("Occlusion Frustum" + STR_SUFFIX[LEFT]).lastTiming;
+				} else {
+					estTime += 2.0f; // slow eh...
+				}
+			}
+		}
+
+		if (m_pRaycastChunked[RIGHT + idx]->isFinished() && !hasStereo)
+		{
+			auto timings = m_frame.Timings.getFront();
+			if (timings.m_timersElapsed.find("UVW" + STR_SUFFIX[RIGHT]) != timings.m_timersElapsed.end())
+			{
+				estTime += timings.m_timersElapsed.at("UVW" + STR_SUFFIX[RIGHT]).lastTiming;
+			} else {
+				estTime += 0.5f; // eh...
+			}
+
+			if (hasOccl)
+			{
+				if (timings.m_timersElapsed.find("Occlusion Frustum" + STR_SUFFIX[RIGHT]) != timings.m_timersElapsed.end())
+				{
+					estTime += timings.m_timersElapsed.at("Occlusion Frustum" + STR_SUFFIX[RIGHT]).lastTiming;
+				} else {
+					estTime += 2.0f; // slow eh...
+				}
+			}
+		}
+
+		if (timings.m_timersElapsed.find("Warping") != timings.m_timersElapsed.end())
+		{
+			estTime += timings.m_timersElapsed.at("Warping").lastTiming;
+		}
+		else
+		{
+			estTime += 1.0f;
+		}
+
+		float availTime = max( 10.0f - estTime, 0.1f );
+		if (hasStereo)
+		{
+			m_pRaycastChunked[LEFT]->setTargetRenderTime(availTime); // all goes to left chunked render pass
+		}
+		else
+		{
+			m_pRaycastChunked[LEFT]->setTargetRenderTime( availTime / 2.0f );
+			m_pRaycastChunked[RIGHT]->setTargetRenderTime( availTime / 2.0f );
+		}
+	}
+
 
 	////////////////////////////////  RENDERING //// /////////////////////////////
 	void CMainApplication::renderViews()
@@ -2008,6 +2098,9 @@ public:
 			//////////////////////////////////////////////////////////////////////////////
 			updateCommonUniforms();
 			
+			//////////////////////////////////////////////////////////////////////////////			
+			handleFrameType();
+
 			//////////////////////////////////////////////////////////////////////////////			
 			renderViews();
 
