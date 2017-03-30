@@ -230,6 +230,8 @@ private:
 	std::vector<float> m_texData;
 	GLuint m_pboHandle; // PBO 
 
+	glm::vec4 m_clearColor;
+
 	struct MatrixSet
 	{
 		glm::mat4 model;
@@ -320,6 +322,7 @@ public:
 		, m_pboHandle(-1) // PBO
 		, m_pixelOffsetFar(0.0f)
 		, m_pixelOffsetNear(0.0f)
+		, m_clearColor(0.0f)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -1196,6 +1199,12 @@ public:
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		ImGui::Separator();
+		if (ImGui::ColorEdit4("Clear Color", &m_clearColor[0]))
+		{
+			m_pGridWarpShader->update("color", m_clearColor);
+		}
+
+		ImGui::Separator();
 
 		{bool changed = false;
 		changed |= ImGui::SliderFloat("Near", &s_near, 0.1f, s_far);
@@ -1452,7 +1461,6 @@ public:
 		if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
 		if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
 		}}
-
 	}
 
 	void CMainApplication::predictPose(int eye)
@@ -1636,8 +1644,8 @@ public:
 
 	void CMainApplication::clearWarpFBO(int eye)
 	{
-		// clear 
-		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		// clear
+		glClearColor(m_clearColor.r,m_clearColor.g,m_clearColor.b,m_clearColor.a);
 		m_pWarpFBO[eye]->bind();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
