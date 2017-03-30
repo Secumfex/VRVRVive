@@ -1870,14 +1870,25 @@ public:
 		float estTime = 0.0f;
 		if (m_pRaycastChunked[LEFT + idx]->isFinished())
 		{
-			
+			// UVWs
 			if (timings.m_timersElapsed.find("UVW" + STR_SUFFIX[LEFT]) != timings.m_timersElapsed.end())
 			{
 				estTime += timings.m_timersElapsed.at("UVW" + STR_SUFFIX[LEFT]).lastTiming;
 			} else {
-				estTime += 0.5f; // eh...
+				estTime += 0.2f; // eh...
 			}
 
+			// Depth Models
+			if (m_pOvr->m_pHMD) { if(timings.m_timersElapsed.find("Depth Models" + STR_SUFFIX[LEFT]) != timings.m_timersElapsed.end())
+			{
+				estTime += timings.m_timersElapsed.at("Depth Models" + STR_SUFFIX[LEFT]).lastTiming;
+			}
+			else
+			{
+				estTime += 0.5f;
+			}}
+
+			// Stereo Compositing + Clear Array
 			if (hasStereo)
 			{
 				if (timings.m_timersElapsed.find("Clear Array") != timings.m_timersElapsed.end())
@@ -1894,6 +1905,7 @@ public:
 				}
 			}
 
+			// Occlusion Map
 			if (hasOccl)
 			{
 				if (timings.m_timersElapsed.find("Occlusion Frustum" + STR_SUFFIX[LEFT]) != timings.m_timersElapsed.end())
@@ -1907,7 +1919,7 @@ public:
 
 		if (m_pRaycastChunked[RIGHT + idx]->isFinished() && !hasStereo)
 		{
-			auto timings = m_frame.Timings.getFront();
+			// UVWs
 			if (timings.m_timersElapsed.find("UVW" + STR_SUFFIX[RIGHT]) != timings.m_timersElapsed.end())
 			{
 				estTime += timings.m_timersElapsed.at("UVW" + STR_SUFFIX[RIGHT]).lastTiming;
@@ -1915,6 +1927,17 @@ public:
 				estTime += 0.5f; // eh...
 			}
 
+			// Depth Models
+			if (m_pOvr->m_pHMD) { if(timings.m_timersElapsed.find("Depth Models" + STR_SUFFIX[RIGHT]) != timings.m_timersElapsed.end())
+			{
+				estTime += timings.m_timersElapsed.at("Depth Models" + STR_SUFFIX[RIGHT]).lastTiming;
+			}
+			else
+			{
+				estTime += 0.5f;
+			}}
+
+			// Occlusion Map
 			if (hasOccl)
 			{
 				if (timings.m_timersElapsed.find("Occlusion Frustum" + STR_SUFFIX[RIGHT]) != timings.m_timersElapsed.end())
@@ -1926,6 +1949,7 @@ public:
 			}
 		}
 
+		// Warping
 		if (timings.m_timersElapsed.find("Warping") != timings.m_timersElapsed.end())
 		{
 			estTime += timings.m_timersElapsed.at("Warping").lastTiming;
@@ -1935,7 +1959,19 @@ public:
 			estTime += 1.0f;
 		}
 
-		float availTime = max( 10.0f - estTime, 0.1f );
+		// Models
+		if (m_pOvr->m_pHMD) {if(timings.m_timersElapsed.find("Render Models") != timings.m_timersElapsed.end())
+		{
+			estTime += timings.m_timersElapsed.at("Render Models").lastTiming;
+		}
+		else
+		{
+			estTime += 0.5f;
+		}}
+		
+		// Calculate estimated available time
+		float frameTime = 10.0f;
+		float availTime = max( frameTime - estTime, 0.1f ); // at least something
 		if (hasStereo)
 		{
 			m_pRaycastChunked[LEFT]->setTargetRenderTime(availTime); // all goes to left chunked render pass
