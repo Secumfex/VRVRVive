@@ -521,6 +521,7 @@ public:
 		}}
 
 		m_pQuadWarpShader->update( "blendColor", 1.0f );
+		m_pGridWarpShader->update("color", m_clearColor);
 
 		m_pOcclusionFrustumShader->update("uOcclusionBlockSize", m_iOcclusionBlockSize);
 		m_pOcclusionFrustumShader->update("uGridSize", glm::vec4(m_iVertexGridWidth, m_iVertexGridHeight, 1.0f / (float) m_iVertexGridWidth, 1.0f / m_iVertexGridHeight));
