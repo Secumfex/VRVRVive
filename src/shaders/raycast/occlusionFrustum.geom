@@ -26,8 +26,8 @@ uniform mat4 uFirstHitViewToCurrentView; // from old view to new projection spac
 uniform mat4 uFirstHitViewToTexture; // from old view to texture space
 
 // some defines
-#ifndef DEPTH_SCALE 
-#define DEPTH_SCALE 5.0 
+#ifndef FRUSTUM_SCALE 
+#define FRUSTUM_SCALE 1.05
 #endif
 #ifndef DEPTH_BIAS 
 #define DEPTH_BIAS 0.00 // something
@@ -63,11 +63,6 @@ VertexData getVertexData(vec3 screenPos)
 {
 	vec4 posView = getViewCoord(screenPos); // position in first hit view space
 	vec4 posNewView = uFirstHitViewToCurrentView * posView; // position in current view
-
-	// move closer to camera
-	float near = (2.0f * uProjection[3][2])/(2.0f * uProjection[2][2] - 2.0f);
-	float closerDistance = max(near, abs(posNewView.z) - DEPTH_BIAS_VIEW);
-	posNewView.xyz = closerDistance * (length(posNewView.xyz)/abs(posNewView.z)) * normalize(posNewView.xyz);
 
 	vec4 posNewProj = uProjection * posNewView; // new view space position projected
 	posNewProj.z = max( min( posNewProj.z / posNewProj.w, 1.0), -1.0 ) * posNewProj.w; // clamp to near/far plane to force fragment generation
@@ -120,6 +115,20 @@ void main()
 	// define 8 corner vertices: projected position and uvw coordinates // slightly enlarged and moved towards camera
 	vec2 offsetMin = vec2(-4.0, -4.0) / texSize;
 	vec2 offsetMax = vec2(uOcclusionBlockSize + 4.0,	uOcclusionBlockSize + 4.0) / texSize;
+
+	float maxDepth = MAX_DEPTH; //TODO or read from uvw map
+
+	//-----------------------------------------
+	// scale frustum in texture space
+	vec4 front = uFirstHitViewToTexture * getViewCoord( vec3(screenPos + 0.5 * (uOcclusionBlockSize/ texSize), minDepth ) );
+	vec4 back  = uFirstHitViewToTexture * getViewCoord( vec3(screenPos + 0.5 * (uOcclusionBlockSize/ texSize), maxDepth ) );
+	vec4 center = front + 0.5 * (back - front);
+	vec4 frontS= (front - center) * FRUSTUM_SCALE + center;
+	vec4 backS = (back  - center) * FRUSTUM_SCALE + center;
+	vec2 proj = (uProjection * inverse(uFirstHitViewToTexture) * frontS).zw;
+	minDepth = 0.5 * (proj.x / proj.y) + 0.5; // x,y is actually z,w
+	//-----------------------------------------
+
 	VertexData b00 = getVertexData( vec3( screenPos + offsetMin,						max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
 	VertexData b10 = getVertexData( vec3( screenPos + vec2(offsetMax.x, offsetMin.y),	max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
 	VertexData b11 = getVertexData( vec3( screenPos + offsetMax,						max(minDepth - DEPTH_BIAS, DEPTH_BIAS)) );
