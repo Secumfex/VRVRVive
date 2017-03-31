@@ -127,6 +127,19 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Vol
 		transferFunction.getValues().push_back(0.769f);
 		transferFunction.getColors().push_back(glm::vec4(0.0f, 113.0f/255.0f, 185.0f/255.0f, 1.0f));
 	}
+	else if( preset == VolumePresets::Preset::CTA_Brain)
+	{
+		transferFunction.getValues().push_back(0.296);
+		transferFunction.getColors().push_back(glm::vec4(97.0f/255.0f, 0.0f/255.0f, 0.0f/255.0f, 0.0f/255.0f));
+		transferFunction.getValues().push_back(0.308f);
+		transferFunction.getColors().push_back(glm::vec4(202.0f/255.0f, 0.0f/255.0f, 0.0f, 255.0f/255.0f));
+		transferFunction.getValues().push_back(0.432f);
+		transferFunction.getColors().push_back(glm::vec4(69.0f/255.0f,0.0f,0.0f, 63.0f/255.0f));
+		transferFunction.getValues().push_back(0.579f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f/255.0f, 0.0f/255.0f, 172.0f/255.0f));
+		transferFunction.getValues().push_back(0.865f);
+		transferFunction.getColors().push_back(glm::vec4(144.0f/255.0f, 184.0f/255.0f, 255.0f/255.0f, 3.0f/255.0f));
+	}
 	else // default
 	{
 		transferFunction.getValues().push_back(0.0);
