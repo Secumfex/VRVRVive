@@ -427,6 +427,20 @@ public:
 		{
 			s_view = m_pOvr->m_mat4eyePosLeft * s_view;
 			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
+
+			//++++++++++++++DEBUG++++++++++++
+			glm::mat4 p0 = s_perspective;
+			glm::mat4 p1 = m_pOvr->m_mat4ProjectionLeft;
+			float c0 = p0[2][2];
+			float d0 = p0[3][2];
+			float c1 = p1[2][2];
+			float d1 = p1[3][2];
+			float n1 = d0 / (c0-1.0f);
+			float n2 = d1 / (c1-1.0f);
+			DEBUGLOG->log("GLM near:", n1);
+			DEBUGLOG->log("OVR near:", n2);
+			//+++++++++++++++++++++++++++++++
+
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 		}
