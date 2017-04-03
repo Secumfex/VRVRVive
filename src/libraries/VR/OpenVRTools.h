@@ -189,6 +189,7 @@ public:
 	
 	// computes the vertical field of view from the current raw projection matrix
 	float getFovY(vr::Hmd_Eye nEye = vr::Eye_Left);
+	float getFovX(vr::Hmd_Eye nEye = vr::Eye_Left);
 };
 #endif
 

@@ -37,7 +37,7 @@ static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial 
 
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
-static float FRAMEBUFFER_SCALE = 0.75f;
+static float FRAMEBUFFER_SCALE = 0.5f;
 static glm::vec2 FRAMEBUFFER_RESOLUTION(700.f,700.f);
 static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_RESOLUTION.y);
 
@@ -338,6 +338,10 @@ public:
 		{
 			FRAMEBUFFER_SCALE = atof(argv[1]);
 		}
+		
+		updateNearHeightWidth();
+		updatePerspective();
+		updateScreenToViewMatrix();
 
 		// create m_pWindow and opengl context
 		m_pWindow = generateWindow_SDL(WINDOW_RESOLUTION.x, WINDOW_RESOLUTION.y, 100, 100, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
@@ -408,6 +412,10 @@ public:
 		}
 		s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
 
+		updateNearHeightWidth();
+		updatePerspective();
+		updateScreenToViewMatrix();
+
 		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
 			s_near = getIdealNearValue();
 			updatePerspective();
@@ -417,13 +425,12 @@ public:
 			}
 		}}
 
+		updateNearHeightWidth();
+		updatePerspective();
+		updateScreenToViewMatrix();
+
 		// use waitgetPoses to update matrices
-		if (!m_pOvr->m_pHMD)
-		{
-			s_aspect = FRAMEBUFFER_RESOLUTION.x / (FRAMEBUFFER_RESOLUTION.y);
-			updatePerspective();
-		}
-		else
+		if (m_pOvr->m_pHMD)
 		{
 			s_view = m_pOvr->m_mat4eyePosLeft * s_view;
 			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
@@ -444,9 +451,6 @@ public:
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 		}
-
-		updateNearHeightWidth();
-		updateScreenToViewMatrix();
 	}
 
 	float CMainApplication::getIdealNearValue()
@@ -454,8 +458,8 @@ public:
 		// what we have right now
 		float b = s_eyeDistance;
 		float w = FRAMEBUFFER_RESOLUTION.x;
-		float d_p = (float) m_iNumLayers + 1; // plus for rounding to bigger range
-		float alpha = glm::radians(s_fovY * 0.5f);
+		float d_p = (float) m_iNumLayers;
+		float alpha = glm::radians(s_fovY * s_aspect * 0.5f);
 		
 		glm::vec3 sceneVolSize = glm::vec3(s_scale * m_volumeScale * glm::vec4(s_volumeSize, 0.0f));
 		float radius = sqrtf( powf( sceneVolSize.x, 2.0f) + powf(sceneVolSize.y, 2.0f) + powf(sceneVolSize.z, 2.0f));
@@ -1353,9 +1357,10 @@ public:
 			m_pOvr->updateTrackedDevicePoses();
 			s_view = m_pOvr->m_mat4eyePosLeft * m_pOvr->m_mat4HMDPose;
 			s_view_r = m_pOvr->m_mat4eyePosRight * m_pOvr->m_mat4HMDPose;
+			s_eyeDistance = glm::length(glm::vec3(s_view_r * glm::inverse(s_view) * glm::vec4(0.0,0.0,0.0,1.0f)));
 		}
 
-		s_nearH = s_near * std::tanf( glm::radians(s_fovY/2.0f) );
+		s_nearH = s_near * std::tanf( glm::radians(s_fovY * 0.5f) );
 		s_nearW = s_nearH * s_aspect;
 
 		// constant
@@ -1475,7 +1480,7 @@ public:
 
 		float b = s_eyeDistance;
 		float w = FRAMEBUFFER_RESOLUTION.x;
-		float alpha = glm::radians(s_fovY * 0.5f);
+		float alpha = glm::radians(s_fovY * s_aspect * 0.5f);
 		// variant 2: ray from near to outer bounds
 		float s = w / (2.0f * s_near * tanf(alpha) );
 		float imageOffset =  b * s;

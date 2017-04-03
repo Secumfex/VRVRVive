@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace{
 void ThreadSleep( unsigned long nMilliseconds )
@@ -63,14 +64,21 @@ glm::mat4 OpenVRSystem::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 	if ( !m_pHMD )
 		return glm::mat4();
 
-	vr::HmdMatrix44_t mat = m_pHMD->GetProjectionMatrix( nEye, m_near, m_far, vr::API_OpenGL);
+	// TODO issue with GetProjectionMatrix: it's always returning a DirectX styled matrix, so it's useless actually.
+	// related issue: https://github.com/ValveSoftware/openvr/issues/70
+	//vr::HmdMatrix44_t mat = m_pHMD->GetProjectionMatrix( nEye, m_near, m_far, vr::API_OpenGL);
+	//return glm::mat4(
+	//	mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
+	//	mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1], 
+	//	mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2], 
+	//	mat.m[0][3], mat.m[1][3], mat.m[2][3], mat.m[3][3]
+	//);
 
-	return glm::mat4(
-		mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
-		mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1], 
-		mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2], 
-		mat.m[0][3], mat.m[1][3], mat.m[2][3], mat.m[3][3]
-	);
+	float l,r,t,b;
+	m_pHMD->GetProjectionRaw(nEye, &l, &r, &b, &t); // for some reason, bottom and top are switched!? 
+
+	return glm::frustum(l*m_near, r*m_near, b*m_near, t*m_near, m_near, m_far);
+}
 }
 
 
@@ -568,11 +576,29 @@ void OpenVRSystem::shutdown()
 	}
 }
 
+float OpenVRSystem::getFovX(vr::Hmd_Eye nEye)
+{
+	if (!m_pHMD)
+	{
+		return 90.0f;
+	}
 
+	float l,r,t,b;
+	m_pHMD->GetProjectionRaw(nEye, &l, &r, &t, &b);
+	return glm::degrees( abs(atan(l)) + abs(atan(r)) );
+}
 float OpenVRSystem::getFovY(vr::Hmd_Eye nEye)
 {
-	float t = (nEye == vr::Eye_Left) ? m_mat4ProjectionLeft[1][1] : m_mat4ProjectionRight[1][1] ;
-	return glm::degrees( atan(1.0f / t ) * 2.0f );
+	//float t = (nEye == vr::Eye_Left) ? m_mat4ProjectionLeft[1][1] : m_mat4ProjectionRight[1][1] ;
+	//return glm::degrees( atan(1.0f / t ) * 2.0f );
+	if (!m_pHMD)
+	{
+		return 90.0f;
+	}
+
+	float l,r,t,b;
+	m_pHMD->GetProjectionRaw(nEye, &l, &r, &t, &b);
+	return glm::degrees( abs(atan(b)) + abs(atan(t)) );
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
