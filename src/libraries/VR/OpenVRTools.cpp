@@ -79,6 +79,23 @@ glm::mat4 OpenVRSystem::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 
 	return glm::frustum(l*m_near, r*m_near, b*m_near, t*m_near, m_near, m_far);
 }
+
+//-----------------------------------------------------------------------------
+// Purpose: Returns the Composed Projection Matrix for an eye using the parameters provided
+//-----------------------------------------------------------------------------
+void OpenVRSystem::ComposeProjection(float fLeft, float fRight, float fTop, float fBottom, float zNear, float zFar,  vr::HmdMatrix44_t *pmProj) 
+{
+		float idx = 1.0f / (fRight - fLeft);
+		float idy = 1.0f / (fBottom - fTop);
+		float idz = 1.0f / (zFar - zNear);
+		float sx = fRight + fLeft;
+		float sy = fBottom + fTop;
+
+		float (*p)[4] = pmProj->m;
+		p[0][0] = 2.0f*idx; p[0][1] = 0;     p[0][2] = sx*idx;    p[0][3] = 0;
+		p[1][0] = 0;     p[1][1] = 2.0f*idy; p[1][2] = sy*idy;    p[1][3] = 0;
+		p[2][0] = 0;     p[2][1] = 0;     p[2][2] = -zFar*idz; p[2][3] = -zFar*zNear*idz;
+		p[3][0] = 0;     p[3][1] = 0;     p[3][2] = -1.0f;     p[3][3] = 0;
 }
 
 
