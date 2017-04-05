@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 
 	///////////////////////   Ray-Casting Renderpass    //////////////////////////
 	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer.frag", s_shaderDefines); DEBUGLOG->outdent();
+	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer_simple.frag", s_shaderDefines); DEBUGLOG->outdent();
 	shaderProgram.update("uStepSize", s_rayStepSize);
 	
 	
@@ -189,13 +189,13 @@ int main(int argc, char *argv[])
 	debugRecomposeShader.update("layer2",5);
 	debugRecomposeShader.update("layer3",6);
 	debugRecomposeShader.update("layer4",7);
-	debugRecomposeShader.update("depth0",9);
+	//debugRecomposeShader.update("depth0",9);
 	debugRecomposeShader.update("depth", 10);
 
 	///////////////////////   novel view synthesis Renderpass    //////////////////////////
 	//Grid grid(400,400,0.0025f,0.0025f, false);
 
-	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag");
+	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag");
 	//ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
 	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 	//RenderPass novelView(&novelViewShader, &FBO_novelView);
@@ -211,18 +211,18 @@ int main(int argc, char *argv[])
 	OPENGLCONTEXT->bindTextureToUnit(FBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
 
-	novelViewShader.update("layer1",4);
-	novelViewShader.update("layer2",5);
-	novelViewShader.update("layer3",6);
-	novelViewShader.update("layer4",7);
-	novelViewShader.update("depth0",9);
+	novelViewShader.update("layer0",4);
+	novelViewShader.update("layer1",5);
+	novelViewShader.update("layer2",6);
+	novelViewShader.update("layer3",7);
+	//novelViewShader.update("depth0",9);
 	novelViewShader.update("depth", 10);
 	
-	novelViewShader.update("back_uvw_map_old", 1);
+	//novelViewShader.update("back_uvw_map_old", 1);
 	novelViewShader.update("back_uvw_map",  12);
 	novelViewShader.update("front_uvw_map", 13);
 	
-	novelViewShader.update("uThreshold", 100);
+	novelViewShader.update("uThreshold", 32);
 
 	//////////////////////////////////////////////////////////////////////////////
 	///////////////////////    GUI / USER INPUT   ////////////////////////////////
@@ -388,13 +388,16 @@ int main(int argc, char *argv[])
 		ViewParameters::updateView(); // might have changed from SDL Event
 
 		//glm::vec4 warpCenter  = s_center + glm::vec4(sin(elapsedTime*2.0)*0.25f, cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
-		glm::vec4 warpCenter  = s_center;
+		glm::vec4 warpCenter  = s_translation * s_center;
 		static bool isCameraAnimated = false;
 		ImGui::Checkbox("Animate Camera", &isCameraAnimated);
 		if (isCameraAnimated)
 		{
-			glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*1.0)*0.125f, -cos(elapsedTime*2.0)*0.125f, 0.0f, 0.0f);
-			s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.25f, 1.0f, 0.0f)));	
+			//glm::vec4 warpEye = s_eye + glm::vec4(-sin(elapsedTime*0.3)*0.5f, -cos(elapsedTime*0.3)*0.125f, 0.0f, 0.0f);
+			//s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.1f, 1.0f, 0.0f)));	
+
+			glm::vec4 warpEye = glm::rotate( glm::quarter_pi<float>() * ( 0.5f * sin( (float) elapsedTime * 0.3f) ), glm::vec3(0,1,0)) * s_eye; 
+			s_view_r = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), glm::normalize(glm::vec3( sin(elapsedTime)*0.1f, 1.0f, 0.0f)));	
 		}
 	
 		//////////////////////////////////////////////////////////////////////////////
@@ -456,6 +459,7 @@ int main(int argc, char *argv[])
 			novelView.render();
 		}
 		
+		glActiveTexture(GL_TEXTURE21);
 		ImGui::Render();
 		SDL_GL_SwapWindow(window); // swap buffers
 		//////////////////////////////////////////////////////////////////////////////
