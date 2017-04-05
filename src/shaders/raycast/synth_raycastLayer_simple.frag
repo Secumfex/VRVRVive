@@ -492,7 +492,11 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	// make sure last layer gets filled
 	layerDepth[currentLayer] = endDistance - ( 3.0 - float(currentLayer) ) * distanceStepSize;
-	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, abs(layerDepth[currentLayer] - lastDistance));
+	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(
+		segmentColor.rgb,
+		 1.0 - segmentColor.a,
+		 abs(layerDepth[currentLayer] - lastDistance)
+		 );
 	layerColor[currentLayer] = emissionAbsorption;
 
 	//<<<< write to layer

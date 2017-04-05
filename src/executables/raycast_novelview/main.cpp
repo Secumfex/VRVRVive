@@ -31,7 +31,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	"RANDOM_OFFSET",
+	//"RANDOM_OFFSET",
 	"EMISSION_ABSORPTION_RAW",
 	//"SHADOW_SAMPLING",
 };

@@ -121,11 +121,9 @@ void main()
 	float distanceStepSize = stepSize * length( (oldViewEnd - oldViewStart).xyz );
 
 	float lastSampleDistance = length(oldViewStart.xyz); // arbitrary
-	float lastSampleLayerDistance = lastSampleDistance; // arbitrary
-	int lastSampleLayer = 1;
-	vec4 lastSampleEA = vec4(0); // arbitrary
-	
-	int curLayer = 0;
+	float lastSampleLayerDistance = lastSampleDistance;
+	int lastSampleLayer = 0;
+	// vec4 lastSampleEA = vec4(0); // arbitrary
 	
 	while(t <= 1.0 && ++debugCtr <= uThreshold)
 	{
@@ -134,6 +132,7 @@ void main()
 		float sampleDist = length(samplePos.xyz); // view space distance
 		
 		// find out in which layer the sample lies
+		int curLayer = 0;
 		float curLayerDistance = getLayerDistance(screenPos, curLayer);
 		while ( sampleDist >= curLayerDistance && curLayer < 3)
 		{
@@ -143,53 +142,30 @@ void main()
 
 		// recognize layer-border passage, move sample back to layer distance if so
 		float segmentLength = distanceStepSize;
-		if ( curLayer - lastSampleLayer >= 1 ) // we crossed the layer in this step
+		while ( lastSampleLayer < curLayer && lastSampleDistance < curLayerDistance ) // there is still one in the middle!
 		{
-			// first apply missing segment of last layer
-			lastSampleLayerDistance = getLayerDistance(screenPos, lastSampleLayer);
-			float lastSegmentLength = lastSampleLayerDistance - lastSampleDistance;
-			vec4 lastSegmentColor = beerLambertEmissionAbsorptionToColorTransmission(lastSampleEA.rgb, lastSampleEA.a, lastSegmentLength);
-			lastSegmentColor.a = 1.0 - lastSegmentColor.a;
+			// get corresponding ea values
+			vec4 lastSegmentEA = getLayerEA( screenPos, lastSampleLayer );
+			float layerDistance = getLayerDistance(screenPos, lastSampleLayer);
+			
+			vec4 lastSegmentColor = beerLambertEmissionAbsorptionToColorTransmission(
+				lastSegmentEA.rgb, 
+				lastSegmentEA.a, 
+				abs(layerDistance - lastSampleDistance)
+				);
+			lastSegmentColor.a = 1.0 - lastSegmentColor.a; // transmission to alpha
+
+			// update color
 			color = accumulateFrontToBack(color, lastSegmentColor);
 
-			// update variables
-			segmentLength = sampleDist - lastSampleDistance; // remaining segment in current layer
-		}
-
-		if (curLayer - lastSampleLayer >= 2 ) // there is still one in the middle!
-		{
-			// get corresponding ea values
-			vec4 segmentEA = getLayerEA( screenPos.xy, lastSampleLayer + 1 );
-
-			float layerDistance1 = getLayerDistance(screenPos, lastSampleLayer);
-			float layerDistance2 = getLayerDistance(screenPos, lastSampleLayer + 1);
-			vec4 segmentColor = beerLambertEmissionAbsorptionToColorTransmission(segmentEA.rgb, segmentEA.a, layerDistance2 - layerDistance1);
-			segmentColor.a = 1.0 - segmentColor.a;
-
-			// update color
-			color = accumulateFrontToBack(color, segmentColor);
-
-			segmentLength = sampleDist - layerDistance2; // remaining segment in current layer
-		}
-
-		if (curLayer - lastSampleLayer >= 3 ) // there is still one in the middle!
-		{
-			// get corresponding ea values
-			vec4 segmentEA = getLayerEA( screenPos.xy, lastSampleLayer + 2 );
-
-			float layerDistance1 = getLayerDistance(screenPos, lastSampleLayer + 1);
-			float layerDistance2 = getLayerDistance(screenPos, lastSampleLayer + 2);
-			vec4 segmentColor = beerLambertEmissionAbsorptionToColorTransmission(segmentEA.rgb, segmentEA.a, layerDistance2 - layerDistance1);
-			segmentColor.a = 1.0 - segmentColor.a;
-
-			// update color
-			color = accumulateFrontToBack(color, segmentColor);
-
-			segmentLength = sampleDist - layerDistance2; // remaining segment in current layer
+			// update
+			lastSampleLayer++;
+			lastSampleDistance = layerDistance;
+			segmentLength = abs(sampleDist - lastSampleDistance); // remaining segment in current layer
 		}
 
 		// get corresponding ea values
-		vec4 segmentEA = getLayerEA( screenPos.xy, curLayer );
+		vec4 segmentEA = getLayerEA( screenPos, curLayer );
 		vec4 segmentColor = beerLambertEmissionAbsorptionToColorTransmission(segmentEA.rgb, segmentEA.a, segmentLength);
 		segmentColor.a = 1.0 - segmentColor.a;
 
@@ -197,9 +173,9 @@ void main()
 		color = accumulateFrontToBack(color, segmentColor);
 
 		lastSampleDistance = sampleDist;
-		lastSampleEA = segmentEA;
-		lastSampleLayerDistance = curLayerDistance;
 		lastSampleLayer = curLayer;
+		lastSampleLayerDistance = curLayerDistance;
+		// lastSampleEA = segmentEA;
 		t += stepSize;
 	}
 
