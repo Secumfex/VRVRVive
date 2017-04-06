@@ -272,7 +272,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	int currentLayer = 1; // to identify fbo output to write to
 
-	float t = 0.0;
+	float t = 0.001;
 	#ifdef RANDOM_OFFSET 
 	t = 0.002 * 2.0 * rand(passUV);
 	#endif

@@ -102,13 +102,6 @@ void main()
 
 	vec4 oldViewStart = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwStart.a) );
 	vec4 oldViewEnd   = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwEnd.a)   );
-	
-	// early out
-	vec2 reprojectedStart = getScreenCoord(oldViewStart);
-	if ( any( lessThan(reprojectedStart.xy, vec2(0.0)) || greaterThan(reprojectedStart.xy, vec2(1.0)) ) )
-	{
-		discard;
-	} 
 
 	//<<<< initialize running variables
 	vec4 color = vec4(0.0); // result color
@@ -120,21 +113,27 @@ void main()
 	float t = stepSize;
 	float distanceStepSize = stepSize * length( (oldViewEnd - oldViewStart).xyz );
 
-	float lastSampleDistance = length(oldViewStart.xyz); // arbitrary
-	float lastSampleLayerDistance = lastSampleDistance;
-	int lastSampleLayer = 0;
-	// vec4 lastSampleEA = vec4(0); // arbitrary
+	vec4 lastPos = oldViewStart;
 	
 	while(t <= 1.0 && ++debugCtr <= uThreshold)
 	{
-		vec4 samplePos   = mix(oldViewStart, oldViewEnd, t);
-		vec2 screenPos   = getScreenCoord(samplePos);
-		float sampleDist = length(samplePos.xyz); // view space distance
+		vec4 curPos   = mix(oldViewStart, oldViewEnd, t);
+		vec2 screenPos   = getScreenCoord(curPos);
+
+		// skip invalid positions
+		if ( any( lessThan(screenPos, vec2(0.0)) || greaterThan(screenPos, vec2(1.0)) ) )
+		{
+			t += stepSize;		
+			lastPos = curPos;
+			continue;
+		} 
+
+		float curDist = length(curPos.xyz); // view space distance
 		
 		// find out in which layer the sample lies
 		int curLayer = 0;
 		float curLayerDistance = getLayerDistance(screenPos, curLayer);
-		while ( sampleDist >= curLayerDistance && curLayer < 3)
+		while ( curDist >= curLayerDistance && curLayer < 3)
 		{
 			curLayer++;
 			curLayerDistance = getLayerDistance(screenPos, curLayer);
@@ -142,16 +141,26 @@ void main()
 
 		// recognize layer-border passage, move sample back to layer distance if so
 		float segmentLength = distanceStepSize;
-		while ( lastSampleLayer < curLayer && lastSampleDistance < curLayerDistance ) // there is still one in the middle!
+
+		int lastLayer = 0;
+		float lastDist = length(lastPos.xyz);
+		float lastLayerDistance = getLayerDistance(screenPos, lastLayer);
+		while ( lastDist >= lastLayerDistance && lastLayer < curLayer ) // layer corresponding to last point (but on current screenpos)
+		{
+			lastLayer++;
+			lastLayerDistance = getLayerDistance(screenPos, lastLayer);
+		}
+		
+		while ( lastLayer < curLayer && lastDist < curLayerDistance ) // there is still one in the middle!
 		{
 			// get corresponding ea values
-			vec4 lastSegmentEA = getLayerEA( screenPos, lastSampleLayer );
-			float layerDistance = getLayerDistance(screenPos, lastSampleLayer);
+			vec4 lastSegmentEA = getLayerEA( screenPos, lastLayer );
+			float layerDistance = getLayerDistance(screenPos, lastLayer);
 			
 			vec4 lastSegmentColor = beerLambertEmissionAbsorptionToColorTransmission(
 				lastSegmentEA.rgb, 
 				lastSegmentEA.a, 
-				abs(layerDistance - lastSampleDistance)
+				abs(layerDistance - lastDist)
 				);
 			lastSegmentColor.a = 1.0 - lastSegmentColor.a; // transmission to alpha
 
@@ -159,9 +168,9 @@ void main()
 			color = accumulateFrontToBack(color, lastSegmentColor);
 
 			// update
-			lastSampleLayer++;
-			lastSampleDistance = layerDistance;
-			segmentLength = abs(sampleDist - lastSampleDistance); // remaining segment in current layer
+			lastLayer++;
+			lastDist = layerDistance;
+			segmentLength = abs(curDist - lastDist); // remaining segment in current layer
 		}
 
 		// get corresponding ea values
@@ -172,10 +181,7 @@ void main()
 		// update color
 		color = accumulateFrontToBack(color, segmentColor);
 
-		lastSampleDistance = sampleDist;
-		lastSampleLayer = curLayer;
-		lastSampleLayerDistance = curLayerDistance;
-		// lastSampleEA = segmentEA;
+		lastPos = curPos;
 		t += stepSize;
 	}
 
