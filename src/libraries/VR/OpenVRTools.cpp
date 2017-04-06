@@ -79,7 +79,6 @@ glm::mat4 OpenVRSystem::GetHMDMatrixProjectionEye( vr::Hmd_Eye nEye )
 
 	return glm::frustum(l*m_near, r*m_near, b*m_near, t*m_near, m_near, m_far);
 }
-}
 
 
 //-----------------------------------------------------------------------------
