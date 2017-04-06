@@ -163,6 +163,16 @@ struct RaycastResult
 	}
 #endif
 
+vec4 validate(vec4 vec)
+{
+	vec4 result = vec;
+	if ( isnan(result.r) ) { result.r = 0.0; }
+	if ( isnan(result.g) ) { result.g = 0.0; }
+	if ( isnan(result.b) ) { result.b = 0.0; }
+	if ( isnan(result.a) ) { result.a = 0.0; }
+	return result;
+}
+
 /**
 * @brief 'transfer-function' applied to value
 * @return mapped color corresponding to value
@@ -517,6 +527,13 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 	fragColor4 = layerColor[3];
 	fragDepth.w = layerDepth[3];
+
+	//====== check for NaN! ===========//
+	fragColor1 = validate(fragColor1);
+	fragColor2 = validate(fragColor2);
+	fragColor3 = validate(fragColor3);
+	fragColor4 = validate(fragColor4);
+	//=================================//
 
 	result.color = curColor; //DEBUG
 	return result;
