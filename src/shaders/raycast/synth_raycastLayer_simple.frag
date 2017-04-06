@@ -272,7 +272,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	layerDepth[3] = endDistance;
 
 	// arbitrary thresholds
-	layerThresholds[0] = 0.0;
+	layerThresholds[0] = 0.001;
 	layerThresholds[1] = 0.05;
 	layerThresholds[2] = 0.50;
 	layerThresholds[3] = 999.0; // infinity
@@ -280,7 +280,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	float lastDistance = startDistance; // distance where last layer ended d_(i-1)
 	float lastNonZero = 0.0;
 
-	int currentLayer = 1; // to identify fbo output to write to
+	int currentLayer = 0; // to identify fbo output to write to
 
 	float t = 0.001;
 	#ifdef RANDOM_OFFSET 
