@@ -281,14 +281,13 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	layerThresholds[2] = 0.50;
 	layerThresholds[3] = 999.0; // infinity
 
-	float lastDistance = startDistance; // distance where last layer ended d_(i-1)
-	float lastNonZero = 0.0;
-
 	int currentLayer = 0; // to identify fbo output to write to
-
+	float lastDistance = startDistance; // distance where last layer ended d_(i-1)
+	float lastNonZero = endDistance - ( 3.0 - float(currentLayer) ) * distanceStepSize;
+	
 	float t = 0.001;
 	#ifdef RANDOM_OFFSET 
-	t = 0.002 * 2.0 * rand(passUV);
+	t = 0.004 * rand(passUV);
 	#endif
 	while( t < 1.0 + (0.5 * parameterStepSize) )
 	{
@@ -333,6 +332,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 		t += parameterStepSize; // update running variable, then decide whether to shade or skip sample
 
 		if (sampleColor.a < 0.00001) { continue; } // skip invisible voxel
+		lastNonZero = curDistance;
 
 		#ifdef AMBIENT_OCCLUSION
 			float occlusion = 0.0;	
@@ -505,7 +505,8 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 	}
 
 	// make sure last layer gets filled
-	layerDepth[currentLayer] = endDistance - ( 3.0 - float(currentLayer) ) * distanceStepSize;
+	// layerDepth[currentLayer] = endDistance - ( 3.0 - float(currentLayer) ) * distanceStepSize;
+	layerDepth[currentLayer] = lastNonZero;
 	vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(
 		segmentColor.rgb,
 		 1.0 - segmentColor.a,

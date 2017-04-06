@@ -121,7 +121,7 @@ void main()
 	float stepSize = 1.0 / numSamples;
 	float t = stepSize;
 	#ifdef RANDOM_OFFSET 
-		t = stepSize * 0.5 + 0.5 * stepSize * rand(passUV);
+		t += (0.5 * stepSize) * rand(passUV) - (0.25 * stepSize);
 	#endif
 	float distanceStepSize = stepSize * length( (oldViewEnd - oldViewStart).xyz );
 
@@ -187,7 +187,11 @@ void main()
 		}
 
 		// get corresponding ea values
-		vec4 segmentEA = getLayerEA( screenPos, curLayer );
+		vec4 segmentEA = vec4(0);
+		if ( curDist <= curLayerDistance )
+		{
+			segmentEA = getLayerEA( screenPos, curLayer );
+		}
 		vec4 segmentColor = beerLambertEmissionAbsorptionToColorTransmission(segmentEA.rgb, segmentEA.a, segmentLength);
 		segmentColor.a = 1.0 - segmentColor.a;
 
