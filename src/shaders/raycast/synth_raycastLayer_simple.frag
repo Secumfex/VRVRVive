@@ -6,6 +6,7 @@
 	AMBIENT_OCCLUSION
 		AMBIENT_OCCLUSION_SCALE <float>
 	CULL_PLANES
+	COLOR_SCALE <float>
 	CUBEMAP_SAMPLING
 		CUBEMAP_STRENGTH <float>
 	ERT_THRESHOLD <float>
@@ -22,6 +23,9 @@
 
 #ifndef ALPHA_SCALE
 #define ALPHA_SCALE 20.0
+#endif
+#ifndef COLOR_SCALE
+#define COLOR_SCALE 1.0
 #endif
 
 #ifndef EMISSION_SCALE
@@ -185,7 +189,7 @@ vec4 transferFunction(float value, float stepSize)
 	
 	vec4 color = texture(transferFunctionTex, clamped);
 	color.a *= ALPHA_SCALE * stepSize;
-	color.rgb *= (color.a);
+	color.rgb *= COLOR_SCALE * (color.a);
 
 	return color;
 }
