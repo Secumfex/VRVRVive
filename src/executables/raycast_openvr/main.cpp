@@ -851,6 +851,7 @@ public:
 		DEBUGLOG->log("RenderPass Creation: novel view warp"); DEBUGLOG->indent();
 		m_pNovelViewWarp= new RenderPass(m_pNovelViewWarpShader, m_pWarpFBO[LEFT]);
 		m_pNovelViewWarp->addEnable(GL_DEPTH_TEST);
+		m_pNovelViewWarp->addEnable(GL_BLEND);
 		m_pNovelViewWarp->addRenderable(m_pQuad);
 		DEBUGLOG->outdent();
 
