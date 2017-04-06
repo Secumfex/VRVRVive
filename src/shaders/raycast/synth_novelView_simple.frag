@@ -119,7 +119,6 @@ void main()
 	{
 		vec4 curPos   = mix(oldViewStart, oldViewEnd, t);
 		vec2 screenPos   = getScreenCoord(curPos);
-
 		// skip invalid positions
 		if ( any( lessThan(screenPos, vec2(0.0)) || greaterThan(screenPos, vec2(1.0)) ) )
 		{
@@ -128,15 +127,17 @@ void main()
 			continue;
 		} 
 
+		vec4 layerDistances = texture(depth, screenPos);
+
 		float curDist = length(curPos.xyz); // view space distance
 		
 		// find out in which layer the sample lies
 		int curLayer = 0;
-		float curLayerDistance = getLayerDistance(screenPos, curLayer);
+		float curLayerDistance = layerDistances[curLayer];
 		while ( curDist >= curLayerDistance && curLayer < 3)
 		{
 			curLayer++;
-			curLayerDistance = getLayerDistance(screenPos, curLayer);
+			curLayerDistance = layerDistances[curLayer];
 		}
 
 		// recognize layer-border passage, move sample back to layer distance if so
@@ -144,18 +145,18 @@ void main()
 
 		int lastLayer = 0;
 		float lastDist = length(lastPos.xyz);
-		float lastLayerDistance = getLayerDistance(screenPos, lastLayer);
+		float lastLayerDistance = layerDistances[lastLayer];
 		while ( lastDist >= lastLayerDistance && lastLayer < curLayer ) // layer corresponding to last point (but on current screenpos)
 		{
 			lastLayer++;
-			lastLayerDistance = getLayerDistance(screenPos, lastLayer);
+			lastLayerDistance = layerDistances[lastLayer];
 		}
 		
 		while ( lastLayer < curLayer && lastDist < curLayerDistance ) // there is still one in the middle!
 		{
 			// get corresponding ea values
 			vec4 lastSegmentEA = getLayerEA( screenPos, lastLayer );
-			float layerDistance = getLayerDistance(screenPos, lastLayer);
+			float layerDistance = layerDistances[lastLayer];
 			
 			vec4 lastSegmentColor = beerLambertEmissionAbsorptionToColorTransmission(
 				lastSegmentEA.rgb, 
