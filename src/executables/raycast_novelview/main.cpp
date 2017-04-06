@@ -31,7 +31,7 @@ static std::vector<float> s_fpsCounter = std::vector<float>(120);
 static int s_curFPSidx = 0;
 
 const char* SHADER_DEFINES[] = {
-	//"RANDOM_OFFSET",
+	"RANDOM_OFFSET",
 	"EMISSION_ABSORPTION_RAW",
 	//"SHADOW_SAMPLING",
 };
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
 	///////////////////////   novel view synthesis Renderpass    //////////////////////////
 	//Grid grid(400,400,0.0025f,0.0025f, false);
 
-	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag");
+	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", s_shaderDefines);
 	//ShaderProgram novelViewShader("/raycast/synth_volumeMVP.vert", "/raycast/synth_novelView.frag");
 	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
 	//RenderPass novelView(&novelViewShader, &FBO_novelView);

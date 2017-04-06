@@ -1,6 +1,9 @@
 #version 430
 
 ////////////////////////////////     DEFINES      ////////////////////////////////
+/*********** LIST OF POSSIBLE DEFINES ***********
+	RANDOM_OFFSET
+***********/
 ///////////////////////////////////////////////////////////////////////////////////
 
 // in-variables
@@ -39,6 +42,12 @@ vec4 beerLambertEmissionAbsorptionToColorTransmission(vec3 E, float A, float z)
 	vec3 C = E * (1.0 - T);
 	return vec4(C,T);
 }
+
+#ifdef RANDOM_OFFSET 
+float rand(vec2 co) { //!< http://stackoverflow.com/questions/4200224/random-noise-functions-for-glsl
+	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+}
+#endif
 
 //!< compute distance value from screen coordinates (uv + depth)
 float depthToDistance(vec2 uv, float depth)
@@ -111,6 +120,9 @@ void main()
 	// float numSamples = 12.0;
 	float stepSize = 1.0 / numSamples;
 	float t = stepSize;
+	#ifdef RANDOM_OFFSET 
+		t = stepSize * 0.5 + 0.5 * stepSize * rand(passUV);
+	#endif
 	float distanceStepSize = stepSize * length( (oldViewEnd - oldViewStart).xyz );
 
 	vec4 lastPos = oldViewStart;
