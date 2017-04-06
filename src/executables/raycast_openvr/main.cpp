@@ -497,7 +497,7 @@ public:
 	{
 		DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
 		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
-		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer.frag", m_shaderDefines); 
+		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer_simple.frag", m_shaderDefines); 
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
@@ -513,7 +513,7 @@ public:
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
 		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
-		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView.frag", m_shaderDefines);
+		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
 		DEBUGLOG->outdent();
@@ -544,7 +544,7 @@ public:
 		m_pOcclusionFrustumShader->update("uOcclusionBlockSize", m_iOcclusionBlockSize);
 		m_pOcclusionFrustumShader->update("uGridSize", glm::vec4(m_iVertexGridWidth, m_iVertexGridHeight, 1.0f / (float) m_iVertexGridWidth, 1.0f / m_iVertexGridHeight));
 
-		m_pNovelViewWarpShader->update("uThreshold", 100);
+		m_pNovelViewWarpShader->update("uThreshold", 32);
 
 	}
 	void CMainApplication::initLayerTexture()
@@ -757,11 +757,11 @@ public:
 		m_pRaycastLayersShader->update("volume_texture", 0); // m_pVolume texture
 		m_pRaycastLayersShader->update("transferFunctionTex", 1);
 
-		m_pNovelViewWarpShader->update("layer1", 20);
-		m_pNovelViewWarpShader->update("layer2", 21);
-		m_pNovelViewWarpShader->update("layer3", 22);
-		m_pNovelViewWarpShader->update("layer4", 23);
-		m_pNovelViewWarpShader->update("depth0", 24);
+		m_pNovelViewWarpShader->update("layer0", 20);
+		m_pNovelViewWarpShader->update("layer1", 21);
+		m_pNovelViewWarpShader->update("layer2", 22);
+		m_pNovelViewWarpShader->update("layer3", 23);
+		//m_pNovelViewWarpShader->update("depth0", 24);
 		m_pNovelViewWarpShader->update("depth",  25);
 
 		m_pComposeTexArrayShader->update( "tex", 26);
@@ -1398,6 +1398,15 @@ public:
 
 		//++++++++++++++ DEBUG
 		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
+		if (m_iActiveWarpingTechnique == NOVELVIEW)
+		{
+			static int numSamples = 32;
+			if (ImGui::SliderInt("Num Novel-View Samples", &numSamples, 4, 96))
+			{
+				m_pNovelViewWarpShader->update("uThreshold", numSamples);
+			}
+		}
+
 		//++++++++++++++ DEBUG
 	}
 
