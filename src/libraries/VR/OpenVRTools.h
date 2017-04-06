@@ -190,6 +190,7 @@ public:
 	// computes the vertical field of view from the current raw projection matrix
 	float getFovY(vr::Hmd_Eye nEye = vr::Eye_Left);
 	float getFovX(vr::Hmd_Eye nEye = vr::Eye_Left);
+	void ComposeProjection(float fLeft, float fRight, float fTop, float fBottom, float zNear, float zFar,  vr::HmdMatrix44_t *pmProj );
 };
 #endif
 
