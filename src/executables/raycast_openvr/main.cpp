@@ -209,6 +209,9 @@ private:
 	float m_fOldTouchX;
 	float m_fOldTouchY;
 
+	bool  m_bIsDragCullPlane;
+	int   m_iTriggerPressedTrackedDeviceIdx;
+
 	float m_fOldX;
 	float m_fOldY;
 
@@ -314,6 +317,7 @@ public:
 		, m_fOldTouchX(0.5f)
 		, m_fOldTouchY(0.5f)
 		, m_iTouchpadTrackedDeviceIdx(-1)
+		, m_iTriggerPressedTrackedDeviceIdx(-1)
 		, m_bIsTouchpadTouched(false)
 		, m_bPredictPose(false)
 		, m_iOcclusionBlockSize(6)
@@ -1016,20 +1020,69 @@ public:
 					switch(event.data.controller.button)
 					{
 					case vr::k_EButton_Axis0: // touchpad
-							m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
+						m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
 						break;
 					case vr::k_EButton_Axis1: // trigger
-							m_iActiveView = (m_iActiveView <= 0) ? NUM_VIEWS - 1 : m_iActiveView - 1;
+						{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
+						m_bIsDragCullPlane = true;
+
+						m_iTriggerPressedTrackedDeviceIdx = event.trackedDeviceIndex;
+							
+						// find nearest cull plane
+						if (m_pOvr->m_rTrackedDevicePose[m_iTriggerPressedTrackedDeviceIdx].bPoseIsValid)
+						{
+							// transform controller pose to texture space
+							glm::mat4 pose = m_pOvr->m_rmat4DevicePose[m_iTriggerPressedTrackedDeviceIdx];
+							glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
+
+							// find nearest cull plane: largest scalar of direction from center to point
+							glm::vec3 dirCP = glm::normalize( glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin)) );
+							glm::vec3 cullAxis = glm::vec3( 
+								(float) ((abs(dirCP.x) >= abs(dirCP.y)) && abs((dirCP.x) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.x < 0.0f),
+								(float) ((abs(dirCP.y) >= abs(dirCP.x)) && abs((dirCP.y) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.y < 0.0f),
+								(float) ((abs(dirCP.z) >= abs(dirCP.x)) && abs((dirCP.z) >= abs(dirCP.y))) * (1.0f - 2.0f * (float) dirCP.z < 0.0f)
+								);
+							
+							// set corresponding cull scalar to controller pose
+							if ( glm::any( glm::lessThan(cullAxis, glm::vec3(0.0f)) ) ) 
+							{ 
+								s_cullMin = glm::vec3(
+									);
+							}
+							else
+							{
+								s_cullMax = glm::vec3(
+									);
+							}
+
+							//+++++++++++++++DEBUG+++++++++++++++++++++++++++
+							DEBUGLOG->log("Controller - Cull Plane Info"); DEBUGLOG->indent();
+							DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
+							DEBUGLOG->log("texture : ", point);
+							DEBUGLOG->log("dirCP   : ", dirCP);
+							DEBUGLOG->log("cullAxis: ", cullAxis);
+							DEBUGLOG->outdent();
+							//+++++++++++++++++++++++++++++++++++++++++++++++
+
+						}}}
 						break;
 					case vr::k_EButton_Grip: // grip
-							m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
-						// DEBUG
+						m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
 						break;
 					}
 
 					DEBUGLOG->log("button press: ", event.data.controller.button);
 					break;
 				}
+				case vr::VREvent_ButtonUnpress:
+					if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
+					switch(event.data.controller.button)
+					{
+					case vr::k_EButton_Axis1: // trigger
+						m_bIsDragCullPlane = false;
+						break;
+					}
+					break;
 				case vr::VREvent_ButtonTouch: // generated for touchpad
 					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
 					{ 
@@ -1039,9 +1092,10 @@ public:
 
 						vr::VRControllerState_t state_;
 						if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
-
-						m_fOldTouchX = state_.rAxis[0].x;
-						m_fOldTouchY = state_.rAxis[0].y;
+						{
+							m_fOldTouchX = state_.rAxis[0].x;
+							m_fOldTouchY = state_.rAxis[0].y;
+						}
 					}
 					break;
 				case vr::VREvent_ButtonUntouch:
