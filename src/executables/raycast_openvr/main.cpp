@@ -152,6 +152,7 @@ private:
 	std::function<bool(SDL_Event*)> m_sdlEventFunc;
 	std::function<bool(const vr::VREvent_t&)> m_vrEventFunc;
 	std::function<void(bool, int)> m_trackpadEventFunc;
+	std::function<void(bool, int)> m_triggerPressedFunc;
 	std::function<void(int)> m_setDebugViewFunc;
 
 	// Frame profiling
@@ -209,7 +210,7 @@ private:
 	float m_fOldTouchX;
 	float m_fOldTouchY;
 
-	bool  m_bIsDragCullPlane;
+	bool  m_bIsTriggerPressed;
 	int   m_iTriggerPressedTrackedDeviceIdx;
 
 	float m_fOldX;
@@ -242,6 +243,8 @@ private:
 		glm::mat4 view;
 		glm::mat4 perspective;
 	} matrices[2][2]; // left, right, firsthit, current
+
+	glm::vec3 m_cullAxis;
 
 public:
 
@@ -332,6 +335,7 @@ public:
 		, m_pixelOffsetFar(0.0f)
 		, m_pixelOffsetNear(0.0f)
 		, m_clearColor(0.17f, 0.211f, 0.266f, 0.0f)
+		, m_cullAxis(0.0f)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -1068,54 +1072,8 @@ public:
 						m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
 						break;
 					case vr::k_EButton_Axis1: // trigger
-						{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
-						m_bIsDragCullPlane = true;
-
+						m_bIsTriggerPressed = true;
 						m_iTriggerPressedTrackedDeviceIdx = event.trackedDeviceIndex;
-							
-						// find nearest cull plane
-						if (m_pOvr->m_rTrackedDevicePose[m_iTriggerPressedTrackedDeviceIdx].bPoseIsValid)
-						{
-							// transform controller pose to texture space
-							glm::mat4 pose = m_pOvr->m_rmat4DevicePose[m_iTriggerPressedTrackedDeviceIdx];
-							glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
-
-							// find nearest cull plane: largest scalar of direction from center to point
-							glm::vec3 dirCP = glm::normalize( glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin)) );
-							glm::vec3 cullAxis = glm::vec3( 
-								(float) ((abs(dirCP.x) >= abs(dirCP.y)) && abs((dirCP.x) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.x < 0.0f),
-								(float) ((abs(dirCP.y) >= abs(dirCP.x)) && abs((dirCP.y) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.y < 0.0f),
-								(float) ((abs(dirCP.z) >= abs(dirCP.x)) && abs((dirCP.z) >= abs(dirCP.y))) * (1.0f - 2.0f * (float) dirCP.z < 0.0f)
-								);
-							
-							// set corresponding cull scalar to controller pose
-							if ( glm::any( glm::lessThan(cullAxis, glm::vec3(0.0f)) ) ) 
-							{ 
-								s_cullMin = glm::vec3(
-									(cullAxis.x == 0.0f) ? s_cullMin.x : max(0.0f, point.x),
-									(cullAxis.y == 0.0f) ? s_cullMin.y : max(0.0f, point.y),
-									(cullAxis.z == 0.0f) ? s_cullMin.z : max(0.0f, point.z)
-									);
-							}
-							else
-							{
-								s_cullMax = glm::vec3(
-									(cullAxis.x == 0.0f) ? s_cullMax.x : min(1.0f, point.x),
-									(cullAxis.y == 0.0f) ? s_cullMax.y : min(1.0f, point.y),
-									(cullAxis.z == 0.0f) ? s_cullMax.z : min(1.0f, point.z)
-									);
-							}
-
-							//+++++++++++++++DEBUG+++++++++++++++++++++++++++
-							DEBUGLOG->log("Controller - Cull Plane Info"); DEBUGLOG->indent();
-							DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
-							DEBUGLOG->log("texture : ", point);
-							DEBUGLOG->log("dirCP   : ", dirCP);
-							DEBUGLOG->log("cullAxis: ", cullAxis);
-							DEBUGLOG->outdent();
-							//+++++++++++++++++++++++++++++++++++++++++++++++
-
-						}}}
 						break;
 					case vr::k_EButton_Grip: // grip
 						m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
@@ -1130,7 +1088,9 @@ public:
 					switch(event.data.controller.button)
 					{
 					case vr::k_EButton_Axis1: // trigger
-						m_bIsDragCullPlane = false;
+						m_bIsTriggerPressed = false;
+						m_iTriggerPressedTrackedDeviceIdx = -1;
+						m_cullAxis = glm::vec3(0.0f);
 						break;
 					}
 					break;
@@ -1184,6 +1144,58 @@ public:
 			}
 		};
 
+		m_triggerPressedFunc = [&](bool isPressed, int deviceIdx)
+		{
+			if (isPressed && deviceIdx != -1)
+			{
+			bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes )
+			{		
+			if (m_pOvr->m_rTrackedDevicePose[m_iTriggerPressedTrackedDeviceIdx].bPoseIsValid) 
+			{
+				// transform controller pose to texture space
+				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[m_iTriggerPressedTrackedDeviceIdx];
+				glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
+
+				// find nearest cull plane: largest scalar of direction from center to point
+				if (m_cullAxis == glm::vec3(0.0f))
+				{
+					glm::vec3 dirCP = glm::normalize( glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin)) );
+					m_cullAxis = glm::vec3( 
+						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && abs((dirCP.x) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.x < 0.0f),
+						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && abs((dirCP.y) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.y < 0.0f),
+						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && abs((dirCP.z) >= abs(dirCP.y))) * (1.0f - 2.0f * (float) dirCP.z < 0.0f)
+						);
+
+					//+++++++++++++++DEBUG+++++++++++++++++++++++++++
+					DEBUGLOG->log("Controller - Cull Plane Info"); DEBUGLOG->indent();
+					DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
+					DEBUGLOG->log("texture : ", point);
+					DEBUGLOG->log("dirCP   : ", dirCP);
+					DEBUGLOG->log("cullAxis: ", m_cullAxis);
+					DEBUGLOG->outdent();
+					//+++++++++++++++++++++++++++++++++++++++++++++++
+				}
+
+				// set corresponding cull scalar to controller pose
+				if ( glm::any(glm::lessThan( m_cullAxis, glm::vec3(0.0f) )) ) 
+				{ 
+					s_cullMin = glm::vec3(
+						(m_cullAxis.x == 0.0f) ? s_cullMin.x : min( s_cullMax.x, max(0.0f, point.x)),
+						(m_cullAxis.y == 0.0f) ? s_cullMin.y : min( s_cullMax.y, max(0.0f, point.y)),
+						(m_cullAxis.z == 0.0f) ? s_cullMin.z : min( s_cullMax.z, max(0.0f, point.z))
+						);
+				}
+				else
+				{
+					s_cullMax = glm::vec3(
+						(m_cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
+						(m_cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
+						(m_cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
+						);
+				}
+			}}}
+		};
+
 		m_setDebugViewFunc = [&](int view)
 		{
 			switch (view)
@@ -1223,6 +1235,7 @@ public:
 		pollSDLEvents(m_pWindow, m_sdlEventFunc);
 		m_pOvr->PollVREvents(m_vrEventFunc);
 		m_trackpadEventFunc(m_bIsTouchpadTouched, m_iTouchpadTrackedDeviceIdx); // handle trackpad touch seperately
+		m_triggerPressedFunc(m_bIsTriggerPressed, m_iTriggerPressedTrackedDeviceIdx); // handle trackpad touch seperately
 	}
 	
 	void CMainApplication::handleVolume()
