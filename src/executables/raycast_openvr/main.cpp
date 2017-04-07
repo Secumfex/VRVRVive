@@ -375,6 +375,7 @@ public:
 			m_pOvr->SetupRenderModels();
 
 			s_fovY = m_pOvr->getFovY();
+			//s_fovY = 110.0f;
 
 			unsigned int width, height;
 			m_pOvr->m_pHMD->GetRecommendedRenderTargetSize(&width, &height);
@@ -444,20 +445,64 @@ public:
 			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
 
 			//++++++++++++++DEBUG++++++++++++
+			{
 			glm::mat4 p0 = s_perspective;
 			glm::mat4 p1 = m_pOvr->m_mat4ProjectionLeft;
 			float c0 = p0[2][2];
 			float d0 = p0[3][2];
 			float c1 = p1[2][2];
 			float d1 = p1[3][2];
-			float n1 = d0 / (c0-1.0f);
-			float n2 = d1 / (c1-1.0f);
+			float n1 = d0 / (c0 - 1.0f);
+			float n2 = d1 / (c1 - 1.0f);
 			DEBUGLOG->log("GLM near:", n1);
 			DEBUGLOG->log("OVR near:", n2);
+			}
 			//+++++++++++++++++++++++++++++++
 
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
+
+			//++++++++++++++DEBUG+++++++++++<
+			{
+			DEBUGLOG->log("Perspective matrices"); DEBUGLOG->indent();
+			DEBUGLOG->log("p_l: ", s_perspective);
+			DEBUGLOG->log("p_r: ", s_perspective_r);
+			glm::vec4 plf = glm::inverse(s_perspective)   * glm::vec4(0, 0, 1, 1);
+			glm::vec4 prf = glm::inverse(s_perspective_r) * glm::vec4(0, 0, 1, 1);
+			glm::vec4 plc = glm::inverse(s_perspective)   * glm::vec4(0, 0, 0, 1);
+			glm::vec4 prc = glm::inverse(s_perspective_r) * glm::vec4(0, 0, 0, 1);
+			glm::vec4 pln = glm::inverse(s_perspective)   * glm::vec4(0, 0, -1, 1);
+			glm::vec4 prn = glm::inverse(s_perspective_r) * glm::vec4(0, 0, -1, 1);
+
+			DEBUGLOG->log("View Space Points"); DEBUGLOG->indent();
+			DEBUGLOG->log("plf", plf / plf.w);
+			DEBUGLOG->log("prf", prf / prf.w);
+			DEBUGLOG->log("plc", plc / plc.w);
+			DEBUGLOG->log("prc", prc / prc.w);
+			DEBUGLOG->log("pln", pln / pln.w);
+			DEBUGLOG->log("prn", prn / prn.w);
+			DEBUGLOG->outdent();
+
+			DEBUGLOG->log("World Space Points"); DEBUGLOG->indent();
+			DEBUGLOG->log("wlf",  glm::inverse(s_view) * (plf / plf.w));
+			DEBUGLOG->log("wlc", glm::inverse(s_view) * (plc / plc.w));
+			DEBUGLOG->log("wln",  glm::inverse(s_view) * (pln / pln.w));
+			DEBUGLOG->log("wrf", glm::inverse(s_view_r) * (prf / prf.w));
+			DEBUGLOG->log("wrc", glm::inverse(s_view_r) * (prc / prc.w));
+			DEBUGLOG->log("wrn", glm::inverse(s_view_r) * (prn / prn.w));
+			DEBUGLOG->outdent();
+
+			DEBUGLOG->log("World Space Distances"); DEBUGLOG->indent();
+			DEBUGLOG->log("df", glm::distance(glm::inverse(s_view_r) * (prf / prf.w), glm::inverse(s_view) * (plf / plf.w)));
+			DEBUGLOG->log("dc", glm::distance(glm::inverse(s_view_r) * (prc / prc.w), glm::inverse(s_view) * (plc / plc.w)));
+			DEBUGLOG->log("dn", glm::distance(glm::inverse(s_view_r) * (prn / prn.w), glm::inverse(s_view) * (pln / pln.w)));
+			DEBUGLOG->outdent();
+			DEBUGLOG->outdent();
+			}
+			//+++++++++++++++++++++++++++++++
+
+
+
 		}
 	}
 
