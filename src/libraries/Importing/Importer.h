@@ -150,7 +150,7 @@ namespace Importer {
 		}
 		else if (components == 2)
 		{
-			for (int i = 0; i < width * height * depth; i++)
+			for (unsigned int i = 0; i < width * height * depth; i++)
 			{
 				int val = volume[ 2 * i];
 				val = (val << 8) + volume[ 2 * i + 1];

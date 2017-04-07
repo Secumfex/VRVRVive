@@ -33,8 +33,6 @@
 #include <VR/OpenVRTools.h>
 
 ////////////////////// PARAMETERS /////////////////////////////
-static const char* s_models[] = {"CT Head", "MRT Brain", "Homogeneous", "Radial Gradient", "MRT Brain Stanford"};
-
 static const float MIRROR_SCREEN_FRAME_INTERVAL = 0.03f; // interval time (seconds) to mirror the screen (to avoid wait for vsync stalls)
 
 static float FRAMEBUFFER_SCALE = 0.5f;
@@ -42,16 +40,17 @@ static glm::vec2 FRAMEBUFFER_RESOLUTION(700.f,700.f);
 static glm::vec2 WINDOW_RESOLUTION(FRAMEBUFFER_RESOLUTION.x * 2.f, FRAMEBUFFER_RESOLUTION.y);
 
 const char* SHADER_DEFINES[] = {
-	//"AMBIENT_OCCLUSION",
-	//"RANDOM_OFFSET",
-	//"WARP_SET_FAR_PLANE"
-	//"OCCLUSION_MAP",
-	//"EMISSION_ABSORPTION_RAW",
+	"AMBIENT_OCCLUSION",
+	"CUBEMAP_SAMPLING",
+	"CULL_PLANES",
+	"EMISSION_ABSORPTION_RAW",
+	//"FIRST_HIT",
+	"LEVEL_OF_DETAIL",
+	"OCCLUSION_MAP",
+	"RANDOM_OFFSET",
 	"SCENE_DEPTH",
-	//"SHADOW_SAMPLING",
-	//"LEVEL_OF_DETAIL",
-	"LAST_RESULT",
-	"FIRST_HIT"
+	"SHADOW_SAMPLING",
+	"STEREO_SINGLE_PASS",
 };
 
 const int LAST_RESULT = 0;
@@ -162,7 +161,9 @@ private:
 	} m_frame;
 
 	//========== MISC ================
-	std::vector<std::string> m_shaderDefines;
+	std::vector<std::string> m_shaderDefines;  // defines in shader
+	std::vector<std::string> m_issetDefineStr; // define strings that can be set in GUI
+	std::vector<int> m_issetDefine;            // define booleans (as int) settable by GUI
 
 	Turntable m_turntable;
 
@@ -280,6 +281,7 @@ public:
 	void initUniforms();
 	void clearLayerTexture();
 	void loadShaderDefines();
+	void updateShaderDefines();
 	void recompileShaders();
 	void loadRaycastingShaders();
 	void loadShaders();
@@ -297,7 +299,9 @@ public:
 
 
 	CMainApplication::CMainApplication( int argc, char *argv[] )
-		: m_shaderDefines(SHADER_DEFINES, std::end(SHADER_DEFINES))
+		: m_issetDefineStr(SHADER_DEFINES, std::end(SHADER_DEFINES)) // all possible defines
+		, m_issetDefine(m_issetDefineStr.size(), (int) false) // define states
+		, m_shaderDefines(0) // currently set defines
 		, m_fpsCounter(120)
 		, m_iCurFpsIdx(0)
 		, m_iActiveModel(0)
@@ -546,7 +550,12 @@ public:
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
-		m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); DEBUGLOG->outdent();
+		m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); 
+		DEBUGLOG->outdent();
+
+		DEBUGLOG->log("Shader Compilation: novel view warp shader"); DEBUGLOG->indent();
+		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines);
+		DEBUGLOG->outdent();
 	}
 
 	void CMainApplication::loadShaders()
@@ -558,7 +567,6 @@ public:
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
 		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
-		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
 		DEBUGLOG->outdent();
@@ -847,7 +855,7 @@ public:
 			chunkSize,
 			8,
 			6.0f,
-			1.25f
+			1.0f
 			);
 		m_pRaycastChunked[RIGHT] = new ChunkedAdaptiveRenderPass(
 			m_pRaycast[RIGHT],
@@ -855,7 +863,7 @@ public:
 			chunkSize,
 			8,
 			6.0f,
-			1.25f
+			1.0f
 			);
 
 		{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
@@ -1241,6 +1249,13 @@ public:
 		}
 		}}
 		
+		{if (ImGui::CollapsingHeader("Defines")){
+			for (unsigned int i = 0; i < m_issetDefine.size(); i++)
+			{
+				ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*) &(m_issetDefine[i]) );
+			}
+		}}
+
 		if (ImGui::Button("Recompile Shaders"))
 		{
 			recompileShaders();
@@ -2160,9 +2175,10 @@ public:
 		delete m_pRaycastShader;
 		delete m_pRaycastLayersShader;
 		delete m_pComposeTexArrayShader;
+		delete m_pNovelViewWarpShader;
 
 		// reload shader defines
-		loadShaderDefines();
+		updateShaderDefines();
 
 		// reload shaders
 		loadRaycastingShaders();
@@ -2173,6 +2189,7 @@ public:
 		m_pRaycast[2 + LEFT]->setShaderProgram(m_pRaycastLayersShader);
 		m_pRaycast[2 + RIGHT]->setShaderProgram(m_pRaycastLayersShader);
 		m_pComposeTexArray->setShaderProgram(m_pComposeTexArrayShader);
+		m_pNovelViewWarp->setShaderProgram(m_pNovelViewWarpShader);
 
 		// update uniforms
 		initTextureUniforms();
@@ -2233,12 +2250,12 @@ public:
 	}
 
 	
+	// load shader defines from file, set activeDefines accordingly
 	void CMainApplication::loadShaderDefines()
 	{
 		m_shaderDefines.clear();
-		m_shaderDefines.insert(m_shaderDefines.end(), SHADER_DEFINES, std::end(SHADER_DEFINES));
 
-		DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent();
+		DEBUGLOG->log("Loading Shader Definitions"); DEBUGLOG->indent(); 
 		std::string definitionsFile = m_executableName + ".defs";
 
 		DEBUGLOG->log("Looking for shader definitions file: " + definitionsFile);
@@ -2266,9 +2283,50 @@ public:
 			DEBUGLOG->log("ERROR: Could not find shader definitions file");
 		}
 
-		DEBUGLOG->outdent();
+		// iterate shader defines, set corresponding bool for active defines
+		for (unsigned int i = 0; i < m_issetDefineStr.size(); i++)
+		{
+			for (auto e : m_shaderDefines)
+			{
+				if ( m_issetDefineStr[i] == e )
+				{
+					m_issetDefine[i] = (int) true;
+				}
+			}
+		}
 
+		DEBUGLOG->outdent();
 	}
+
+	void CMainApplication::updateShaderDefines()
+	{
+		// add missing enabled defines, remove disabled defines
+		for (unsigned int i = 0; i < m_issetDefine.size(); i++)
+		{
+			if( (bool) m_issetDefine[i] ) // define isset
+			{
+				// if not in it yet, add, else skip
+				bool doAdd = true;
+				for (auto e : m_shaderDefines)
+				{
+					if (e == m_issetDefineStr[i]) doAdd = false;
+				}
+				if (doAdd){ m_shaderDefines.push_back( SHADER_DEFINES[i] ); }
+			}
+			else
+			{
+				// if in it before, remove, else skip
+				for (int j = 0; j < m_shaderDefines.size(); j++)
+				{
+					if (m_shaderDefines[j] == m_issetDefineStr[i])
+					{
+						m_shaderDefines.erase( m_shaderDefines.begin() + j );
+					}
+				}
+			}
+		}
+	}
+
 
 	CMainApplication::~CMainApplication()
 	{

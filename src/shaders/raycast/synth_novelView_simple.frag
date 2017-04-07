@@ -127,7 +127,7 @@ void main()
 
 	vec4 lastPos = oldViewStart;
 	
-	while(t <= 1.0 && ++debugCtr <= uThreshold)
+	while(t <= 1.0 + (stepSize * 0.5) && ++debugCtr <= uThreshold)
 	{
 		vec4 curPos   = mix(oldViewStart, oldViewEnd, t);
 		vec2 screenPos   = getScreenCoord(curPos);
