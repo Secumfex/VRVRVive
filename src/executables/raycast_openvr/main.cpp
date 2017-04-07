@@ -54,6 +54,8 @@ const char* SHADER_DEFINES[] = {
 	"FIRST_HIT"
 };
 
+static std::vector<int> s_isDefine(std::size(SHADER_DEFINES), 0);
+
 const int LAST_RESULT = 0;
 const int CURRENT = 1;
 const int LEFT = vr::Eye_Left;
@@ -1196,6 +1198,13 @@ public:
 		}
 		}}
 		
+		{if (ImGui::CollapsingHeader("Defines")){
+			for (int i = 0; i < std::size(SHADER_DEFINES); i++)
+			{
+				ImGui::Checkbox(SHADER_DEFINES[i], (bool*) &(s_isDefine[i]) );
+			}
+		}}
+
 		if (ImGui::Button("Recompile Shaders"))
 		{
 			recompileShaders();
