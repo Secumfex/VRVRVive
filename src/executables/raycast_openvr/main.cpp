@@ -1161,11 +1161,10 @@ public:
 				{
 					glm::vec3 dirCP = glm::normalize( glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin)) );
 					m_cullAxis = glm::vec3( 
-						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && abs((dirCP.x) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.x < 0.0f),
-						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && abs((dirCP.y) >= abs(dirCP.z))) * (1.0f - 2.0f * (float) dirCP.y < 0.0f),
-						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && abs((dirCP.z) >= abs(dirCP.y))) * (1.0f - 2.0f * (float) dirCP.z < 0.0f)
+						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
+						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
+						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
 						);
-
 					//+++++++++++++++DEBUG+++++++++++++++++++++++++++
 					DEBUGLOG->log("Controller - Cull Plane Info"); DEBUGLOG->indent();
 					DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
