@@ -389,38 +389,6 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			sampleColor.rgb *= max(0.0, min( 1.0, 1.0 - (occlusion / numSamples)));
 		#endif
 
-		// shadow ray sampling
-		#ifdef SHADOW_SAMPLING
-			float shadow = 0.0;
-			for (int i = 1; i < uShadowRayNumSteps; i++)
-			{	
-				#ifdef LEVEL_OF_DETAIL
-					float shadow_lod = max(1.0, min(uLodMaxLevel, curLod + 0.5 ) );
-					float shadow_stepSize = stepSize * pow(2.0, shadow_lod + 1.0);
-					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
-					float shadow_value = textureLod(volume_texture, shadow_sampleUVW, shadow_lod).r;
-				#else
-					float shadow_stepSize = curStepSize * 2.5;
-					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
-					float shadow_value = texture(volume_texture, shadow_sampleUVW).r;
-				#endif
-			
-				#ifdef EMISSION_ABSORPTION_RAW
-					float shadow_parameterStepSize = shadow_stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
-					float shadow_distanceStepSize = shadow_parameterStepSize * (endDistance - startDistance); // distance of a step
-					float shadow_alpha = (1.0 - exp( - (pow(transferFunctionRaw( shadow_value ).a * ABSORPTION_SCALE, 2.0) ) * shadow_distanceStepSize  * 2.0 ));
-				#else
-					float shadow_alpha = transferFunction(shadow_value, curStepSize ).a;
-				#endif
-				
-				shadow = (1.0 - shadow) * shadow_alpha + shadow;
-			}
-
-			shadow *= SHADOW_SCALE;
-			
-			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
-		#endif
-
 		#ifdef CUBEMAP_SAMPLING
 			vec4 cubemapColor = vec4(0.0);
 			int num_opacity_samples = 4;
@@ -472,6 +440,38 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 				uCubemapStrength
 			#endif
 			);
+		#endif
+
+		// shadow ray sampling
+		#ifdef SHADOW_SAMPLING
+			float shadow = 0.0;
+			for (int i = 1; i < uShadowRayNumSteps; i++)
+			{	
+				#ifdef LEVEL_OF_DETAIL
+					float shadow_lod = max(1.0, min(uLodMaxLevel, curLod + 0.5 ) );
+					float shadow_stepSize = stepSize * pow(2.0, shadow_lod + 1.0);
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = textureLod(volume_texture, shadow_sampleUVW, shadow_lod).r;
+				#else
+					float shadow_stepSize = curStepSize * 2.5;
+					vec3 shadow_sampleUVW = curUVW + uShadowRayDirection * ( float(i) * shadow_stepSize );
+					float shadow_value = texture(volume_texture, shadow_sampleUVW).r;
+				#endif
+			
+				#ifdef EMISSION_ABSORPTION_RAW
+					float shadow_parameterStepSize = shadow_stepSize / length(endUVW - startUVW); // parametric step size (scaled to 0..1)
+					float shadow_distanceStepSize = shadow_parameterStepSize * (endDistance - startDistance); // distance of a step
+					float shadow_alpha = (1.0 - exp( - (pow(transferFunctionRaw( shadow_value ).a * ABSORPTION_SCALE, 2.0) ) * shadow_distanceStepSize  * 2.0 ));
+				#else
+					float shadow_alpha = transferFunction(shadow_value, curStepSize ).a;
+				#endif
+				
+				shadow = (1.0 - shadow) * shadow_alpha + shadow;
+			}
+
+			shadow *= SHADOW_SCALE;
+			
+			sampleColor.rgb *= max(0.25, min( 1.0, 1.0 - shadow));
 		#endif
 
 		// update segment color
