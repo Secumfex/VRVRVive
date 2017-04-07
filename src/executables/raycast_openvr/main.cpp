@@ -1047,11 +1047,17 @@ public:
 							if ( glm::any( glm::lessThan(cullAxis, glm::vec3(0.0f)) ) ) 
 							{ 
 								s_cullMin = glm::vec3(
+									(cullAxis.x == 0.0f) ? s_cullMin.x : max(0.0f, point.x),
+									(cullAxis.y == 0.0f) ? s_cullMin.y : max(0.0f, point.y),
+									(cullAxis.z == 0.0f) ? s_cullMin.z : max(0.0f, point.z)
 									);
 							}
 							else
 							{
 								s_cullMax = glm::vec3(
+									(cullAxis.x == 0.0f) ? s_cullMax.x : min(1.0f, point.x),
+									(cullAxis.y == 0.0f) ? s_cullMax.y : min(1.0f, point.y),
+									(cullAxis.z == 0.0f) ? s_cullMax.z : min(1.0f, point.z)
 									);
 							}
 
