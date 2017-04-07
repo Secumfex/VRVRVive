@@ -502,6 +502,9 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			currentLayer = currentLayer + 1; // i+1
 			lastDistance = curDistance; // d_(i)
 		}
+
+		//early ray termination
+		if ( curAlpha > ERT_THRESHOLD ) { break; }
 	}
 
 	// make sure last layer gets filled
