@@ -1159,7 +1159,9 @@ public:
 				// find nearest cull plane: largest scalar of direction from center to point
 				if (m_cullAxis == glm::vec3(0.0f))
 				{
-					glm::vec3 dirCP = glm::normalize( glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin)) );
+					glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
+					dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
+					dirCP = glm::normalize(dirCP);
 					m_cullAxis = glm::vec3( 
 						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
 						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
