@@ -1209,15 +1209,15 @@ public:
 			}
 		};
 
-		m_touchpadPressedFunc = [&](const bool& isPressed, int& deviceIdx)
+		m_touchpadPressedFunc = [&](bool isPressed, int deviceIdx)
 		{
 			if (isPressed && deviceIdx != -1)
 			{
-			if (m_pOvr->m_rTrackedDevicePose[m_iTriggerPressedTrackedDeviceIdx].bPoseIsValid //controller pose
+			if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid //controller pose
 				&& m_pOvr->m_rTrackedDevicePose[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid)//HMD pose
 			{
 				// transform  controller pose to view space
-				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[m_iTriggerPressedTrackedDeviceIdx];
+				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
 				glm::vec4 point = m_pOvr->m_mat4HMDPose * pose * glm::vec4(0.f, 0.f, 0.f, 1.f);
 
 				// set pose if just pressed
@@ -1255,7 +1255,7 @@ public:
 			}}
 			else // reset
 			{
-				deviceIdx = -1;
+				m_iTouchpadPressedTrackedDeviceIdx = -1;
 				m_iLowerOrUpper = 0;
 				m_lastControllerPos = glm::vec4(0.0f);
 			}

@@ -346,10 +346,10 @@ void OpenVRSystem::PollVREvents(std::function<bool(const vr::VREvent_t & event)>
 	for( vr::TrackedDeviceIndex_t unDevice = 0; unDevice < vr::k_unMaxTrackedDeviceCount; unDevice++ )
 	{
 		vr::VRControllerState_t state;
-		if( m_pHMD && m_pHMD->GetControllerState( unDevice, &state ) )
-		{
-			m_rbShowTrackedDevice[ unDevice ] = state.ulButtonPressed == 0;
-		}
+		//if( m_pHMD && m_pHMD->GetControllerState( unDevice, &state ) )
+		//{
+		//	m_rbShowTrackedDevice[ unDevice ] = state.ulButtonPressed == 0;
+		//}
 	}
 }
 
