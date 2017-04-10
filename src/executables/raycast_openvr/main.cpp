@@ -1954,6 +1954,11 @@ public:
 		
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE27, GL_TEXTURE_2D); // uvw back novel
 		OPENGLCONTEXT->bindTextureToUnit(m_pUvwFBO[2 + eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE28, GL_TEXTURE_2D); // uvw front novel
+		
+		{bool hasProperty= false; for (auto e : m_shaderDefines) { hasProperty |= (e == "SCENE_DEPTH"); } if ( hasProperty){
+		OPENGLCONTEXT->bindTextureToUnit(m_pWarpFBO[eye]->getDepthTextureHandle(), GL_TEXTURE29, GL_TEXTURE_2D); // scene depth
+		m_pNovelViewWarpShader->update("scene_depth_map", 29);
+		}}
 
 		// update matrices
 		m_pNovelViewWarp->setFrameBufferObject( m_pWarpFBO[eye] );

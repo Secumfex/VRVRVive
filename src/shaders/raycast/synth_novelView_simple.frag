@@ -14,6 +14,10 @@ in vec2 passUV;
 uniform sampler2D back_uvw_map;   // uvw coordinates map of back  faces in novel view
 uniform sampler2D front_uvw_map;  // uvw coordinates map of front faces in novel view
 
+#ifdef SCENE_DEPTH
+	uniform sampler2D scene_depth_map;   // depth map of scene
+#endif
+
 // uniform sampler2D depth0; // first hit, aka depth layer 0
 uniform sampler2D depth;   // depth layers 1 to 4
 uniform sampler2D layer0;  // Emission Absorption layer 1 // always black/transparent: vec4(0.0)
@@ -108,6 +112,12 @@ void main()
 	if (uvwEnd.a == 0.0) {
 		discard;
 	} //invalid pixel
+
+	#ifdef SCENE_DEPTH
+		float scene_depth = texture(scene_depth_map, passUV).x;
+		uvwStart.a = min(uvwStart.a, scene_depth);
+		uvwEnd.a   = min(uvwEnd.a,   scene_depth);
+	#endif
 
 	vec4 oldViewStart = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwStart.a) );
 	vec4 oldViewEnd   = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwEnd.a)   );

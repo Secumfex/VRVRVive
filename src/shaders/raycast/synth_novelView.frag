@@ -18,6 +18,10 @@ uniform sampler2D layer2;  // Emission Absorption layer 2
 uniform sampler2D layer3;  // Emission Absorption layer 3
 uniform sampler2D layer4;  // Emission Absorption layer 4
 
+#ifdef SCENE_DEPTH
+	uniform sampler2D scene_depth_map;   // depth map of scene
+#endif
+
 uniform mat4 uProjection; //
 uniform mat4 uViewNovel; // 
 uniform mat4 uViewOld; // 
@@ -95,6 +99,12 @@ void main()
 	if (uvwEnd.a == 0.0) {
 		discard;
 	} //invalid pixel
+
+	#ifdef SCENE_DEPTH
+		float scene_depth = texture(scene_depth_map, passUV).x;
+		uvwStart.a = min(uvwStart.a, scene_depth);
+		uvwEnd.a   = min(uvwEnd.a,   scene_depth);
+	#endif
 
 	vec4 oldViewStart = uViewOld * inverse(uViewNovel) * screenToView( vec3(passUV, uvwStart.a) );
 	vec4 reprojectedStart = uProjection * oldViewStart;
