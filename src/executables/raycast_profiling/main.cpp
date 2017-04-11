@@ -770,7 +770,6 @@ void CMainApplication::initRenderPasses()
 			}
 		
 			m_pChunkedRaycast[i][j]  = new ChunkedAdaptiveRenderPass(m_pRaycast[i][j], viewportSize, chunkSize, 8, targetRenderTime, 1.0f);
-			m_pChunkedRaycast[i][j]->setPrintDebug(false);
 		}
 
 		m_pDiff[i] = new RenderPass(m_pDiffShader[i], m_pDiffFBO[i][LEFT]);
@@ -805,8 +804,9 @@ void CMainApplication::initRenderPasses()
 	{
 		m_pChunkedRaycast[NONE][i]->setAutoAdjustRenderTime(false);
 		m_pChunkedRaycast[NONE][i]->setChunkSize( glm::ivec2(FRAMEBUFFER_RESOLUTION) );
-		m_pChunkedRaycast[NONE][i]->setTargetRenderTime( 30.0f );
-		m_pChunkedRaycast[NONE][i]->setRenderTimeBias( 0.001f );
+		m_pChunkedRaycast[NONE][i]->setTargetRenderTime( 999.0f );
+		m_pChunkedRaycast[NONE][i]->setRenderTimeBias( 1.0f );
+		m_pChunkedRaycast[NONE][i]->setPrintDebug(false);
 	}
 	m_pShowTex = new RenderPass( m_pShowTexShader, 0);
 	m_pShowTex->addRenderable(m_pQuad);
@@ -822,9 +822,11 @@ void CMainApplication::initSceneVariables()
 	s_volumeSize = glm::vec3(1.0f);
 	updateModelToTexture();
 
-	s_translation = glm::translate(glm::vec3(0.0f,0.0f,-3.0f));
+	s_translation = glm::translate(glm::vec3(0.0f,0.0f,0.0f));
 	s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 	s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f,0.0f,1.0f));
+
+	s_fovY = 65.f;
 
 	updateNearHeightWidth();
 	updatePerspective();
