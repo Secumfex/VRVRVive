@@ -503,8 +503,19 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 			lastDistance = curDistance; // d_(i)
 		}
 
-		//early ray termination
-		if ( curAlpha > ERT_THRESHOLD ) { break; }
+		//early ray termination: more or less like above, but assumes the last sample color keeps going for little bit further
+		if ( curAlpha > ERT_THRESHOLD ) { 
+			vec4 emissionAbsorption = beerLambertColorTransmissionToEmissionAbsorption(segmentColor.rgb, 1.0 - segmentColor.a, abs(curDistance - lastDistance));
+
+			float offset = min(0.25 *(endDistance - curDistance), 100.0 * distanceStepSize); // push border a little bit further
+			lastNonZero += offset;
+
+			vec4 colorTransmission = beerLambertEmissionAbsorptionToColorTransmission(emissionAbsorption.rgb, emissionAbsorption.a, abs(lastNonZero - lastDistance));
+			segmentColor.rgb = (1.0 - segmentColor.a) * (colorTransmission.rgb) + segmentColor.rgb;
+			segmentColor.a =  (1.0 - segmentColor.a) * (1.0 - colorTransmission.a) + segmentColor.a;
+			break; 
+		}
+
 	}
 
 	// make sure last layer gets filled
