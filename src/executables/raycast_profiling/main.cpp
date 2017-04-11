@@ -221,6 +221,10 @@ private:
 
 	int m_iNumNovelViewSamples;
 
+	int m_iNumShadowSamples;
+	glm::vec3 m_shadowDir;
+	float m_fShadowAngles[2];
+
 public:
 	CMainApplication(int argc, char *argv[]);
 	~CMainApplication();
@@ -559,8 +563,12 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_fOldY(0.0f)
 	, m_iNumNovelViewSamples(12)
 	, m_iActiveWarpingTechnique(0)
+	, m_iNumShadowSamples(12)
+	, m_shadowDir( glm::normalize( glm::vec3( std::cos( -glm::half_pi<float>() ) * std::cos( -glm::quarter_pi<float>() ), std::sin( -glm::half_pi<float>() ) * std::cos( -glm::quarter_pi<float>() ), std::tan( -glm::quarter_pi<float>() ) ) ) )
 {
 	DEBUGLOG->setAutoPrint(true);
+	m_fShadowAngles[0] = -0.5f;
+	m_fShadowAngles[1] = -0.5f;
 
 	std::string fullExecutableName( argv[0] );
 	m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
@@ -1073,6 +1081,20 @@ void CMainApplication::updateGui()
 
 		ImGui::SliderInt("Num Novel-View Samples", &m_iNumNovelViewSamples, 4, 96);
 
+		{if ( m_bHasShadow ){
+			float alpha = m_fShadowAngles[0] * glm::pi<float>();
+			float beta  = m_fShadowAngles[1] * glm::half_pi<float>();
+			if (ImGui::CollapsingHeader("Shadow Properties"))
+			{	
+				if (ImGui::SliderFloat2("Shadow Dir", m_fShadowAngles, -0.999f, 0.999f) )
+				{
+					m_shadowDir = glm::normalize( glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) ) );
+				}
+				ImGui::SliderInt("Num Steps", &m_iNumShadowSamples, 0, 32);
+			}
+		}}
+
+
 		/**
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
@@ -1211,8 +1233,13 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 		m_pRaycastShader[idx]->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 		m_pRaycastShader[idx]->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
 		m_pRaycastShader[idx]->update("uProjection", m_hmdSimulation.getPerspective(simTime, eye) );
-
-		if (idx!=NOVELVIEW) m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse( m_hmdSimulation.getView(simTime, eye)) );
+		if (idx!=NOVELVIEW)
+			m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse( m_hmdSimulation.getView(simTime, eye)) );
+		
+		if ( m_bHasShadow ){
+			m_pRaycastShader[idx]->update("uShadowRayDirection", m_shadowDir); // full range of values in window
+			m_pRaycastShader[idx]->update("uShadowRayNumSteps", m_iNumShadowSamples); 	  // lower grayscale ramp boundary		//////////////////////////////////////////////////////////////////////////////
+		}
 		break;
 	}
 }
