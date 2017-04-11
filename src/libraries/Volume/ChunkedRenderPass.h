@@ -35,6 +35,7 @@ public:
 	virtual void updatePosition(); //!< move viewport chunk forward
 	virtual void activateClearbits(); //!< activate the renderpass's clearbits
 	virtual void deactivateClearbits(); //!< deactivate the renderpass's clearbits
+	virtual void reset();
 };
 
 
@@ -79,6 +80,7 @@ public:
 	void resetTimingsBuffers();
 	void profileTimings();
 	void swapQueryBuffers();
+	void reset();
 
 	float predictChunkRenderTime(int idx); // predicts the render time for the provided chunk
 

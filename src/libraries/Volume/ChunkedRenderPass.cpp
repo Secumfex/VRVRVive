@@ -100,6 +100,13 @@ void ChunkedRenderPass::render()
 	updatePosition();
 }
 
+void ChunkedRenderPass::reset()
+{
+	m_isFinished = true;
+	m_currentPos = glm::vec2(0,0);
+}
+
+
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++//
 //+++++++++++++++++++++++ ChunkedAdaptiveRenderPass ++++++++++++++++++//
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++//
@@ -395,4 +402,13 @@ ChunkedAdaptiveRenderPass::~ChunkedAdaptiveRenderPass()
 	{
 		glDeleteQueries(e.size(), &e[0]);
 	}
+}
+
+void ChunkedAdaptiveRenderPass::reset()
+{
+	ChunkedRenderPass::reset();
+	resetTimingsBuffers();
+	m_currentChunkIdx = 0;
+	m_currentFrameIdx = 0;
+	m_currentIterationIdx = 0;
 }
