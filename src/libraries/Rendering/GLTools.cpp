@@ -506,6 +506,51 @@ void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, gl
 		bitField, filter);
 	OPENGLCONTEXT->bindFBO(0);
 }
+void copyFBOContent(GLuint source, GLuint target, glm::vec4 sourceViewport, glm::vec4 targetViewport, GLenum bitField, GLenum readBuffer, GLenum filter)
+{
+		// bind framebuffers
+	OPENGLCONTEXT->bindFBO(source, GL_READ_FRAMEBUFFER);
+	OPENGLCONTEXT->bindFBO(target, GL_DRAW_FRAMEBUFFER);
+		
+	// color buffer is to be copied
+	if (bitField == GL_COLOR_BUFFER_BIT)
+	{
+		// default
+		if (readBuffer == GL_NONE)
+		{
+			glReadBuffer( (source == 0) ? GL_BACK : GL_COLOR_ATTACHMENT0);
+		}
+		else // set manually
+		{
+			glReadBuffer( readBuffer );
+		}
+		// copy content
+
+		glBlitFramebuffer(
+			(GLint) sourceViewport.x, (GLint) sourceViewport.y, (GLint) sourceViewport.z, (GLint) sourceViewport.w,
+			(GLint) targetViewport.x, (GLint) targetViewport.y, (GLint) targetViewport.z, (GLint) targetViewport.w,
+			bitField, (filter == GL_NONE) ? GL_NEAREST : filter);
+		
+		OPENGLCONTEXT->bindFBO(0);
+		return;
+	}
+	if (bitField == GL_DEPTH_BUFFER_BIT)
+	{
+		glBlitFramebuffer(
+			(GLint) sourceViewport.x, (GLint) sourceViewport.y, (GLint) sourceViewport.z, (GLint) sourceViewport.w,
+			(GLint) targetViewport.x, (GLint) targetViewport.y, (GLint) targetViewport.z, (GLint) targetViewport.w,
+			bitField, GL_NEAREST);
+		OPENGLCONTEXT->bindFBO(0);
+		return;
+	}
+
+	// custom
+	glBlitFramebuffer(
+		(GLint) sourceViewport.x, (GLint) sourceViewport.y, (GLint) sourceViewport.z, (GLint) sourceViewport.w,
+		(GLint) targetViewport.x, (GLint) targetViewport.y, (GLint) targetViewport.z, (GLint) targetViewport.w,
+		bitField, filter);
+	OPENGLCONTEXT->bindFBO(0);
+}
 
 GLuint createTexture(int width, int height, GLenum internalFormat, GLsizei levels)
 {
