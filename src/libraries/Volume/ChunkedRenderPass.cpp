@@ -11,12 +11,6 @@ m_currentPos(0,0),
 m_isFinished(true)
 {
 	m_pRenderPass = pRenderPass;
-
-	m_clearBitsTmp = m_pRenderPass->getClearBits();
-	for (auto e : m_clearBitsTmp)
-	{
-		m_pRenderPass->removeClearBit(e);
-	}
 }
 
 ChunkedRenderPass::~ChunkedRenderPass() {
@@ -67,22 +61,23 @@ void ChunkedRenderPass::activateClearbits()
 	{
 		m_pRenderPass->addClearBit(e);
 	}
+	m_clearBitsTmp.clear();
 }
 
 void ChunkedRenderPass::deactivateClearbits()
 {
-		m_clearBitsTmp = m_pRenderPass->getClearBits();
-		for (auto e : m_clearBitsTmp)
-		{
-			m_pRenderPass->removeClearBit(e);
-		}
+	m_clearBitsTmp = m_pRenderPass->getClearBits();
+	for (auto e : m_clearBitsTmp)
+	{
+		m_pRenderPass->removeClearBit(e);
+	}
 }
 
 void ChunkedRenderPass::render()
 {
-	if (m_isFinished)
+	if (!m_isFinished)
 	{
-		activateClearbits();
+		deactivateClearbits(); // remove for this iteration
 	}
 
 	updateViewport();
@@ -90,10 +85,7 @@ void ChunkedRenderPass::render()
 	// call renderpass
 	m_pRenderPass->render();
 
-	if (m_isFinished)
-	{
-		deactivateClearbits();
-	}
+	activateClearbits(); // reactivate if any
 
 	m_isFinished = false;
 
@@ -156,8 +148,12 @@ void ChunkedAdaptiveRenderPass::render()
 		if (m_isFinished)
 		{
 			profileTimings();
-			activateClearbits();
 		}
+		if (!m_isFinished)
+		{
+			deactivateClearbits();
+		}
+
 		updateViewport();
 
 		//Setup time query
@@ -167,9 +163,10 @@ void ChunkedAdaptiveRenderPass::render()
 
 		glEndQuery(GL_TIME_ELAPSED);
 
+		activateClearbits();
+
 		if (m_isFinished)
 		{
-			deactivateClearbits();
 			m_isFinished = false;
 		}
 
