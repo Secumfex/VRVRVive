@@ -102,38 +102,99 @@ public:
 class HmdSimulation
 {
 public:
+	enum Mode {BASIC, TRANSLATE, ROTATE, NUM_ANIMATIONMODES};
+	int m_mode;
 	bool m_bAnimateView;
 	bool m_bAnimateRotation;
 	bool m_bAnimateTranslation;
+
+	float m_fStartAngle; //!< start angle
+	float m_fAngle;      //!< angle to turn around pivot
+	float m_fDuration;   //!< duration for translation of angle
+	float m_fDistance;   //!< distance of view to center
 public: 
-	HmdSimulation() : m_bAnimateView(true), m_bAnimateRotation(false), m_bAnimateTranslation(true) {}
+	HmdSimulation() 
+		: m_bAnimateView(true)
+		, m_bAnimateRotation(false)
+		, m_bAnimateTranslation(true) 
+		, m_mode(TRANSLATE)
+		, m_fStartAngle(0.f)
+		, m_fAngle(0.f)
+		, m_fDuration(1.f)
+		, m_fDistance(1.5f)
+		{}
+
 	glm::mat4 getView(float time, int eye);
 	inline glm::mat4 getPerspective(float time, int eye) {return s_perspective;}
 };
 
 glm::mat4 HmdSimulation::getView(float time, int eye)
 {
-	glm::vec4 warpCenter = s_center;
-	glm::vec4 warpEye = s_eye;
-	glm::vec3 warpUp = glm::vec3(s_up);
-
-	if (m_bAnimateView)
+	glm::mat4 view = s_view;
+	glm::mat4 view_r = s_view_r;
+	switch (m_mode)
 	{
-		if (m_bAnimateRotation)
+	case BASIC:
+	{
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec3 up = glm::vec3(s_up);
+
+		if (m_bAnimateView)
 		{
-			warpCenter  = glm::vec4(sin(time * 2.0f)*0.25f, cos( time * 2.0f)*0.125f, 0.0f, 1.0f);
-			warpUp = glm::normalize(glm::vec3( sin( time ) * 0.25f, 1.0f, 0.0f));
+			if (m_bAnimateRotation)
+			{
+				center  = glm::vec4(sin(time * 2.0f)*0.25f, cos( time * 2.0f)*0.125f, 0.0f, 1.0f);
+				up = glm::normalize(glm::vec3( sin( time ) * 0.25f, 1.0f, 0.0f));
+			}
+			if (m_bAnimateTranslation) 
+			{
+				eyePos = eyePos + glm::vec4(-sin( time * 1.0f)*0.125f, -cos(time * 2.0f) * 0.125f, 0.0f, 1.0f);
+			}
 		}
-		if (m_bAnimateTranslation) 
-		{
-			warpEye = s_eye + glm::vec4(-sin( time * 1.0f)*0.125f, -cos(time * 2.0f) * 0.125f, 0.0f, 1.0f);
-		}
+
+		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
+		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
+		break;
+	}
+	case TRANSLATE:
+	{
+		// initial
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::vec3 rotAxis = glm::vec3(0.f,1.f,0.f);
+		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
+		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
+
+		// current
+		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ); 
+		eyePos = rotation * initialRotation * eyePos;
+
+		//resulting view
+		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
+		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
+		break;
+	}
+	case ROTATE:
+		glm::vec3 rotAxis = glm::vec3(0.f,1.f,0.f);
+		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
+		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
+
+		// current
+		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ); 
+		center = eyePos + rotation * initialRotation * (center - eyePos);
+		
+		//resulting view
+		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
+		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
+		break;
 	}
 
-	glm::mat4 view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), warpUp);
-	glm::mat4 view_r = glm::lookAt(glm::vec3(warpEye) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter) + glm::vec3(s_eyeDistance,0.0,0.0), warpUp);
-
-	return (eye == LEFT) ? view : view_r; // DEBUG
+	return (eye == LEFT) ? view : view_r;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1096,6 +1157,16 @@ void CMainApplication::updateGui()
 			}
 		}}
 
+		if ( ImGui::CollapsingHeader("Animation Settings") )
+		{
+			ImGui::SliderInt("Active Animation Mode", &m_hmdSimulation.m_mode, 0, HmdSimulation::NUM_ANIMATIONMODES - 1);
+			ImGui::SliderFloat("Start Angle", &m_hmdSimulation.m_fStartAngle, -90.0f, 90.0f);
+			ImGui::SliderFloat("Angle", &m_hmdSimulation.m_fAngle, -90.0f, 90.0f);
+			ImGui::SliderFloat("Duration", &m_hmdSimulation.m_fDuration, 0.0f, 5.0f);
+			ImGui::SliderFloat("Distance", &m_hmdSimulation.m_fDistance, 0.0f, 2.0f);
+			float arcLength = glm::radians(m_hmdSimulation.m_fAngle) * m_hmdSimulation.m_fDistance;
+			ImGui::Value("Length [m]", arcLength); ImGui::SameLine(); ImGui::Value("Speed [m/s]", arcLength / m_hmdSimulation.m_fDuration);
+		}
 
 		/**
 		static bool frame_profiler_visible = false;
