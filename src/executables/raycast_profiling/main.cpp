@@ -2,6 +2,8 @@
  * **** DESCRIPTION ****
  ****************************************/
 #include <iostream>
+#include <algorithm>
+#include <ctime>
 
 #include <Core/Timer.h>
 #include <Core/DoubleBuffer.h>
@@ -11,6 +13,7 @@
 #include <Rendering/VertexArrayObjects.h>
 #include <Rendering/RenderPass.h>
 #include <Volume/ChunkedRenderPass.h>
+#include <Importing/TextureTools.h>
 
 #include "UI/imgui/imgui.h"
 #include "UI/imgui_impl_sdl_gl3.h"
@@ -37,17 +40,17 @@ const int LEFT = 0;
 const int RIGHT = 1;
 
 const char* SHADER_DEFINES[] = {
-	"AMBIENT_OCCLUSION",
-	"CUBEMAP_SAMPLING",
-	"CULL_PLANES",
-	"EMISSION_ABSORPTION_RAW",
+	//"AMBIENT_OCCLUSION",
+	//"CUBEMAP_SAMPLING",
+	//"CULL_PLANES",
+	//"EMISSION_ABSORPTION_RAW",
 	//"FIRST_HIT",
-	"LEVEL_OF_DETAIL",
-	"OCCLUSION_MAP",
+	//"LEVEL_OF_DETAIL",
+	//"OCCLUSION_MAP",
 	"RANDOM_OFFSET",
-	"SCENE_DEPTH",
-	"SHADOW_SAMPLING",
-	"STEREO_SINGLE_PASS",
+	//"SCENE_DEPTH",
+	//"SHADOW_SAMPLING",
+	//"STEREO_SINGLE_PASS",
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -85,6 +88,7 @@ public:
 class DisplaySimulation
 {
 public:
+	DisplaySimulation() :m_fRefreshTime(16.0f) {}
 	float m_fRefreshTime;
 	float m_fTime;
 	int   m_iFrame;
@@ -151,7 +155,7 @@ private:
 	RenderPass*	   m_pShowTex;
 	RenderPass*    m_pUvw[NUM_WARPTECHNIQUES];
 	RenderPass*    m_pWarp[NUM_WARPTECHNIQUES];
-	RenderPass*    m_pRaycast[NUM_WARPTECHNIQUES];
+	RenderPass*    m_pRaycast[NUM_WARPTECHNIQUES][2];
 	RenderPass*    m_pDiff[NUM_WARPTECHNIQUES];
 	ChunkedAdaptiveRenderPass* m_pChunkedRaycast[NUM_WARPTECHNIQUES][2];
 
@@ -528,7 +532,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_bHasShadow(false)
 	, m_fOldX(0.0f)
 	, m_fOldY(0.0f)
-	, m_iNumNovelViewSamples(4)
+	, m_iNumNovelViewSamples(12)
 	, m_iActiveWarpingTechnique(0)
 {
 	DEBUGLOG->setAutoPrint(true);
@@ -559,13 +563,18 @@ void CMainApplication::loop()
 
 		if(mode == SETUP)
 		{
-			// TODO show gui, regular rendering
 			updateGui();
+
+			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 
 			renderViews(ImGui::GetTime());
 
-			renderToScreen(m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor"));
-		
+			renderToScreen(
+				m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
+				m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
+				);
+
+
 			renderGui();
 
 			SDL_GL_SwapWindow( m_pWindow ); // swap buffers
@@ -662,8 +671,8 @@ void CMainApplication::loadShaders()
 
 	m_pWarpShader[NONE] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);
 	m_pWarpShader[QUAD] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
-	m_pWarpShader[GRID] = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/gridWarp.frag", m_shaderDefines);
-	m_pWarpShader[NOVELVIEW] = new ShaderProgram("/raycast/gridWarp.vert",  "/raycast/synth_novelView_simple.frag", m_shaderDefines);
+	m_pWarpShader[GRID] = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
+	m_pWarpShader[NOVELVIEW] = new ShaderProgram("/screenSpace/fullscreen.vert",  "/raycast/synth_novelView_simple.frag", m_shaderDefines);
 	
 	m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 	DEBUGLOG->outdent();
@@ -705,23 +714,31 @@ void CMainApplication::initRenderPasses()
 	for (int i = 0; i < NUM_WARPTECHNIQUES; i++)
 	{
 		m_pUvw[i] = new RenderPass(m_pUvwShader[i], m_pUvwFBO[i][LEFT]);
+		m_pUvw[i]->setClearColor(0,0,0,0);
 		m_pUvw[i]->addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-		m_pUvw[i]->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
-		m_pUvw[i]->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
 		m_pUvw[i]->addRenderable(m_pVolume);
+		m_pUvw[i]->addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
+		m_pUvw[i]->addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
 
-		m_pRaycast[i] = new RenderPass( m_pRaycastShader[i], m_pSimFBO[i][LEFT].getBack());
-		m_pRaycast[i]->setClearColor(0.0f,0.0f,0.0f,0.0f);
-		m_pRaycast[i]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-		m_pRaycast[i]->addRenderable( m_pQuad );
-		m_pRaycast[i]->addEnable(GL_DEPTH_TEST);
-		m_pRaycast[i]->addDisable(GL_BLEND);
+		for (int j = LEFT; j <= RIGHT; j++)
+		{
+			m_pRaycast[i][j] = new RenderPass( m_pRaycastShader[i], m_pSimFBO[i][LEFT].getBack());
+			m_pRaycast[i][j]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+			m_pRaycast[i][j]->addRenderable( m_pQuad );
+			m_pRaycast[i][j]->addEnable(GL_DEPTH_TEST);
+			m_pRaycast[i][j]->addDisable(GL_BLEND);
 
-		glm::ivec2 viewportSize = glm::ivec2((int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
-		glm::ivec2 chunkSize = glm::ivec2(96,96);
-		m_pChunkedRaycast[i][LEFT]  = new ChunkedAdaptiveRenderPass(m_pRaycast[i], viewportSize, chunkSize, 8, m_displaySimulation.m_fRefreshTime/2.0f, 1.0f);
-		m_pChunkedRaycast[i][RIGHT] = new ChunkedAdaptiveRenderPass(m_pRaycast[i], viewportSize, chunkSize, 8, m_displaySimulation.m_fRefreshTime/2.0f, 1.0f);
-	
+			glm::ivec2 viewportSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
+			glm::ivec2 chunkSize = glm::ivec2(96,96);
+			float targetRenderTime = m_displaySimulation.m_fRefreshTime/2.0f;
+			if (i == NONE) {
+				targetRenderTime = 999.0f;
+				chunkSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
+			}
+		
+			m_pChunkedRaycast[i][j]  = new ChunkedAdaptiveRenderPass(m_pRaycast[i][j], viewportSize, chunkSize, 8, targetRenderTime, 1.0f);
+		}
+
 		m_pDiff[i] = new RenderPass(m_pDiffShader[i], m_pDiffFBO[i][LEFT]);
 		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
@@ -733,9 +750,11 @@ void CMainApplication::initRenderPasses()
 	
 	m_pWarp[NONE] = new RenderPass(m_pWarpShader[NONE], m_pWarpFBO[NONE][LEFT]);
 	m_pWarp[NONE]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	m_pWarp[NONE]->addDisable(GL_DEPTH_TEST);
 	m_pWarp[NONE]->addRenderable(m_pQuad);
 	m_pWarp[QUAD] = new RenderPass(m_pWarpShader[QUAD], m_pWarpFBO[QUAD][LEFT]);
 	m_pWarp[QUAD]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	m_pWarp[QUAD]->addDisable(GL_DEPTH_TEST);
 	m_pWarp[QUAD]->addRenderable(m_pQuad);
 	m_pWarp[GRID] = new RenderPass(m_pWarpShader[GRID], m_pWarpFBO[GRID][LEFT]);
 	m_pWarp[GRID]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -743,19 +762,22 @@ void CMainApplication::initRenderPasses()
 	m_pWarp[GRID]->addRenderable(m_pGrid);
 	m_pWarp[NOVELVIEW] = new RenderPass(m_pWarpShader[NOVELVIEW], m_pWarpFBO[NOVELVIEW][LEFT]);
 	m_pWarp[NOVELVIEW]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	m_pWarp[NOVELVIEW]->addRenderable(m_pQuad);
 	m_pWarp[NOVELVIEW]->addEnable(GL_DEPTH_TEST);
 	m_pWarp[NOVELVIEW]->addEnable(GL_BLEND);
-	m_pWarp[NOVELVIEW]->addRenderable(m_pQuad);
 
 	// 'disable' adaptive chunked raycasting behaviour for 'none' raycaster
 	for(int i = 0; i< 2; i++)
 	{
 		m_pChunkedRaycast[NONE][i]->setAutoAdjustRenderTime(false);
 		m_pChunkedRaycast[NONE][i]->setChunkSize( glm::ivec2(FRAMEBUFFER_RESOLUTION) );
-		m_pChunkedRaycast[NONE][i]->setTargetRenderTime( 9999.0f );
+		m_pChunkedRaycast[NONE][i]->setTargetRenderTime( 30.0f );
 		m_pChunkedRaycast[NONE][i]->setRenderTimeBias( 0.001f );
 	}
 	m_pShowTex = new RenderPass( m_pShowTexShader, 0);
+	m_pShowTex->addRenderable(m_pQuad);
+	m_pShowTex->addDisable(GL_DEPTH_TEST);
+	m_pShowTex->addEnable(GL_BLEND);
 
 	DEBUGLOG->outdent();
 }
@@ -1002,6 +1024,16 @@ void CMainApplication::updateGui()
 		//	m_pGridWarpShader->update("color", m_clearColor);
 		//}
 
+		if (ImGui::Button("Save Current Images"))
+		{		
+			std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+			TextureTools::saveTexture(prefix + "UVW_F.png", m_pUvwFBO[m_iActiveWarpingTechnique][LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1) );
+			TextureTools::saveTexture(prefix + "UVW_B.png", m_pUvwFBO[m_iActiveWarpingTechnique][LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+			TextureTools::saveTexture(prefix + "SIM.png", m_pSimFBO[m_iActiveWarpingTechnique][LEFT].getFront()->getBuffer("fragColor") );
+			TextureTools::saveTexture(prefix + "WRP.png", m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor") );
+		}
+
+
 		ImGui::Separator();
 		{
 			static float scale = s_scale[0][0];
@@ -1116,13 +1148,13 @@ void CMainApplication::updateWarpShader(float simTime, float warpTime, int idx, 
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("layer1", 3, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor2"));
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("layer2", 4, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor3"));
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("layer3", 5, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor4"));
-		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("depth",  6, m_pSimFBO[idx][eye].getFront()->getDepthTextureHandle());
+		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("depth",  6, m_pSimFBO[idx][eye].getFront()->getBuffer("fragDepth"));
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("back_uvw_map", 7, m_pNovelViewUvwFBO[eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("front_uvw_map", 8, m_pNovelViewUvwFBO[eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
 		m_pWarpShader[NOVELVIEW]->update("uThreshold", m_iNumNovelViewSamples);
 		m_pWarpShader[NOVELVIEW]->update("uProjection",  m_hmdSimulation.getPerspective(simTime, eye) );
 		m_pWarpShader[NOVELVIEW]->update("uViewOld", m_hmdSimulation.getView(simTime, eye) );
-		m_pWarpShader[NOVELVIEW]->update("uViewNovel", m_hmdSimulation.getView(warpTime, eye));
+		m_pWarpShader[NOVELVIEW]->update("uViewNovel", m_hmdSimulation.getView(warpTime, eye));	
 		break;
 	}
 }
@@ -1151,10 +1183,10 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 		m_pRaycastShader[idx]->update("uStepSize", s_rayStepSize); 	  // ray step size
 		m_pRaycastShader[idx]->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		m_pRaycastShader[idx]->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		m_pRaycastShader[idx]->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		m_pRaycastShader[idx]->update( "uScreenToTexture", s_modelToTexture * s_model * m_hmdSimulation.getView(simTime, eye) * s_screenToView );
-		m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * s_model * m_hmdSimulation.getView(simTime, eye) );
+		m_pRaycastShader[idx]->update( "uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
 		m_pRaycastShader[idx]->update( "uProjection", m_hmdSimulation.getPerspective(simTime, eye) );
+
+		if (idx!=NOVELVIEW) m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) );
 		break;
 	}
 }
@@ -1174,6 +1206,7 @@ void CMainApplication::renderViews(float simTime)
 		{
 			//m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
 			m_pSimFBO[m_iActiveWarpingTechnique][i].swap();
+			m_pChunkedRaycast[m_iActiveWarpingTechnique][i]->getRenderPass()->setFrameBufferObject( m_pSimFBO[m_iActiveWarpingTechnique][i].getBack() );
 
 			m_fSimLastTime[m_iActiveWarpingTechnique][i] = m_fSimRenderTime[m_iActiveWarpingTechnique][i];
 			m_fSimRenderTime[m_iActiveWarpingTechnique][i] = simTime;
@@ -1186,11 +1219,11 @@ void CMainApplication::renderViews(float simTime)
 
 void CMainApplication::renderVolume(float simTime, int idx, int eye)
 {
-	if (m_pChunkedRaycast[m_iActiveWarpingTechnique][eye]->isFinished())
+	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
-		updateUvwShader(m_fSimRenderTime[m_iActiveWarpingTechnique][eye], m_iActiveWarpingTechnique, eye);
-		m_pUvw[m_iActiveWarpingTechnique]->setFrameBufferObject( m_pUvwFBO[m_iActiveWarpingTechnique][eye] );
-		m_pUvw[m_iActiveWarpingTechnique]->render();
+		updateUvwShader(m_fSimRenderTime[idx][eye], idx, eye);
+		m_pUvw[idx]->setFrameBufferObject( m_pUvwFBO[idx][eye] );
+		m_pUvw[idx]->render();
 	}
 
 	updateRaycastShader(simTime, idx, eye);
@@ -1201,12 +1234,14 @@ void CMainApplication::renderVolume(float simTime, int idx, int eye)
 void CMainApplication::renderWarp(float simTime, float warpTime, int idx, int eye)
 {
 	updateWarpShader(simTime, warpTime, idx, eye);
+	m_pWarp[idx]->setFrameBufferObject( m_pWarpFBO[idx][eye] );
 	m_pWarp[idx]->render();
 }
 
 void CMainApplication::renderToScreen(GLuint left, GLuint right)
 {
 	OPENGLCONTEXT->bindFBO(0);
+	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	{
 		m_pShowTexShader->updateAndBindTexture("tex", 2, left);
