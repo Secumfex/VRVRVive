@@ -118,7 +118,8 @@ ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, gl
 	m_targetRenderTime(targetRenderTime),
 	m_autoAdjustRenderTime(false),
 	m_numChunksBuffer(16),
-	m_currentIterationIdx(0)
+	m_currentIterationIdx(0),
+	m_bPrintDebug(true)
 {
 	//initialize timings buffers
 	resetTimingsBuffers();
@@ -271,7 +272,7 @@ void ChunkedAdaptiveRenderPass::profileTimings(){
 		glGetQueryObjectiv(m_queryBuffer[i][m_currentFrontQuery], 
 			GL_QUERY_RESULT_AVAILABLE, 
 			&available);
-		if (!available) {
+		if (!available && m_bPrintDebug) {
 			DEBUGLOG->log("Query result not available, #", numFailed++);
 		}
 		

@@ -101,14 +101,39 @@ public:
 
 class HmdSimulation
 {
+public:
+	bool m_bAnimateView;
+	bool m_bAnimateRotation;
+	bool m_bAnimateTranslation;
 public: 
+	HmdSimulation() : m_bAnimateView(true), m_bAnimateRotation(false), m_bAnimateTranslation(true) {}
 	glm::mat4 getView(float time, int eye);
 	inline glm::mat4 getPerspective(float time, int eye) {return s_perspective;}
 };
 
 glm::mat4 HmdSimulation::getView(float time, int eye)
 {
-	return (eye == LEFT) ? s_view : s_view_r; // DEBUG
+	glm::vec4 warpCenter = s_center;
+	glm::vec4 warpEye = s_eye;
+	glm::vec3 warpUp = glm::vec3(s_up);
+
+	if (m_bAnimateView)
+	{
+		if (m_bAnimateRotation)
+		{
+			warpCenter  = glm::vec4(sin(time * 2.0f)*0.25f, cos( time * 2.0f)*0.125f, 0.0f, 1.0f);
+			warpUp = glm::normalize(glm::vec3( sin( time ) * 0.25f, 1.0f, 0.0f));
+		}
+		if (m_bAnimateTranslation) 
+		{
+			warpEye = s_eye + glm::vec4(-sin( time * 1.0f)*0.125f, -cos(time * 2.0f) * 0.125f, 0.0f, 1.0f);
+		}
+	}
+
+	glm::mat4 view   = glm::lookAt(glm::vec3(warpEye), glm::vec3(warpCenter), warpUp);
+	glm::mat4 view_r = glm::lookAt(glm::vec3(warpEye) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(warpCenter) + glm::vec3(s_eyeDistance,0.0,0.0), warpUp);
+
+	return (eye == LEFT) ? view : view_r; // DEBUG
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -220,13 +245,13 @@ public:
 
 	// per frame
 	void updateGui();
-	void updateWarpShader(float simTime, float warpTime, int idx, int eye);
+	void updateWarpShader(float lastTime, float warpTime, int idx, int eye);
 	void updateRaycastShader(float simTime, int idx, int eye);
 	void updateUvwShader(float simTime, int idx, int eye);
 	void renderGui();
-	void renderViews(float simTime);
-	void renderVolume(float simTime, int idx, int eye);
-	void renderWarp(float simTime, float warpTime, int idx, int eye);
+	void renderViews(float simTime, int idx);
+	void renderVolume(float renderTime, float nextRenderTime, int idx, int eye);
+	void renderWarp(float lastTime, float warpTime, int idx, int eye);
 	void renderToScreen(GLuint left, GLuint right);
 	void profileFPS(float fps);
 
@@ -567,7 +592,7 @@ void CMainApplication::loop()
 
 			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 
-			renderViews(ImGui::GetTime());
+			renderViews(ImGui::GetTime(), m_iActiveWarpingTechnique);
 
 			renderToScreen(
 				m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
@@ -737,6 +762,7 @@ void CMainApplication::initRenderPasses()
 			}
 		
 			m_pChunkedRaycast[i][j]  = new ChunkedAdaptiveRenderPass(m_pRaycast[i][j], viewportSize, chunkSize, 8, targetRenderTime, 1.0f);
+			m_pChunkedRaycast[i][j]->setPrintDebug(false);
 		}
 
 		m_pDiff[i] = new RenderPass(m_pDiffShader[i], m_pDiffFBO[i][LEFT]);
@@ -1114,7 +1140,7 @@ void CMainApplication::updateGui()
 		*/
 }
 
-void CMainApplication::updateWarpShader(float simTime, float warpTime, int idx, int eye)
+void CMainApplication::updateWarpShader(float lastTime, float warpTime, int idx, int eye)
 {
 	switch (idx)
 	{
@@ -1125,17 +1151,17 @@ void CMainApplication::updateWarpShader(float simTime, float warpTime, int idx, 
 	case QUAD:
 		m_pWarpShader[QUAD]->updateAndBindTexture( "tex", 2, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor") ); // last result
 		m_pWarpShader[QUAD]->update( "blendColor", 1.0f );
-		m_pWarpShader[QUAD]->update( "oldView", m_hmdSimulation.getView(simTime, eye) ); // update with old view
-		m_pWarpShader[QUAD]->update( "newView", m_hmdSimulation.getView(warpTime, eye) ); // most current view
-		m_pWarpShader[QUAD]->update( "projection",  m_hmdSimulation.getPerspective(simTime, eye) ); 
+		m_pWarpShader[QUAD]->update( "oldView",     m_hmdSimulation.getView(lastTime, eye) ); // update with old view
+		m_pWarpShader[QUAD]->update( "newView",     m_hmdSimulation.getView(warpTime, eye) ); // most current view
+		m_pWarpShader[QUAD]->update( "projection",  m_hmdSimulation.getPerspective(lastTime, eye) ); 
 		break;
 	case GRID:
 		m_pWarpShader[GRID]->updateAndBindTexture( "tex", 2, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor") );
 		m_pWarpShader[GRID]->updateAndBindTexture( "depth_map", 3, m_pSimFBO[idx][eye].getFront()->getDepthTextureHandle() ); // last first hit map
 		//m_pWarpShader[GRID]->update("color", m_clearColor);
-		m_pWarpShader[GRID]->update( "uViewNew",  m_hmdSimulation.getView(warpTime, eye) ); // most current view
-		m_pWarpShader[GRID]->update( "uViewOld", m_hmdSimulation.getView(simTime, eye) ); // update with old view
-		m_pWarpShader[GRID]->update( "uProjection", m_hmdSimulation.getPerspective(simTime, eye) ); 
+		m_pWarpShader[GRID]->update( "uViewOld",    m_hmdSimulation.getView(lastTime, eye) ); // update with old view
+		m_pWarpShader[GRID]->update( "uViewNew",    m_hmdSimulation.getView(warpTime, eye) ); // most current view
+		m_pWarpShader[GRID]->update( "uProjection", m_hmdSimulation.getPerspective(lastTime, eye) ); 
 		break;
 	case NOVELVIEW:
 		m_pUvw[NOVELVIEW]->setFrameBufferObject( m_pNovelViewUvwFBO[eye] );
@@ -1151,10 +1177,10 @@ void CMainApplication::updateWarpShader(float simTime, float warpTime, int idx, 
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("depth",  6, m_pSimFBO[idx][eye].getFront()->getBuffer("fragDepth"));
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("back_uvw_map", 7, m_pNovelViewUvwFBO[eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		m_pWarpShader[NOVELVIEW]->updateAndBindTexture("front_uvw_map", 8, m_pNovelViewUvwFBO[eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
-		m_pWarpShader[NOVELVIEW]->update("uThreshold", m_iNumNovelViewSamples);
-		m_pWarpShader[NOVELVIEW]->update("uProjection",  m_hmdSimulation.getPerspective(simTime, eye) );
-		m_pWarpShader[NOVELVIEW]->update("uViewOld", m_hmdSimulation.getView(simTime, eye) );
-		m_pWarpShader[NOVELVIEW]->update("uViewNovel", m_hmdSimulation.getView(warpTime, eye));	
+		m_pWarpShader[NOVELVIEW]->update("uThreshold",   m_iNumNovelViewSamples);
+		m_pWarpShader[NOVELVIEW]->update("uProjection",  m_hmdSimulation.getPerspective(lastTime, eye) );
+		m_pWarpShader[NOVELVIEW]->update("uViewOld",     m_hmdSimulation.getView(lastTime, eye) );
+		m_pWarpShader[NOVELVIEW]->update("uViewNovel",   m_hmdSimulation.getView(warpTime, eye));	
 		break;
 	}
 }
@@ -1178,15 +1204,15 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 	case GRID:
 		m_pRaycastShader[idx]->updateAndBindTexture("volume_texture", 0, m_volumeTexture, GL_TEXTURE_3D); // m_pVolume texture
 		m_pRaycastShader[idx]->updateAndBindTexture("transferFunctionTex", 1, TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE_1D);
-		m_pRaycastShader[idx]->updateAndBindTexture( "back_uvw_map",  2, m_pUvwFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		m_pRaycastShader[idx]->updateAndBindTexture( "front_uvw_map", 3, m_pUvwFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1) );
+		m_pRaycastShader[idx]->updateAndBindTexture("back_uvw_map",  2, m_pUvwFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		m_pRaycastShader[idx]->updateAndBindTexture("front_uvw_map", 3, m_pUvwFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1) );
 		m_pRaycastShader[idx]->update("uStepSize", s_rayStepSize); 	  // ray step size
 		m_pRaycastShader[idx]->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		m_pRaycastShader[idx]->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		m_pRaycastShader[idx]->update( "uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
-		m_pRaycastShader[idx]->update( "uProjection", m_hmdSimulation.getPerspective(simTime, eye) );
+		m_pRaycastShader[idx]->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
+		m_pRaycastShader[idx]->update("uProjection", m_hmdSimulation.getPerspective(simTime, eye) );
 
-		if (idx!=NOVELVIEW) m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) );
+		if (idx!=NOVELVIEW) m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse( m_hmdSimulation.getView(simTime, eye)) );
 		break;
 	}
 }
@@ -1198,30 +1224,32 @@ void CMainApplication::renderGui()
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 }
 
-void CMainApplication::renderViews(float simTime)
+void CMainApplication::renderViews(float simTime, int idx)
 {
 	for (int i = 0; i < 2; i++)
 	{
-		if (m_pChunkedRaycast[m_iActiveWarpingTechnique][i]->isFinished())
+		if (m_pChunkedRaycast[idx][i]->isFinished())
 		{
 			//m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
-			m_pSimFBO[m_iActiveWarpingTechnique][i].swap();
-			m_pChunkedRaycast[m_iActiveWarpingTechnique][i]->getRenderPass()->setFrameBufferObject( m_pSimFBO[m_iActiveWarpingTechnique][i].getBack() );
+			m_pSimFBO[idx][i].swap();
+			m_pChunkedRaycast[idx][i]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][i].getBack() );
 
-			m_fSimLastTime[m_iActiveWarpingTechnique][i] = m_fSimRenderTime[m_iActiveWarpingTechnique][i];
-			m_fSimRenderTime[m_iActiveWarpingTechnique][i] = simTime;
+			m_fSimLastTime[idx][i] = m_fSimRenderTime[idx][i];
+			m_fSimRenderTime[idx][i] = simTime;
 		}
 
-		renderVolume(m_fSimRenderTime[m_iActiveWarpingTechnique][i], m_iActiveWarpingTechnique, i);
-		renderWarp(m_fSimLastTime[m_iActiveWarpingTechnique][i], m_fWarpTime[m_iActiveWarpingTechnique][i], m_iActiveWarpingTechnique, i);
+		m_fWarpTime[idx][i] = simTime;
+
+		renderVolume(m_fSimRenderTime[idx][i], m_fWarpTime[idx][i], idx, i);
+		renderWarp(  m_fSimLastTime[idx][i],   m_fWarpTime[idx][i], idx, i);
 	}
 }
 
-void CMainApplication::renderVolume(float simTime, int idx, int eye)
+void CMainApplication::renderVolume(float renderTime, float simTime, int idx, int eye)
 {
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
-		updateUvwShader(m_fSimRenderTime[idx][eye], idx, eye);
+		updateUvwShader(simTime, idx, eye);
 		m_pUvw[idx]->setFrameBufferObject( m_pUvwFBO[idx][eye] );
 		m_pUvw[idx]->render();
 	}
@@ -1231,9 +1259,9 @@ void CMainApplication::renderVolume(float simTime, int idx, int eye)
 	m_pChunkedRaycast[idx][eye]->render();
 }
 
-void CMainApplication::renderWarp(float simTime, float warpTime, int idx, int eye)
+void CMainApplication::renderWarp(float lastTime, float warpTime, int idx, int eye)
 {
-	updateWarpShader(simTime, warpTime, idx, eye);
+	updateWarpShader(lastTime, warpTime, idx, eye);
 	m_pWarp[idx]->setFrameBufferObject( m_pWarpFBO[idx][eye] );
 	m_pWarp[idx]->render();
 }

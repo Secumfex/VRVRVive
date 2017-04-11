@@ -64,6 +64,8 @@ protected:
 	float m_lastTotalRenderTime; // time for one complete render-iteration (in ms)
 	int m_lastNumFramesElapsed;
 	int m_lastCompletedFrameIdx;
+	
+	bool m_bPrintDebug;
 
 public:
 	/** @brief Constructor, a suitable RenderPass must have a vertex Shade wich uses the vec4 uniforms 'uViewport' and 'uResolution'
@@ -98,6 +100,7 @@ public:
 	//++ Setters ++//
 	inline void setRenderTimeBias(float renderTimeBias) {m_renderTimeBias = renderTimeBias;}
 	inline void setTargetRenderTime(float targetRenderTime) {m_targetRenderTime = targetRenderTime;}
+	inline void setPrintDebug(bool enabled){ m_bPrintDebug = enabled;}
 
 	//++ ImGui++//
 	void imguiInterface(bool* open = NULL, std::string prefix = "");
