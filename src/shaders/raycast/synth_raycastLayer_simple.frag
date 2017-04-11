@@ -131,7 +131,7 @@ layout(location = 1) out vec4 fragColor1;
 layout(location = 2) out vec4 fragColor2;
 layout(location = 3) out vec4 fragColor3;
 layout(location = 4) out vec4 fragColor4;
-layout(location = 5) out vec4 fragColorDebug;
+layout(location = 5) out vec4 fragColor;
 // depth buffer holds layer 0 depth (rgba is assumed vec4(0) anyway)
 
 /**
@@ -583,7 +583,7 @@ void main()
 		);
 
 	// DEBUG
-	fragColorDebug = raycastResult.color;
+	fragColor = raycastResult.color;
 
 	// first hit texture
 	if (raycastResult.firstHit.a > 0.0)
@@ -592,6 +592,6 @@ void main()
 		//gl_FragDepth = max( (firstHitProjected.z / firstHitProjected.w) * 0.5 + 0.5, 0.0 ); // ndc to depth
 		
 		gl_FragDepth = distanceToDepth(passUV, raycastResult.firstHit.a);
-		//fragColorDebug = vec4( distanceToDepth(passUV, raycastResult.firstHit.a) );
+		//fragColor = vec4( distanceToDepth(passUV, raycastResult.firstHit.a) );
 	}
 }
