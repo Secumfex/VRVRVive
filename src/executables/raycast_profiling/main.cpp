@@ -89,7 +89,11 @@ public:
 class DisplaySimulation
 {
 public:
-	DisplaySimulation() :m_fRefreshTime(1.0f / 60.0f) {}
+	DisplaySimulation() 
+		: m_fRefreshTime(1.0f / 60.0f) 
+		, m_fTime(0.0f)
+		, m_iFrame(0)
+		{}
 	float m_fRefreshTime;
 	float m_fTime;
 	int   m_iFrame;
@@ -125,14 +129,21 @@ public:
 		, m_fDistance(1.5f)
 		{}
 
-	glm::mat4 getView(float time, int eye);
+	glm::mat4 getView(float timeParam, int eye);
 	inline glm::mat4 getPerspective(float time, int eye) {return s_perspective;}
 };
 
-glm::mat4 HmdSimulation::getView(float time, int eye)
+glm::mat4 HmdSimulation::getView(float timeParam, int eye)
 {
 	glm::mat4 view = s_view;
 	glm::mat4 view_r = s_view_r;
+
+	float time = 0.0f;
+	if (m_bAnimateView)
+	{
+		time = timeParam;
+	}
+
 	switch (m_mode)
 	{
 	case BASIC:
@@ -141,17 +152,14 @@ glm::mat4 HmdSimulation::getView(float time, int eye)
 		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
 		glm::vec3 up = glm::vec3(s_up);
 
-		if (m_bAnimateView)
+		if (m_bAnimateRotation)
 		{
-			if (m_bAnimateRotation)
-			{
-				center  = glm::vec4(sin(time * 2.0f)*0.25f, cos( time * 2.0f)*0.125f, 0.0f, 1.0f);
-				up = glm::normalize(glm::vec3( sin( time ) * 0.25f, 1.0f, 0.0f));
-			}
-			if (m_bAnimateTranslation) 
-			{
-				eyePos = eyePos + glm::vec4(-sin( time * 1.0f)*0.125f, -cos(time * 2.0f) * 0.125f, 0.0f, 1.0f);
-			}
+			center  = glm::vec4(sin(time * 2.0f)*0.25f, cos( time * 2.0f)*0.125f, 0.0f, 1.0f);
+			up = glm::normalize(glm::vec3( sin( time ) * 0.25f, 1.0f, 0.0f));
+		}
+		if (m_bAnimateTranslation) 
+		{
+			eyePos = eyePos + glm::vec4(-sin( time * 1.0f)*0.125f, -cos(time * 2.0f) * 0.125f, 0.0f, 1.0f);
 		}
 
 		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
@@ -317,6 +325,7 @@ public:
 	void updateRaycastShader(float simTime, int idx, int eye);
 	void updateUvwShader(float simTime, int idx, int eye);
 	void renderGui();
+	void renderView(float simTime, int idx, int eye);
 	void renderViews(float simTime, int idx);
 	void renderRef(float simTime);
 	void renderVolume(float renderTime, float nextRenderTime, int idx, int eye);
@@ -459,12 +468,32 @@ void CMainApplication::loop()
 			int numFrames = (int) ( (m_hmdSimulation.m_fDuration) / m_displaySimulation.m_fRefreshTime ) + 1; // [s]
 			
 			//----------- SETUP/RESET/INITIALIZE -------------
-			//TODO reset sim and warp times
-			//TODO render t=0 views / warps
-			//TODO reset ChunkedRenderPasses
+			// temporarily disable animation --> hmd only returns values for time = 0.0
+			m_hmdSimulation.m_bAnimateView = false;
+			for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+			{
+			for (int j = LEFT; j <= RIGHT; j++)
+			{
+				// reset sim and warp times
+				m_fSimLastTime[i][j]   = 0.0f;
+				m_fSimRenderTime[i][j] = 0.0f;
+				m_fWarpTime[i][j]      = 0.0f;
+
+				// render t=0 views / warps
+				// reset ChunkedRenderPasses
+				m_pChunkedRaycast[i][j]->reset();
+				for (int k = 0; k < 10; k++){ // actually, do it a couple of times to make sure grid render times are available
+				do {
+					renderView(0.0f, i, j);
+					glFinish();
+				} while (!m_pChunkedRaycast[i][j]->isFinished());}
+			}
+			}
+			// enable animation
+			m_hmdSimulation.m_bAnimateView = true;
 
 			//----------- PROFILING -------------
-			for (int i = 0; i< numFrames; i++)
+			for (int i = 0; i <= numFrames; i++)
 			{
 				m_displaySimulation.setFrame(i);
 				float simTime = m_displaySimulation.getTimeOfFrame(i); // [s]
@@ -493,12 +522,16 @@ void CMainApplication::loop()
 				glFinish();
 				
 				//+++++++++++++ DEBUG ++++++++++++++
-				TextureTools::saveTexture(prefix + "REF_"    + std::to_string(i) + ".png" ,m_pSimFBO[REFERENCE][LEFT].getFront()->getBuffer("fragColor") );
-				if (i%10==0){ for (int j = NONE; j < NUM_WARPTECHNIQUES; j++){
-					std::string prefix_ = prefix + std::to_string(j) + "_" ;
-					TextureTools::saveTexture(prefix_ + "WRP_"    + std::to_string(i) + ".png", m_pWarpFBO[j][LEFT]->getBuffer("fragColor") );
-					TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragColor") );
-				}}
+				if (i%10==0){
+					TextureTools::saveTexture(prefix + "REF_"    + std::to_string(i) + ".png" ,m_pSimFBO[REFERENCE][LEFT].getFront()->getBuffer("fragColor") );
+					for (int j = NONE; j < NUM_WARPTECHNIQUES; j++){
+						std::string prefix_ = prefix + std::to_string(j) + "_" ;
+						TextureTools::saveTexture(prefix_ + "WRP_"    + std::to_string(i) + ".png", m_pWarpFBO[j][LEFT]->getBuffer("fragColor") );
+						TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragColor") );
+						TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragAvg") );
+					}
+				}
+				glFinish();
 				//++++++++++++++++++++++++++++++++++
 
 				std::vector<float> row;
@@ -1189,24 +1222,31 @@ void CMainApplication::renderGui()
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 }
 
+void CMainApplication::renderView(float simTime, int idx, int eye)
+{
+	if (m_pChunkedRaycast[idx][eye]->isFinished())
+	{
+		//m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
+		m_pSimFBO[idx][eye].swap();
+		m_pChunkedRaycast[idx][eye]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][eye].getBack() );
+
+		m_fSimLastTime[idx][eye] = m_fSimRenderTime[idx][eye];
+		float predictTimeOffset = (m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime() * 2.0f) / 1000.0f; // [ms] to [s] //TODO replace with time sinceLastFinish
+		m_fSimRenderTime[idx][eye] = simTime + predictTimeOffset;
+	}
+
+	float predictTimeOffset = m_displaySimulation.getTimeToUpdate(); //'time until display flashes'
+	m_fWarpTime[idx][eye] = simTime + predictTimeOffset;
+
+	renderVolume(m_fSimRenderTime[idx][eye], m_fWarpTime[idx][eye], idx, eye);
+	renderWarp(  m_fSimLastTime[idx][eye],   m_fWarpTime[idx][eye], idx, eye);
+}
+
 void CMainApplication::renderViews(float simTime, int idx)
 {
 	for (int i = 0; i < 2; i++)
 	{
-		if (m_pChunkedRaycast[idx][i]->isFinished())
-		{
-			//m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
-			m_pSimFBO[idx][i].swap();
-			m_pChunkedRaycast[idx][i]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][i].getBack() );
-
-			m_fSimLastTime[idx][i] = m_fSimRenderTime[idx][i];
-			m_fSimRenderTime[idx][i] = simTime;
-		}
-
-		m_fWarpTime[idx][i] = simTime;
-
-		renderVolume(m_fSimRenderTime[idx][i], m_fWarpTime[idx][i], idx, i);
-		renderWarp(  m_fSimLastTime[idx][i],   m_fWarpTime[idx][i], idx, i);
+		renderView(simTime, idx, i);
 	}
 }
 
@@ -1297,7 +1337,7 @@ std::vector<float> CMainApplication::getVanillaTimes()
 {
 	std::vector<float> result;
 	//+++++++++++ DEBUG ++++++++++++++
-	for(float t = 0.0f; t < m_hmdSimulation.m_fDuration; t+= 1.0f/25.0f){ result.push_back(t); } //TODO replace when implemented
+	for(float t = 0.0f; t < m_hmdSimulation.m_fDuration; t+= 1.0f/8.0f){ result.push_back(t); } //TODO replace when implemented
 	return result;
 	//++++++++++++++++++++++++++++++++
 
