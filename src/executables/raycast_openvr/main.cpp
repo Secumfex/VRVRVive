@@ -1706,8 +1706,7 @@ public:
 		//TODO project LEFT view's center near point to right pixel space
 		//TODO project LEFT view's center far point to right pixel space
 		{
-			static bool useRayStartEnd = false;
-			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
+			static bool useRayStartEnd = true;
 			
 			float n = (useRayStartEnd) ? -s_zRayStart : -s_near;
 			float f = (useRayStartEnd) ? -s_zRayEnd : -s_far;
@@ -1740,48 +1739,48 @@ public:
 			glm::vec4 sdn = (scnl_r - scnl); // pixel space difference
 			glm::vec4 sdf = (scfl_r - scfl); // pixel space difference
 
-			if (ImGui::CollapsingHeader("Epipolar Info"))
-			{
-			// the actual stuff
-			ImGui::Separator();
-			ImGui::InputFloat4("b", glm::value_ptr(b));
-			ImGui::InputFloat4("bf", glm::value_ptr(bf));
-			ImGui::Separator();
-			ImGui::InputFloat4("cnl", glm::value_ptr(cnl));
-			ImGui::InputFloat4("cnl_r", glm::value_ptr(cnl_r));
-			ImGui::InputFloat4("cfl", glm::value_ptr(cfl));
-			ImGui::InputFloat4("cfl_r", glm::value_ptr(cfl_r));
-			ImGui::Separator();
-			ImGui::InputFloat4("pcnl", glm::value_ptr(pcnl));
-			ImGui::InputFloat4("pcnl_r", glm::value_ptr(pcnl_r));
-			ImGui::InputFloat4("pcfl", glm::value_ptr(pcfl));
-			ImGui::InputFloat4("pcfl_r", glm::value_ptr(pcfl_r));
-			ImGui::Separator();
-			ImGui::InputFloat4("scnl", glm::value_ptr(scnl));
-			ImGui::InputFloat4("scnl_r", glm::value_ptr(scnl_r));
-			ImGui::InputFloat4("scfl", glm::value_ptr(scfl));
-			ImGui::InputFloat4("scfl_r", glm::value_ptr(scfl_r));			
-			ImGui::Separator();
-			ImGui::InputFloat4("sdn", glm::value_ptr(sdn));
-			ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	
-			ImGui::Separator();
-			}
-
 			m_pixelOffsetNear = abs(sdn.x);
 			m_pixelOffsetFar  = abs(sdf.x);
-		}
-		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+			//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-		if (ImGui::CollapsingHeader("Epipolar Info"))
-		{
-		ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
-		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
-		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
-		//ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
-		//ImGui::Value("Pixel Offset of Images", imageOffset);
-		ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
-		ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
-		ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
+			if (ImGui::CollapsingHeader("Epipolar Info"))
+			{
+			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
+			ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
+			ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
+			ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+			//ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
+			//ImGui::Value("Pixel Offset of Images", imageOffset);
+			ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
+			ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
+			ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
+			}
+
+			if (ImGui::CollapsingHeader("Epipolar Info Details"))
+			{
+				ImGui::Separator();
+				ImGui::InputFloat4("b", glm::value_ptr(b)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Base line (left to right eye)");
+				ImGui::InputFloat4("bf", glm::value_ptr(bf)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Distance between view vectors at 1000m distance");
+				ImGui::Separator();
+				ImGui::InputFloat4("cnl", glm::value_ptr(cnl)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in left view space");
+				ImGui::InputFloat4("cnl_r", glm::value_ptr(cnl_r));if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in right view space");
+				ImGui::InputFloat4("cfl", glm::value_ptr(cfl)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in left view space");
+				ImGui::InputFloat4("cfl_r", glm::value_ptr(cfl_r)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in right view space");
+				ImGui::Separator();
+				ImGui::InputFloat4("pcnl", glm::value_ptr(pcnl)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in left projective space");
+				ImGui::InputFloat4("pcnl_r", glm::value_ptr(pcnl_r));if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in right projective space");
+				ImGui::InputFloat4("pcfl", glm::value_ptr(pcfl));if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in left projective space");
+				ImGui::InputFloat4("pcfl_r", glm::value_ptr(pcfl_r));if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in right projective space");
+				ImGui::Separator();
+				ImGui::InputFloat4("scnl", glm::value_ptr(scnl)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in left pixel (screen) coordinates");
+				ImGui::InputFloat4("scnl_r", glm::value_ptr(scnl_r)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at near distance in right pixel (screen) coordinates");
+				ImGui::InputFloat4("scfl", glm::value_ptr(scfl)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in left pixel (screen) coordinates");
+				ImGui::InputFloat4("scfl_r", glm::value_ptr(scfl_r)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Center of left view at far distance in right pixel (screen) coordinates");
+				ImGui::Separator();
+				ImGui::InputFloat4("sdn", glm::value_ptr(sdn)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at near distance");
+				ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at far distance");
+				ImGui::Separator();
+			}
 		}
 
 		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
