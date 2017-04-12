@@ -224,6 +224,7 @@ private:
 	
 	// Shader/FBO/RenderPass bookkeeping
 	enum WarpingTechniques{
+	REFERENCE,
 	NONE,
 	QUAD,
 	GRID,
@@ -247,7 +248,6 @@ private:
 
 	FrameBufferObject* m_pUvwFBO[NUM_WARPTECHNIQUES][2]; // Left + Right
 	FrameBufferObject* m_pWarpFBO[NUM_WARPTECHNIQUES][2]; // Left + Right
-	FrameBufferObject* m_pRefFBO[2]; // Left + Right
 	SimpleDoubleBuffer<FrameBufferObject*> m_pSimFBO[NUM_WARPTECHNIQUES][2]; //Left + Right, front/back
 	FrameBufferObject* m_pDiffFBO[NUM_WARPTECHNIQUES][2]; //Left + Right
 	FrameBufferObject* m_pNovelViewUvwFBO[2]; // Left + Right
@@ -311,17 +311,21 @@ public:
 	// per frame
 	void updateGui();
 	void updateWarpShader(float lastTime, float warpTime, int idx, int eye);
+	void updateDiffShader(int idx, int eye, GLuint tex1, GLuint tex2);
 	void updateRaycastShader(float simTime, int idx, int eye);
 	void updateUvwShader(float simTime, int idx, int eye);
 	void renderGui();
 	void renderViews(float simTime, int idx);
+	void renderRef(float simTime);
 	void renderVolume(float renderTime, float nextRenderTime, int idx, int eye);
 	void renderWarp(float lastTime, float warpTime, int idx, int eye);
+	void renderDiff(int idx, int eye); 
 	void renderToScreen(GLuint left, GLuint right);
 	void profileFPS(float fps);
 
 	// profiling
 	std::vector<float> getVanillaTimes();
+	float getAvgDssim(int idx, int eye);
 };
 
 int main(int argc, char *argv[])
@@ -349,264 +353,6 @@ int main(int argc, char *argv[])
 	pMainApplication->initGui();
 
 	pMainApplication->loop();
-
-	//////////////////////////////////////////////////////////////////////////////
-	/////////////////////////////// RENDERING  ///////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-	
-	/**
-	///////////////////////     UVW Map Renderpass     ///////////////////////////
-	DEBUGLOG->log("Shader Compilation: volume uvw coords"); DEBUGLOG->indent();
-	ShaderProgram uvwShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag"); DEBUGLOG->outdent();
-	uvwShaderProgram.update("model", s_model);
-	uvwShaderProgram.update("view", s_view);
-	uvwShaderProgram.update("projection", s_perspective);
-
-	DEBUGLOG->log("FrameBufferObject Creation: volume uvw coords"); DEBUGLOG->indent();
-	FrameBufferObject uvwFBO(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	FrameBufferObject uvwFBO_novelView(TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
-	uvwFBO.addColorAttachments(2);
-	uvwFBO_novelView.addColorAttachments(2);
-	FrameBufferObject::s_internalFormat = GL_RGBA; // default
-	DEBUGLOG->outdent(); 
-	
-	RenderPass uvwRenderPass(&uvwShaderProgram, &uvwFBO);
-	uvwRenderPass.addClearBit(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-	uvwRenderPass.addDisable(GL_DEPTH_TEST); // to prevent back fragments from being discarded
-	uvwRenderPass.addEnable(GL_BLEND); // to prevent vec4(0.0) outputs from overwriting previous results
-	uvwRenderPass.addRenderable(&volume);
-
-	
-	///////////////////////   Ray-Casting Renderpass    //////////////////////////
-	DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-	ShaderProgram shaderProgram("/raycast/simpleRaycast.vert", "/raycast/synth_raycastLayer_simple.frag", m_shaderDefines); DEBUGLOG->outdent();
-	shaderProgram.update("uStepSize", s_rayStepSize);
-		
-	if ( m_bHasShadow ){
-	shaderProgram.update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
-	shaderProgram.update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary		//////////////////////////////////////////////////////////////////////////////
-	}
-
-	// DEBUG
-	TransferFunctionPresets::generateTransferFunction();
-	TransferFunctionPresets::updateTransferFunctionTex();
-
-	DEBUGLOG->log("FrameBufferObject Creation: synth ray casting layers"); DEBUGLOG->indent();
-	FrameBufferObject::s_internalFormat = GL_RGBA32F; // allow arbitrary values
-	FrameBufferObject synth_raycastLayerFBO(shaderProgram.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	FrameBufferObject::s_internalFormat = GL_RGBA; // default
-	DEBUGLOG->outdent(); 
-
-	// bind volume texture, back uvw textures, front uvws
-	OPENGLCONTEXT->bindTextureToUnit(volumeTextureCT, GL_TEXTURE0, GL_TEXTURE_3D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE1, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE2, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(TransferFunctionPresets::s_transferFunction.getTextureHandle(), GL_TEXTURE3, GL_TEXTURE_1D);
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-
-	shaderProgram.update("volume_texture", 0); // volume texture
-	shaderProgram.update("back_uvw_map",  1);
-	shaderProgram.update("front_uvw_map", 2);
-	shaderProgram.update("transferFunctionTex", 3);
-
-	// ray casting render pass
-	RenderPass renderPass(&shaderProgram, &synth_raycastLayerFBO);
-	renderPass.setClearColor(0.0f,0.0f,0.0f,1.0f);
-	renderPass.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	renderPass.addRenderable(&quad);
-	renderPass.addEnable(GL_DEPTH_TEST);
-	renderPass.addDisable(GL_BLEND);
-	
-	///////////////////////   Show Texture Renderpass    //////////////////////////
-	ShaderProgram showTexShader("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", s_shaderDefines);
-	RenderPass showTex(&showTexShader,0);
-	showTex.addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	showTex.addRenderable(&quad);
-	showTex.setViewport(0,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	showTex.addDisable(GL_BLEND);
-
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE4, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT2), GL_TEXTURE5, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT3), GL_TEXTURE6, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT4), GL_TEXTURE7, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT5), GL_TEXTURE8, GL_TEXTURE_2D); // debugging output
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getDepthTextureHandle(),								  GL_TEXTURE9, GL_TEXTURE_2D); //depth 0
-	OPENGLCONTEXT->bindTextureToUnit(synth_raycastLayerFBO.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE10, GL_TEXTURE_2D); //depth 1-4
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-
-	showTexShader.update("tex", 4);
-
-	///////////////////////   novel view synthesis Renderpass    //////////////////////////
-	//Grid grid(400,400,0.0025f,0.0025f, false);
-
-	ShaderProgram novelViewShader("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", s_shaderDefines);
-	FrameBufferObject FBO_novelView(novelViewShader.getOutputInfoMap(), TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-	RenderPass novelView(&novelViewShader, 0);
-	novelView.addRenderable(&quad);
-	novelView.addEnable(GL_DEPTH_TEST);
-	novelView.setViewport(TEXTURE_RESOLUTION.x,0,TEXTURE_RESOLUTION.x, TEXTURE_RESOLUTION.y);
-
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE12, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(uvwFBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1), GL_TEXTURE13, GL_TEXTURE_2D);
-	OPENGLCONTEXT->bindTextureToUnit(FBO_novelView.getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE11, GL_TEXTURE_2D); //depth 1-4
-	OPENGLCONTEXT->activeTexture(GL_TEXTURE20);
-
-	novelViewShader.update("layer0",4);
-	novelViewShader.update("layer1",5);
-	novelViewShader.update("layer2",6);
-	novelViewShader.update("layer3",7);
-	novelViewShader.update("depth", 10);
-	
-	novelViewShader.update("back_uvw_map",  12);
-	novelViewShader.update("front_uvw_map", 13);
-	
-	novelViewShader.update("uThreshold", 32);
-
-	//////////////////////////////////////////////////////////////////////////////
-	///////////////////////    GUI / USER INPUT   ////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-
-	// Setup ImGui binding
-	ImGui_ImplSdlGL3_Init(window);
-
-	Turntable turntable;
-	double old_x;
-    double old_y;
-	
-	auto sdlEventHandler = [&](SDL_Event *event)
-	{
-		bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
-
-		switch (event->type)
-		{
-		case SDL_KEYDOWN:
-		{
-			int k = event->key.keysym.sym;
-			switch (k)
-			{
-			case SDLK_w:
-				s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, -0.1f, 0.0f))) * s_translation;
-				break;
-			case SDLK_a:
-				s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
-				break;
-			case SDLK_s:
-				s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, 0.1f, 0.0f))) * s_translation;
-				break;
-			case SDLK_d:
-				s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
-				break;
-			}
-			break;
-		}
-		case SDL_MOUSEMOTION:
-		{
-			ImGuiIO& io = ImGui::GetIO();
-			if (io.WantCaptureMouse)
-			{
-				break;
-			} // ImGUI is handling this
-
-			float d_x = event->motion.x - old_x;
-			float d_y = event->motion.y - old_y;
-
-			if (turntable.getDragActive())
-			{
-				turntable.dragBy(d_x, d_y, s_view);
-			}
-
-			old_x = (float)event->motion.x;
-			old_y = (float)event->motion.y;
-			break;
-		}
-		case SDL_MOUSEBUTTONDOWN:
-		{
-			if (event->button.button == SDL_BUTTON_LEFT)
-			{
-				turntable.setDragActive(true);
-			}
-			break;
-		}
-		case SDL_MOUSEBUTTONUP:
-		{
-			if (event->button.button == SDL_BUTTON_LEFT)
-			{
-				turntable.setDragActive(false);
-			}
-			break;
-		}
-		}
-		return true;
-	};
-
-	std::string window_header = "Novel View Synthesis";
-	SDL_SetWindowTitle(window, window_header.c_str() );
-
-	//////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////// RENDER LOOP /////////////////////////////////
-	//////////////////////////////////////////////////////////////////////////////
-
-	float elapsedTime = 0.0;
-	while (!shouldClose(window))
-	{
-		////////////////////////////////    EVENTS    ////////////////////////////////
-		pollSDLEvents(window, sdlEventHandler);
-		profileFPS((float) (ImGui::GetIO().Framerate));
-
-		////////////////////////////////     GUI      ////////////////////////////////
-	
-		//////////////////////////////////////////////////////////////////////////////
-				
-		////////////////////////  SHADER / UNIFORM UPDATING //////////////////////////
-		// update view related uniforms
-		uvwShaderProgram.update("model", s_translation * turntable.getRotationMatrix() * s_rotation * s_scale);
-
-		// ray start/end parameters
-		shaderProgram.update("uStepSize", s_rayStepSize); 	  // ray step size
-
-		// color mapping parameters
-		shaderProgram.update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
-		shaderProgram.update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-
-		shaderProgram.update("uProjection", s_perspective);
-		shaderProgram.update("uScreenToView", s_screenToView );
-
-		novelViewShader.update("uProjection", s_perspective); // used for depth to distance computation
-		
-		// used for reprojection
-		novelViewShader.update("uViewOld", s_view); // used for depth to distance computation
-		novelViewShader.update("uViewNovel", s_view_r); // used for depth to distance computation
-		//////////////////////////////////////////////////////////////////////////////
-		
-		////////////////////////////////  RENDERING //// ///////////////////////////// 
-		glDisable(GL_BLEND);
-		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
-		
-		// render left image
-		uvwShaderProgram.update("view", s_view);
-		uvwRenderPass.setFrameBufferObject(&uvwFBO);
-		uvwRenderPass.render();		
-		renderPass.setViewport(0, 0, getResolution(window).x / 2, getResolution(window).y);
-		renderPass.render();
-		
-		showTex.render();
-
-		uvwShaderProgram.update("view", s_view_r);
-		uvwRenderPass.setFrameBufferObject(&uvwFBO_novelView);
-		uvwRenderPass.render();
-
-		novelView.render();
-		
-		glActiveTexture(GL_TEXTURE21);
-		ImGui::Render();
-		SDL_GL_SwapWindow(window); // swap buffers
-		//////////////////////////////////////////////////////////////////////////////
-	}
-
-	destroyWindow(window);
-	
-**/
 
 	return 0;
 }
@@ -661,13 +407,19 @@ void CMainApplication::loop()
 
 			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 
-			renderViews(ImGui::GetTime(), m_iActiveWarpingTechnique);
+			if ( m_iActiveWarpingTechnique == REFERENCE )
+			{
+				renderRef(ImGui::GetTime());
+			}
+			else
+			{
+				renderViews(ImGui::GetTime(), m_iActiveWarpingTechnique);
+			}
 
 			renderToScreen(
 				m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
 				m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
 				);
-
 
 			renderGui();
 
@@ -758,11 +510,13 @@ void CMainApplication::loadShaders()
 		m_pDiffShader[i] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/error.frag", m_shaderDefines); DEBUGLOG->outdent();
 	}
 
+	m_pRaycastShader[REFERENCE] = new ShaderProgram("/raycast/simpleRaycast.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
 	m_pRaycastShader[NONE] = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
 	m_pRaycastShader[QUAD] = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
 	m_pRaycastShader[GRID] = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
 	m_pRaycastShader[NOVELVIEW] = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer_simple.frag", m_shaderDefines);
 
+	m_pWarpShader[REFERENCE] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);
 	m_pWarpShader[NONE] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", m_shaderDefines);
 	m_pWarpShader[QUAD] = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
 	m_pWarpShader[GRID] = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
@@ -792,7 +546,15 @@ void CMainApplication::initFramebuffers()
 		m_pDiffFBO[i][j] = new FrameBufferObject(m_pDiffShader[i]->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 	}}
 	DEBUGLOG->outdent();
-		
+	
+	// redirect REFERENCE WarpFBO to SimFBO --> no warp technique
+	for (int i = 0; i < 2; i++)
+	{
+		delete m_pWarpFBO[REFERENCE][i]; // dont need this one
+		delete m_pSimFBO[REFERENCE][i].getBack(); // dont need this one either
+		m_pWarpFBO[REFERENCE][i] = m_pSimFBO[REFERENCE][i].getFront();
+	}
+
 	for (int i = 0; i < 2; i++)
 	{
 		FrameBufferObject::s_internalFormat = GL_RGBA16F;
@@ -825,7 +587,7 @@ void CMainApplication::initRenderPasses()
 			glm::ivec2 viewportSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
 			glm::ivec2 chunkSize = glm::ivec2(96,96);
 			float targetRenderTime = m_displaySimulation.m_fRefreshTime/2.0f;
-			if (i == NONE) {
+			if (i == NONE || i == REFERENCE ) {
 				targetRenderTime = 999.0f;
 				chunkSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
 			}
@@ -834,6 +596,8 @@ void CMainApplication::initRenderPasses()
 		}
 
 		m_pDiff[i] = new RenderPass(m_pDiffShader[i], m_pDiffFBO[i][LEFT]);
+		m_pDiff[i]->addRenderable(m_pQuad);
+		m_pDiff[i]->addDisable(GL_DEPTH_TEST);
 		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -842,6 +606,10 @@ void CMainApplication::initRenderPasses()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 	
+	m_pWarp[REFERENCE] = new RenderPass(m_pWarpShader[REFERENCE], m_pWarpFBO[REFERENCE][LEFT]);
+	m_pWarp[REFERENCE]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	m_pWarp[REFERENCE]->addDisable(GL_DEPTH_TEST);
+	m_pWarp[REFERENCE]->addRenderable(m_pQuad);
 	m_pWarp[NONE] = new RenderPass(m_pWarpShader[NONE], m_pWarpFBO[NONE][LEFT]);
 	m_pWarp[NONE]->addClearBit(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	m_pWarp[NONE]->addDisable(GL_DEPTH_TEST);
@@ -869,10 +637,19 @@ void CMainApplication::initRenderPasses()
 		m_pChunkedRaycast[NONE][i]->setRenderTimeBias( 1.0f );
 		m_pChunkedRaycast[NONE][i]->setPrintDebug(false);
 	}
+	// 'disable' adaptive chunked raycasting behaviour for 'reference' raycaster
+	for(int i = 0; i< 2; i++)
+	{
+		m_pChunkedRaycast[REFERENCE][i]->setAutoAdjustRenderTime(false);
+		m_pChunkedRaycast[REFERENCE][i]->setChunkSize( glm::ivec2(FRAMEBUFFER_RESOLUTION) );
+		m_pChunkedRaycast[REFERENCE][i]->setTargetRenderTime( 999.0f );
+		m_pChunkedRaycast[REFERENCE][i]->setRenderTimeBias( 1.0f );
+		m_pChunkedRaycast[REFERENCE][i]->setPrintDebug(false);
+	}
 	m_pShowTex = new RenderPass( m_pShowTexShader, 0);
 	m_pShowTex->addRenderable(m_pQuad);
 	m_pShowTex->addDisable(GL_DEPTH_TEST);
-	m_pShowTex->addEnable(GL_BLEND);
+	m_pShowTex->addDisable(GL_BLEND);
 
 	DEBUGLOG->outdent();
 }
@@ -1240,8 +1017,9 @@ void CMainApplication::updateWarpShader(float lastTime, float warpTime, int idx,
 	switch (idx)
 	{
 	default:
+	case REFERENCE:
 	case NONE:
-		m_pWarpShader[NONE]->updateAndBindTexture( "tex", 2, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor") ); // last result
+		m_pWarpShader[idx]->updateAndBindTexture( "tex", 2, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor") ); // last result
 		break;
 	case QUAD:
 		m_pWarpShader[QUAD]->updateAndBindTexture( "tex", 2, m_pSimFBO[idx][eye].getFront()->getBuffer("fragColor") ); // last result
@@ -1280,6 +1058,13 @@ void CMainApplication::updateWarpShader(float lastTime, float warpTime, int idx,
 	}
 }
 
+void CMainApplication::updateDiffShader(int idx, int eye, GLuint tex1, GLuint tex2)
+{
+	m_pDiffShader[idx]->updateAndBindTexture("tex1", 2, tex1);
+	m_pDiffShader[idx]->updateAndBindTexture("tex2", 3, tex2);
+}
+
+
 void CMainApplication::updateUvwShader(float simTime, int idx, int eye)
 {
 	m_pUvwShader[idx]->update("model", s_model);
@@ -1294,6 +1079,7 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 	case NOVELVIEW:
 		//m_pRaycastShader[NOVELVIEW]->update( "uScreenToView", s_screenToView );
 	default:
+	case REFERENCE:
 	case NONE:
 	case QUAD:
 	case GRID:
@@ -1344,6 +1130,22 @@ void CMainApplication::renderViews(float simTime, int idx)
 	}
 }
 
+void CMainApplication::renderRef(float simTime)
+{
+	for (int i = 0; i < 2; i++)
+	{
+		updateUvwShader(simTime, REFERENCE, i);
+		m_pUvw[REFERENCE]->setFrameBufferObject( m_pUvwFBO[REFERENCE][i] );
+		m_pUvw[REFERENCE]->render();
+
+		updateRaycastShader(simTime, REFERENCE, i);
+		m_pRaycast[REFERENCE][i]->setFrameBufferObject( m_pSimFBO[REFERENCE][i].getFront() );
+		m_pRaycast[REFERENCE][i]->render();
+	}
+}
+
+
+
 void CMainApplication::renderVolume(float renderTime, float simTime, int idx, int eye)
 {
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
@@ -1363,6 +1165,21 @@ void CMainApplication::renderWarp(float lastTime, float warpTime, int idx, int e
 	updateWarpShader(lastTime, warpTime, idx, eye);
 	m_pWarp[idx]->setFrameBufferObject( m_pWarpFBO[idx][eye] );
 	m_pWarp[idx]->render();
+}
+
+void CMainApplication::renderDiff(int idx, int eye)
+{
+	updateDiffShader(
+		idx,
+		eye,
+		m_pSimFBO[REFERENCE][eye].getFront()->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0),
+		m_pWarpFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0)
+		);
+	m_pDiff[idx]->setFrameBufferObject( m_pDiffFBO[idx][eye] );
+	m_pDiff[idx]->render();
+	
+	OPENGLCONTEXT->bindTextureToUnit( m_pDiffFBO[idx][eye]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0), GL_TEXTURE2 );
+	glGenerateMipmap(GL_TEXTURE_2D);
 }
 
 void CMainApplication::renderToScreen(GLuint left, GLuint right)
@@ -1386,4 +1203,12 @@ void CMainApplication::profileFPS(float fps)
 {
 	m_fpsCounter[m_iCurFpsIdx] = fps;
 	m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
+}
+
+float CMainApplication::getAvgDssim(int idx, int eye)
+{
+	int numMipmaps = (int) (std::log( std::max( (float) m_pDiffFBO[idx][eye]->getWidth(), (float) m_pDiffFBO[idx][eye]->getHeight()) ) / std::log( 2.0f ) );
+	float avg;
+	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, &avg);
+	return avg;
 }

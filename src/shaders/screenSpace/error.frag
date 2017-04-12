@@ -8,8 +8,8 @@ uniform sampler2D tex1;
 uniform sampler2D tex2;
 
 //!< out-variables
-layout(location = 0) out vec4 fragErrorColor;
-layout(location = 1) out vec4 fragErrorAvg;
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragAvg;
 
 #ifdef DSSIM_ERROR
 	vec4 computeDSSIM( ivec2 coord )
@@ -92,6 +92,6 @@ void main()
 	float errorAvg = (errorColor.r + errorColor.g + errorColor.b + errorColor.a) / 4.0;
 
 	//!< fragcolor gets transparency by uniform
-    fragErrorColor = errorColor;
-    fragErrorAvg = vec4(errorAvg);
+    fragColor = errorColor;
+    fragAvg = vec4(errorAvg);
 }
