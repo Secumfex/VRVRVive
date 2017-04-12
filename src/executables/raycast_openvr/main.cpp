@@ -1680,6 +1680,8 @@ public:
 		float s_zRayEnd   = max(s_near, -(objectCenter.z - radius));
 		float s_zRayStart = max(s_near, -(objectCenter.z + radius));
 
+		// TODO this is broken for Vive matrices
+		/** 
 		float t_near = (s_zRayStart) / s_near;
 		float t_far  = (s_zRayEnd)  / s_near;
 		float nW = s_nearW;
@@ -1695,14 +1697,88 @@ public:
 		float imageOffset =  b * s;
 		m_pixelOffsetNear = ((b * s_near) / s_zRayStart) * s;
 		m_pixelOffsetFar  = ((b * s_near) / s_zRayEnd) * s;
-	
+		**/
+
+		// image offset:
+		//+++++++++++++++++ DEBUG +++++++++++++++++
+		//TODO project left and right view's center points to left pixel space: how far apart?
+		//TODO project left and right view's center points to right pixel space: same as above?
+		//TODO project LEFT view's center near point to right pixel space
+		//TODO project LEFT view's center far point to right pixel space
+		{
+			static bool useRayStartEnd = false;
+			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
+			
+			float n = (useRayStartEnd) ? -s_zRayStart : -s_near;
+			float f = (useRayStartEnd) ? -s_zRayEnd : -s_far;
+
+			glm::vec4 b = s_view * glm::inverse(s_view_r) * glm::vec4(0.f,0.f,0.f,1.f); // vector from left to right camera pos
+			glm::vec4 bf = s_view * glm::inverse(s_view_r) * glm::vec4(0.f,0.f,-1000.f,1.f); // vector from left to right camera pos (the same but at large distance)
+
+			glm::vec4 cnl = glm::vec4(0.f, 0.f, n, 1.0f); // near center 
+			glm::vec4 cfl = glm::vec4(0.f, 0.f, f, 1.0f); // far center
+
+			glm::vec4 cnl_r = s_view_r * glm::inverse(s_view) * cnl; // left near ctr point in right view
+			glm::vec4 cfl_r = s_view_r * glm::inverse(s_view) * cfl; // left far ctr point in right view
+			
+			glm::vec4 pcnl = s_perspective * cnl; // left near ctr point in left proj space
+			glm::vec4 pcnl_r = s_perspective_r * cnl_r; // left near ctr point in right proj space
+			pcnl /= pcnl.w;
+			pcnl_r /= pcnl_r.w;
+
+			glm::vec4 pcfl = s_perspective * cfl; // left near ctr point in left proj space
+			glm::vec4 pcfl_r = s_perspective_r * cfl_r; // left near ctr point in right proj space
+			pcfl /= pcfl.w;
+			pcfl_r /= pcfl_r.w;
+
+			glm::vec4 scnl = ((pcnl * 0.5f) + 0.5f) * glm::vec4(FRAMEBUFFER_RESOLUTION, 1.0f, 1.0f);
+			glm::vec4 scnl_r = ((pcnl_r * 0.5f) + 0.5f) * glm::vec4(FRAMEBUFFER_RESOLUTION, 1.0f, 1.0f);
+
+			glm::vec4 scfl = ((pcfl * 0.5f) + 0.5f) * glm::vec4(FRAMEBUFFER_RESOLUTION, 1.0f, 1.0f);
+			glm::vec4 scfl_r = ((pcfl_r * 0.5f) + 0.5f) * glm::vec4(FRAMEBUFFER_RESOLUTION, 1.0f, 1.0f);
+
+			glm::vec4 sdn = (scnl_r - scnl); // pixel space difference
+			glm::vec4 sdf = (scfl_r - scfl); // pixel space difference
+
+			if (ImGui::CollapsingHeader("Epipolar Info"))
+			{
+			// the actual stuff
+			ImGui::Separator();
+			ImGui::InputFloat4("b", glm::value_ptr(b));
+			ImGui::InputFloat4("bf", glm::value_ptr(bf));
+			ImGui::Separator();
+			ImGui::InputFloat4("cnl", glm::value_ptr(cnl));
+			ImGui::InputFloat4("cnl_r", glm::value_ptr(cnl_r));
+			ImGui::InputFloat4("cfl", glm::value_ptr(cfl));
+			ImGui::InputFloat4("cfl_r", glm::value_ptr(cfl_r));
+			ImGui::Separator();
+			ImGui::InputFloat4("pcnl", glm::value_ptr(pcnl));
+			ImGui::InputFloat4("pcnl_r", glm::value_ptr(pcnl_r));
+			ImGui::InputFloat4("pcfl", glm::value_ptr(pcfl));
+			ImGui::InputFloat4("pcfl_r", glm::value_ptr(pcfl_r));
+			ImGui::Separator();
+			ImGui::InputFloat4("scnl", glm::value_ptr(scnl));
+			ImGui::InputFloat4("scnl_r", glm::value_ptr(scnl_r));
+			ImGui::InputFloat4("scfl", glm::value_ptr(scfl));
+			ImGui::InputFloat4("scfl_r", glm::value_ptr(scfl_r));			
+			ImGui::Separator();
+			ImGui::InputFloat4("sdn", glm::value_ptr(sdn));
+			ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	
+			ImGui::Separator();
+			}
+
+			m_pixelOffsetNear = abs(sdn.x);
+			m_pixelOffsetFar  = abs(sdf.x);
+		}
+		//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 		if (ImGui::CollapsingHeader("Epipolar Info"))
 		{
 		ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
 		ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
 		ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
-		ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
-		ImGui::Value("Pixel Offset of Images", imageOffset);
+		//ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
+		//ImGui::Value("Pixel Offset of Images", imageOffset);
 		ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
 		ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
 		ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
