@@ -576,6 +576,11 @@ public:
 		DEBUGLOG->log("Shader Compilation: novel view warp shader"); DEBUGLOG->indent();
 		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines);
 		DEBUGLOG->outdent();
+	
+		DEBUGLOG->log("Shader Compilation: grid warp shader"); DEBUGLOG->indent();
+		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
+		DEBUGLOG->outdent();
+	
 	}
 
 	void CMainApplication::loadShaders()
@@ -2118,7 +2123,7 @@ public:
 
 	void CMainApplication::submitView(int eye)
 	{
-		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE0 + m_iLeftDebugView + eye], (vr::Hmd_Eye) eye);
+		m_pOvr->submitImage( OPENGLCONTEXT->cacheTextures[GL_TEXTURE2 + 2 * WARPED + eye], (vr::Hmd_Eye) eye);
 	}
 
 	void CMainApplication::updateSimulationFrameData(int eye)
@@ -2395,6 +2400,7 @@ public:
 		delete m_pRaycastLayersShader;
 		delete m_pComposeTexArrayShader;
 		delete m_pNovelViewWarpShader;
+		delete m_pGridWarpShader;
 
 		// reload shader defines
 		updateShaderDefines();
@@ -2409,6 +2415,7 @@ public:
 		m_pRaycast[2 + RIGHT]->setShaderProgram(m_pRaycastLayersShader);
 		m_pComposeTexArray->setShaderProgram(m_pComposeTexArrayShader);
 		m_pNovelViewWarp->setShaderProgram(m_pNovelViewWarpShader);
+		m_pGridWarp->setShaderProgram(m_pGridWarpShader);
 
 		// update uniforms
 		initTextureUniforms();
