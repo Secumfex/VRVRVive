@@ -8,6 +8,7 @@
 #include <Core/Timer.h>
 #include <Core/DoubleBuffer.h>
 #include <Core/FileReader.h>
+#include <Core/CSVWriter.h>
 
 #include <Rendering/GLTools.h>
 #include <Rendering/VertexArrayObjects.h>
@@ -88,7 +89,7 @@ public:
 class DisplaySimulation
 {
 public:
-	DisplaySimulation() :m_fRefreshTime(16.0f) {}
+	DisplaySimulation() :m_fRefreshTime(1.0f / 60.0f) {}
 	float m_fRefreshTime;
 	float m_fTime;
 	int   m_iFrame;
@@ -223,6 +224,7 @@ private:
 	Grid*	m_pGrid;
 	
 	// Shader/FBO/RenderPass bookkeeping
+public:
 	enum WarpingTechniques{
 	REFERENCE,
 	NONE,
@@ -232,7 +234,7 @@ private:
 	NUM_WARPTECHNIQUES // auxiliary
 	}; 
 	int m_iActiveWarpingTechnique;
-	
+private:	
 	ShaderProgram* m_pUvwShader[NUM_WARPTECHNIQUES];
 	ShaderProgram* m_pWarpShader[NUM_WARPTECHNIQUES];
 	ShaderProgram* m_pRaycastShader[NUM_WARPTECHNIQUES];
@@ -320,11 +322,12 @@ public:
 	void renderVolume(float renderTime, float nextRenderTime, int idx, int eye);
 	void renderWarp(float lastTime, float warpTime, int idx, int eye);
 	void renderDiff(int idx, int eye); 
+	void renderDiffs(int idx); 
 	void renderToScreen(GLuint left, GLuint right);
 	void profileFPS(float fps);
 
 	// profiling
-	std::vector<float> getVanillaTimes();
+	std::vector<float> getVanillaTimes(); // return the timestamps at wich a new raycasting frame is issued
 	float getAvgDssim(int idx, int eye);
 };
 
@@ -405,6 +408,11 @@ void CMainApplication::loop()
 		{
 			updateGui();
 
+			if ( ImGui::Button("Begin Profiling") )
+			{
+				mode = PROFILE;
+			}
+
 			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 
 			if ( m_iActiveWarpingTechnique == REFERENCE )
@@ -428,20 +436,86 @@ void CMainApplication::loop()
 
 		if(mode == PROFILE)
 		{
-			//std::vector<float> vanillaTimes = getVanillaTimes();
-			//for (int i = 0; i< numFrames; i++)
-			//{
-			//	ref = renderRefForFrame( i );
-			//	vanilla = renderLastFrameBeforeFrame( i );
-			//	warp1 = renderIterationWarp1();
-			//	warp2 = renderIterationWarp2();
-			//	warp3 = renderIterationWarp3();
-			//	diffVanilla = diff( ref, vanilla );
-			//	diffWarp1 = diff( ref, warp1 );
-			//	diffWarp2 = diff( ref, warp2 );
-			//	diffWarp3 = diff( ref, warp3 );
-			//	addCsvRow( i, diffVanilla.DSSIMavg, diffWarp1.DSSIMavg, diffWarp2.DSSIMavg, diffWarp3.DSSIMavg);
-			//}
+			// auxiliary
+			auto lastTimeBefore = [](std::vector<float>& times, float time)
+			{
+				float last = 0.0f;	for ( auto t: times) if( t > time ){ return last; }else{ last = t; } return 0.0f;
+			};
+			std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
+
+			//----------- CSV Writer -------------
+			CSVWriter<float> csvWriter;
+			std::vector<std::string> headers;
+			headers.push_back("Frame");
+			headers.push_back("Time");
+			headers.push_back("NONE");
+			headers.push_back("QUAD");
+			headers.push_back("GRID");
+			headers.push_back("NOVELVIEW");
+			csvWriter.setHeaders(headers);
+
+			//----------- VANILLA TIMES -------------
+			std::vector<float> vanillaTimes = getVanillaTimes(); // [s]
+			int numFrames = (int) ( (m_hmdSimulation.m_fDuration) / m_displaySimulation.m_fRefreshTime ) + 1; // [s]
+			
+			//----------- SETUP/RESET/INITIALIZE -------------
+			//TODO reset sim and warp times
+			//TODO render t=0 views / warps
+			//TODO reset ChunkedRenderPasses
+
+			//----------- PROFILING -------------
+			for (int i = 0; i< numFrames; i++)
+			{
+				m_displaySimulation.setFrame(i);
+				float simTime = m_displaySimulation.getTimeOfFrame(i); // [s]
+				
+				// REFERENCE
+				renderRef(simTime + m_displaySimulation.getTimeToUpdate()); // i.e.: what should be visible at the time the display flashes
+				
+				// NONE
+				float lastVanillaRenderTime = lastTimeBefore( vanillaTimes, simTime );
+				renderViews(lastVanillaRenderTime, NONE);
+				
+				// WARP ITERATIONS 
+				//TODO set timestamp queries for each rendering
+				renderViews(simTime, QUAD );
+				renderViews(simTime, GRID );
+				renderViews(simTime, NOVELVIEW );
+				glFinish();
+
+				//TODO retrieve timestamp queries, calculate 'render times'
+
+				// DIFFERENCES
+				renderDiffs(NONE);
+				renderDiffs(QUAD);
+				renderDiffs(GRID);
+				renderDiffs(NOVELVIEW);
+				glFinish();
+				
+				//+++++++++++++ DEBUG ++++++++++++++
+				TextureTools::saveTexture(prefix + "REF_"    + std::to_string(i) + ".png" ,m_pSimFBO[REFERENCE][LEFT].getFront()->getBuffer("fragColor") );
+				if (i%10==0){ for (int j = NONE; j < NUM_WARPTECHNIQUES; j++){
+					std::string prefix_ = prefix + std::to_string(j) + "_" ;
+					TextureTools::saveTexture(prefix_ + "WRP_"    + std::to_string(i) + ".png", m_pWarpFBO[j][LEFT]->getBuffer("fragColor") );
+					TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragColor") );
+				}}
+				//++++++++++++++++++++++++++++++++++
+
+				std::vector<float> row;
+				row.push_back((float) i);
+				row.push_back(simTime);
+				row.push_back( (getAvgDssim(NONE,LEFT) + getAvgDssim(NONE,RIGHT)) / 2.0f );
+				row.push_back( (getAvgDssim(QUAD,LEFT) + getAvgDssim(QUAD,RIGHT)) / 2.0f );
+				row.push_back( (getAvgDssim(GRID,LEFT) + getAvgDssim(GRID,RIGHT)) / 2.0f );
+				row.push_back( (getAvgDssim(NOVELVIEW,LEFT) + getAvgDssim(NOVELVIEW,RIGHT)) / 2.0f );
+
+				csvWriter.addRow(row);
+			}
+
+			csvWriter.writeToFile(prefix + "AVERAGES.csv" );
+
+			// reset
+			mode = SETUP;
 		}
 	}
 
@@ -543,7 +617,19 @@ void CMainApplication::initFramebuffers()
 
 		m_pWarpFBO[i][j] = new FrameBufferObject(m_pWarpShader[i]->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
 		
+		// Diff FBOs
+		int numMipmaps = (int) (std::log( std::max(FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y) ) / std::log( 2.0f ) );
+		FrameBufferObject::s_useTexStorage2D = true;
+		FrameBufferObject::s_numLevels = numMipmaps + 1;
+		FrameBufferObject::s_internalFormat = GL_RGBA16F;
 		m_pDiffFBO[i][j] = new FrameBufferObject(m_pDiffShader[i]->getOutputInfoMap(), (int) FRAMEBUFFER_RESOLUTION.x, (int) FRAMEBUFFER_RESOLUTION.y);
+		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][j]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		OPENGLCONTEXT->bindTexture(0);
+		FrameBufferObject::s_internalFormat = GL_RGBA8;
+		FrameBufferObject::s_useTexStorage2D = false;
+		FrameBufferObject::s_numLevels = 1;
 	}}
 	DEBUGLOG->outdent();
 	
@@ -551,7 +637,7 @@ void CMainApplication::initFramebuffers()
 	for (int i = 0; i < 2; i++)
 	{
 		delete m_pWarpFBO[REFERENCE][i]; // dont need this one
-		delete m_pSimFBO[REFERENCE][i].getBack(); // dont need this one either
+		//delete m_pSimFBO[REFERENCE][i].getBack(); // dont need this one either
 		m_pWarpFBO[REFERENCE][i] = m_pSimFBO[REFERENCE][i].getFront();
 	}
 
@@ -586,7 +672,7 @@ void CMainApplication::initRenderPasses()
 
 			glm::ivec2 viewportSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
 			glm::ivec2 chunkSize = glm::ivec2(96,96);
-			float targetRenderTime = m_displaySimulation.m_fRefreshTime/2.0f;
+			float targetRenderTime = (m_displaySimulation.m_fRefreshTime * 1000.0f) / 2.0f;
 			if (i == NONE || i == REFERENCE ) {
 				targetRenderTime = 999.0f;
 				chunkSize = glm::ivec2(FRAMEBUFFER_RESOLUTION);
@@ -598,12 +684,6 @@ void CMainApplication::initRenderPasses()
 		m_pDiff[i] = new RenderPass(m_pDiffShader[i], m_pDiffFBO[i][LEFT]);
 		m_pDiff[i]->addRenderable(m_pQuad);
 		m_pDiff[i]->addDisable(GL_DEPTH_TEST);
-		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][LEFT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][RIGHT]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 	
 	m_pWarp[REFERENCE] = new RenderPass(m_pWarpShader[REFERENCE], m_pWarpFBO[REFERENCE][LEFT]);
@@ -1167,6 +1247,13 @@ void CMainApplication::renderWarp(float lastTime, float warpTime, int idx, int e
 	m_pWarp[idx]->render();
 }
 
+void CMainApplication::renderDiffs(int idx)
+{
+	for (int i = LEFT; i <= RIGHT; i++)
+	{
+		renderDiff(idx, i);
+	}
+}
 void CMainApplication::renderDiff(int idx, int eye)
 {
 	updateDiffShader(
@@ -1205,10 +1292,32 @@ void CMainApplication::profileFPS(float fps)
 	m_iCurFpsIdx = (m_iCurFpsIdx + 1) % m_fpsCounter.size(); 
 }
 
+
+std::vector<float> CMainApplication::getVanillaTimes()
+{
+	std::vector<float> result;
+	//+++++++++++ DEBUG ++++++++++++++
+	for(float t = 0.0f; t < m_hmdSimulation.m_fDuration; t+= 1.0f/25.0f){ result.push_back(t); } //TODO replace when implemented
+	return result;
+	//++++++++++++++++++++++++++++++++
+
+	float simTime = 0.0f;
+	// TODO get GPU Time (synchronize CPU/GPU)
+	// TODO render frame 0
+	// TODO while time < hmd animation time loop
+	//      update time, add timestamp to vector
+	//      run renderpass(es LEFT and RIGHT)
+	//      SDL_GL_SwapWindow( m_pWindow ); <--- OR: glFinish, then wait until rendering returns (using query object)
+	return result;
+}
+
+static float avg[CMainApplication::NUM_WARPTECHNIQUES * 4];
 float CMainApplication::getAvgDssim(int idx, int eye)
 {
 	int numMipmaps = (int) (std::log( std::max( (float) m_pDiffFBO[idx][eye]->getWidth(), (float) m_pDiffFBO[idx][eye]->getHeight()) ) / std::log( 2.0f ) );
-	float avg;
-	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, &avg);
-	return avg;
+
+	OPENGLCONTEXT->bindTextureToUnit( m_pDiffFBO[idx][eye]->getBuffer("fragColor"), GL_TEXTURE2 );
+	glGetTexImage(GL_TEXTURE_2D, numMipmaps, GL_RGBA, GL_FLOAT, &avg[idx * 4]);
+	
+	return (avg[idx * 4] + avg[idx * 4 + 1] + avg[idx * 4 + 2] + avg[idx * 4 + 3])/4.0f;
 }
