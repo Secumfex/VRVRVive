@@ -586,7 +586,6 @@ public:
 		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines);
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
-		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
 		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
 		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
 		DEBUGLOG->outdent();
@@ -1912,7 +1911,7 @@ public:
 	void CMainApplication::renderVolumeIteration(int eye, MatrixSet& matrixSet)
 	{
 		// raycasting (chunked)
-		m_pRaycastShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrixSet.model ) * glm::inverse( matrixSet.view ) * s_screenToView );
+		//m_pRaycastShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse( matrixSet.model ) * glm::inverse( matrixSet.view ) * s_screenToView );
 		m_pRaycastShader->update( "uViewToTexture", s_modelToTexture * glm::inverse( matrixSet.model) * glm::inverse( matrixSet.view) );
 		m_pRaycastShader->update( "uProjection", matrices[eye][CURRENT].perspective);
 		m_pRaycastShader->update( "back_uvw_map",  2 + 2 * UVW_BACK + eye );
@@ -1935,8 +1934,9 @@ public:
 	void CMainApplication::renderVolumeLayersIteration(int eye, MatrixSet& matrixSet)
 	{
 		// raycasting (chunked)
-		m_pRaycastLayersShader->update( "uScreenToView", s_screenToView );
-		m_pRaycastLayersShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse(matrixSet.model) * glm::inverse(matrixSet.view) * s_screenToView);
+		//m_pRaycastLayersShader->update( "uScreenToView", s_screenToView );
+		//m_pRaycastLayersShader->update( "uScreenToTexture", s_modelToTexture * glm::inverse(matrixSet.model) * glm::inverse(matrixSet.view) * s_screenToView);
+		m_pRaycastLayersShader->update( "uViewToTexture", s_modelToTexture * glm::inverse( matrixSet.model) * glm::inverse( matrixSet.view) );
 		m_pRaycastLayersShader->update( "uProjection", matrices[eye][CURRENT].perspective);
 		m_pRaycastLayersShader->update( "back_uvw_map",  2 + 2 * UVW_BACK + eye );
 		m_pRaycastLayersShader->update( "front_uvw_map", 2 + 2 * UVW_FRONT + eye );

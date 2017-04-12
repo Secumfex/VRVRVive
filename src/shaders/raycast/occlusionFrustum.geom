@@ -20,7 +20,7 @@ uniform sampler2D first_hit_map; // depth texture
 //!< uniforms
 uniform int  uOcclusionBlockSize;
 uniform vec4 uGridSize; // vec4(width, height, 1/width, 1/height)
-uniform mat4 uScreenToView; // const
+//uniform mat4 uScreenToView; // const
 uniform mat4 uProjection; // projection
 uniform mat4 uFirstHitViewToCurrentView; // from old view to new projection space
 uniform mat4 uFirstHitViewToTexture; // from old view to texture space

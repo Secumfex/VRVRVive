@@ -145,7 +145,7 @@ uniform float uStepSize;	// ray sampling step size
 
 // auxiliary matrices
 uniform mat4 uViewToTexture;
-uniform mat4 uScreenToTexture;
+//uniform mat4 uScreenToTexture;
 uniform mat4 uProjection;
 
 #ifdef SHADOW_SAMPLING
@@ -586,7 +586,7 @@ void main()
 	
 	if( uvwStart.a == 0.0 ) // only back-uvws visible (camera inside volume)
 	{
-		uvwStart.xyz = (uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
+		uvwStart.xyz = (uViewToTexture * getViewCoord(vec3(passUV, 0)) ).xyz; // clamp to near plane
 	}
 
 	#ifdef STEREO_SINGLE_PASS

@@ -1773,7 +1773,7 @@ void CMainApplication::singlePassLayered()
 
 	m_frame.Timings.getBack().beginTimerElapsed("RaycastAndWrite");
 	OPENGLCONTEXT->bindImageTextureToUnit(m_stereoOutputTextureArray,  0, GL_RGBA16F, GL_WRITE_ONLY, 0, GL_TRUE); // layer will be ignored, entire array will be bound
-	m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+	//m_pRaycastStereoShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
 	m_pRaycastStereoShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
 	m_pRaycastStereoShader->update("uProjection", s_perspective);
 	m_pStereoRaycast->render();
@@ -1807,7 +1807,7 @@ void CMainApplication::singlePassCompute()
 	OPENGLCONTEXT->bindImageTextureToUnit( m_pFBO_single->getDepthTextureHandle(), 2 , GL_RGBA8, GL_WRITE_ONLY);		 // first hit output
 
 	glm::ivec3 localGroupSize = m_pStereoRaycastCompute->getLocalGroupSize();
-	m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+	//m_pRaycastStereoComputeShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
 	m_pRaycastStereoComputeShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
 	m_pRaycastStereoComputeShader->update("uProjection", s_perspective);
 
@@ -1844,7 +1844,7 @@ void CMainApplication::renderViews()
 	m_frame.Timings.getBack().beginTimerElapsed("Raycast_L");
 	m_pRaycastShader->update("back_uvw_map", 2);
 	m_pRaycastShader->update("front_uvw_map", 4);
-	m_pRaycastShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
+	//m_pRaycastShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) * s_screenToView);
 	m_pRaycastShader->update("uViewToTexture",   s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view));
 	m_pRaycastShader->update("uProjection", s_perspective);
 	m_pSimpleRaycast->setFrameBufferObject(m_pFBO);
@@ -1862,7 +1862,7 @@ void CMainApplication::renderViews()
 	m_frame.Timings.getBack().beginTimerElapsed("Raycast_R");
 	m_pRaycastShader->update("back_uvw_map", 3);
 	m_pRaycastShader->update("front_uvw_map", 5);
-	m_pRaycastShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view_r) * s_screenToView);
+	//m_pRaycastShader->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view_r) * s_screenToView);
 	m_pRaycastShader->update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view_r));
 	m_pRaycastShader->update("uProjection", s_perspective);
 	m_pSimpleRaycast->setFrameBufferObject(m_pFBO_r);

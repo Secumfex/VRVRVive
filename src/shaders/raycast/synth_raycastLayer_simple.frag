@@ -111,8 +111,9 @@ uniform float uWindowingMinVal; // windowing lower bound
 uniform float uStepSize;		// ray sampling step size
 
 uniform mat4 uProjection;
-uniform mat4 uScreenToView;
-uniform mat4 uScreenToTexture;
+uniform mat4 uViewToTexture;
+//uniform mat4 uScreenToView;
+//uniform mat4 uScreenToTexture;
 
 #ifdef SHADOW_SAMPLING
 	uniform vec3 uShadowRayDirection; // simplified: in texture space
@@ -560,7 +561,7 @@ RaycastResult raycast(vec3 startUVW, vec3 endUVW, float stepSize, float startDis
 
 float distanceToDepth(vec2 uv, float dist)
 {
-	vec4 pView = uScreenToView * vec4(passUV, 0.0, 1.0);
+	vec4 pView = getViewCoord(vec3(passUV, 0.0));
 	vec4 projected = uProjection * vec4( normalize(pView.xyz) * dist, 1.0 );
 	projected.z = projected.z / projected.w;
 	return (0.5 * projected.z) + 0.5;
@@ -578,7 +579,7 @@ void main()
 
 	if (uvwStart.a == 0.0) // only back-uvws visible (camera inside volume)
 	{
-		uvwStart.xyz = ( uScreenToTexture * vec4(passUV, 0, 1)).xyz; // clamp to near plane
+		uvwStart.xyz = ( uViewToTexture * getViewCoord(vec3(passUV, 0.0)) ).xyz; // clamp to near plane
 	}
 	// linearize depth
 	float startDistance = length(getViewCoord(vec3(passUV, uvwStart.a)).xyz);

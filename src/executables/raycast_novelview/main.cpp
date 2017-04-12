@@ -416,8 +416,8 @@ int main(int argc, char *argv[])
 
 		/************* update experimental  parameters ******************/
 		shaderProgram.update("uProjection", s_perspective);
-		//shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) );
-		shaderProgram.update("uScreenToView", s_screenToView );
+		shaderProgram.update("uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(s_view) );
+		//shaderProgram.update("uScreenToView", s_screenToView );
 
 		debugRecomposeShader.update("uProjection", s_perspective); // used for depth to distance computation
 		novelViewShader.update("uProjection", s_perspective); // used for depth to distance computation

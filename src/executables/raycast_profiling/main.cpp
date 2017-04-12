@@ -1292,7 +1292,7 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 	switch (idx)
 	{
 	case NOVELVIEW:
-		m_pRaycastShader[NOVELVIEW]->update( "uScreenToView", s_screenToView );
+		//m_pRaycastShader[NOVELVIEW]->update( "uScreenToView", s_screenToView );
 	default:
 	case NONE:
 	case QUAD:
@@ -1304,10 +1304,9 @@ void CMainApplication::updateRaycastShader(float simTime, int idx, int eye)
 		m_pRaycastShader[idx]->update("uStepSize", s_rayStepSize); 	  // ray step size
 		m_pRaycastShader[idx]->update("uWindowingMinVal", s_windowingMinValue); 	  // lower grayscale ramp boundary
 		m_pRaycastShader[idx]->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
-		m_pRaycastShader[idx]->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
+		//m_pRaycastShader[idx]->update("uScreenToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse(m_hmdSimulation.getView(simTime, eye)) * s_screenToView );
 		m_pRaycastShader[idx]->update("uProjection", m_hmdSimulation.getPerspective(simTime, eye) );
-		if (idx!=NOVELVIEW)
-			m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse( m_hmdSimulation.getView(simTime, eye)) );
+		m_pRaycastShader[idx]->update( "uViewToTexture", s_modelToTexture * glm::inverse(s_model) * glm::inverse( m_hmdSimulation.getView(simTime, eye)) );
 		
 		if ( m_bHasShadow ){
 			m_pRaycastShader[idx]->update("uShadowRayDirection", m_shadowDir); // full range of values in window

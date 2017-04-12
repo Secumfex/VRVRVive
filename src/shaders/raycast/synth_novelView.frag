@@ -26,7 +26,7 @@ uniform mat4 uProjection; //
 uniform mat4 uViewNovel; // 
 uniform mat4 uViewOld; // 
 
-uniform mat4 uScreenToTexture;
+//uniform mat4 uScreenToTexture;
 
 uniform int uThreshold;
 
