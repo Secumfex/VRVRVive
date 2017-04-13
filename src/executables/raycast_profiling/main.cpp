@@ -336,12 +336,12 @@ public:
 	void initRenderPasses();
 	void initEventHandlers();
 	void initGui();
-	float getPredictionTimeOffset(float simTime, int idx, int eye); 
+
 	// on event
 	void handleVolume();
 	void loadVolume();
 	void updateShaderDefines();
-
+	float getPredictionTimeOffset(float simTime, int idx, int eye); 
 	// per frame
 	void updateGui();
 	void updateWarpShader(float lastTime, float warpTime, int idx, int eye);
