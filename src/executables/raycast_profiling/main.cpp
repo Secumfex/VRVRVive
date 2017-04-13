@@ -320,6 +320,8 @@ private:
 	glm::vec3 m_shadowDir;
 	float m_fShadowAngles[2];
 
+	SimpleDoubleBuffer<OpenGLTimings> m_timings[NUM_WARPTECHNIQUES][2]; // for each warp method
+
 public:
 	CMainApplication(int argc, char *argv[]);
 	~CMainApplication();
@@ -588,8 +590,14 @@ void CMainApplication::loop()
 				
 				//+++++++++++++ DEBUG ++++++++++++++
 				if (i%10==0){
+					//+++++++++++++ DEBUG ++++++++++++++
+					printProgress(((float) 0.0 / (float) NUM_WARPTECHNIQUES) * 100.0f, "Save Images...");
+					//++++++++++++++++++++++++++++++++++
 					TextureTools::saveTexture(prefix + "REF_"    + std::to_string(i) + ".png" ,m_pSimFBO[REFERENCE][LEFT].getFront()->getBuffer("fragColor") );
 					for (int j = NONE; j < NUM_WARPTECHNIQUES; j++){
+						//+++++++++++++ DEBUG ++++++++++++++
+						printProgress(((float) j / (float) NUM_WARPTECHNIQUES) * 100.0f, "Save Images...");
+						//++++++++++++++++++++++++++++++++++
 						std::string prefix_ = prefix + std::to_string(j) + "_" ;
 						TextureTools::saveTexture(prefix_ + "WRP_"    + std::to_string(i) + ".png", m_pWarpFBO[j][LEFT]->getBuffer("fragColor") );
 						TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragColor") );
@@ -1293,37 +1301,45 @@ void CMainApplication::renderGui()
 
 float CMainApplication::getPredictionTimeOffset(float simTime, int idx, int eye)
 {
-	switch (idx)
-	{
-	case NONE:
-		return (m_pChunkedRaycast[idx][LEFT]->getLastTotalRenderTime() + (m_pChunkedRaycast[idx][RIGHT]->getLastTotalRenderTime())) / 1000.0f;
-	default:
-	case QUAD:
-	case GRID:
-	case NOVELVIEW:
-		return ((m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime()) * 3.0f) / 1000.0f;
-	}
+	//auto f = m_timings[idx][eye].getFront().m_timestamps.find("Swap " + std::to_string(idx));
+	//auto b = m_timings[idx][eye].getBack().m_timestamps.find("Swap " + std::to_string(idx));
+	//if ( f != m_timings[idx][eye].getFront().m_timestamps.end() && b != m_timings[idx][eye].getBack().m_timestamps.end())
+	//{
+	//	return ( (*b).second.lastTime > (*f).second.lastTime) ? (*b).second.lastTime - (*f).second.lastTime : (*f).second.lastTime - (*b).second.lastTime;
+	//}
 
+	return (m_pChunkedRaycast[idx][eye]->getLastFinishTime() / 1000.0) + m_displaySimulation.getTimeToUpdate();
+
+	//switch (idx)
+	//{
+	//case NONE:
+	//	return (m_pChunkedRaycast[idx][LEFT]->getLastTotalRenderTime() + (m_pChunkedRaycast[idx][RIGHT]->getLastTotalRenderTime())) / 1000.0f;
+	//default:
+	//case QUAD:
+	//case GRID:
+	//case NOVELVIEW:
+	//	return ((m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime()) * 3.0f) / 1000.0f;
+	//}
 }
-
 
 void CMainApplication::renderView(float simTime, int idx, int eye, bool doPrediction)
 {
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
-		//m_frame.Timings.getBack().timestamp("Swap Time" + STR_SUFFIX[LEFT]);
 		m_pSimFBO[idx][eye].swap();
+		m_timings[idx][eye].swap();
+		m_timings[idx][eye].getBack().timestamp("Swap " + std::to_string(idx));
 		m_pChunkedRaycast[idx][eye]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][eye].getBack() );
 
 		m_fSimLastTime[idx][eye] = m_fSimRenderTime[idx][eye];
 		if (doPrediction) {
-			m_fSimRenderTime[idx][eye] = simTime + getPredictionTimeOffset(simTime, idx, eye); // [ms] to [s] 
+			float predictionTimeOffset = getPredictionTimeOffset(simTime, idx, eye);
+			m_fSimRenderTime[idx][eye] = simTime + predictionTimeOffset;
 		}
 		else
 		{
 			m_fSimRenderTime[idx][eye] = simTime;
 		}
-
 	}
 
 	float predictTimeOffset = m_displaySimulation.getTimeToUpdate(); //'time until display flashes'

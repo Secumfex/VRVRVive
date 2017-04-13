@@ -118,6 +118,8 @@ void TransferFunctionPresets::loadPreset(TransferFunction& transferFunction, Vol
 	}
 	else if( preset == VolumePresets::Preset::Engine)
 	{
+		transferFunction.getValues().push_back(0.36f);
+		transferFunction.getColors().push_back(glm::vec4(0.0f, 0.0f, 0.0f, 0.0f/255.0f));
 		transferFunction.getValues().push_back(0.385f);
 		transferFunction.getColors().push_back(glm::vec4(1.0f, 1.0f, 1.0f, 35.0f/255.0f));
 		transferFunction.getValues().push_back(0.606f);

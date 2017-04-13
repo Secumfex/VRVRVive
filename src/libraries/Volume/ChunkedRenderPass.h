@@ -3,6 +3,7 @@
 
 //#include <Rendering/GLTools.h>
 #include <Rendering/RenderPass.h>
+#include <Core/Timer.h>
 
 class ChunkedRenderPass {
 private:
@@ -65,6 +66,10 @@ protected:
 	int m_lastNumFramesElapsed;
 	int m_lastCompletedFrameIdx;
 	
+	std::vector< OpenGLTimings > m_finishTimeBuffer;
+	int m_finishTimeBufferIdx;
+	float m_lastTotalFinishTime;
+
 	bool m_bPrintDebug;
 
 public:
@@ -96,6 +101,7 @@ public:
 	inline bool& getAutoAdjustRenderTime() {return m_autoAdjustRenderTime;}
 	inline float& getLastTotalRenderTime() {return m_lastTotalRenderTime;}
 	inline int& getLastNumFramesElapsed() { return m_lastNumFramesElapsed; }
+	inline float& getLastFinishTime() { return m_lastTotalFinishTime;} 
 	
 	//++ Setters ++//
 	inline void setRenderTimeBias(float renderTimeBias) {m_renderTimeBias = renderTimeBias;}

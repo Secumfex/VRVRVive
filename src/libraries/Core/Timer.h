@@ -80,14 +80,14 @@ public:
 		unsigned long long stopTime;
 		double lastTime; // start time
 		double lastTiming;
-		Timer(){queryID[0] = -1;queryID[1] = -1;}
+		Timer(){queryID[0] = -1;queryID[1] = -1; lastTime=0.0; lastTiming=0.0;}
 	};
 	
 	struct Timestamp {
 		unsigned int queryID;
 		unsigned long long timestamp;
 		double lastTime;
-		Timestamp(){queryID = -1;}
+		Timestamp(){queryID = -1; lastTime=0.0;}
 	};
 
 	struct TimerElapsed {
@@ -96,7 +96,7 @@ public:
 		unsigned long long elapsedTime;
 		double lastTime; // start time
 		double lastTiming; // elapsed time
-		TimerElapsed(){queryID[0] = -1;queryID[1] = -1;}
+		TimerElapsed(){queryID[0] = -1;queryID[1] = -1; lastTime=0.0; lastTiming=0.0;}
 	};
 
 protected:

@@ -107,7 +107,10 @@ ChunkedAdaptiveRenderPass::ChunkedAdaptiveRenderPass(RenderPass* pRenderPass, gl
 	: ChunkedRenderPass(pRenderPass, viewportSize, chunkSize),
 	m_timingsBufferSize(timingsBufferSize),
 	m_totalRenderTimesBuffer(timingsBufferSize),
+	m_finishTimeBuffer(timingsBufferSize),
+	m_finishTimeBufferIdx(0),
 	m_lastTotalRenderTime(16.0f),
+	m_lastTotalFinishTime(16.0f),
 	m_currentChunkIdx(0),
 	m_currentFrameIdx(0),
 	m_lastNumFramesElapsed(1),
@@ -149,6 +152,7 @@ void ChunkedAdaptiveRenderPass::render()
 		if (m_isFinished)
 		{
 			profileTimings();
+			m_finishTimeBuffer[m_finishTimeBufferIdx].beginTimer("BeginToFinish");
 		}
 		if (!m_isFinished)
 		{
@@ -180,6 +184,8 @@ void ChunkedAdaptiveRenderPass::render()
 
 	if (m_isFinished)
 	{
+		m_finishTimeBuffer[m_finishTimeBufferIdx].stopTimer("BeginToFinish");
+		m_finishTimeBufferIdx = (m_finishTimeBufferIdx + 1) % m_finishTimeBuffer.size();
 		m_currentChunkIdx = 0;
 	}
 	else
@@ -294,6 +300,23 @@ void ChunkedAdaptiveRenderPass::profileTimings(){
 	m_lastCompletedFrameIdx = m_currentFrameIdx;
 	m_currentFrameIdx = (m_currentFrameIdx + 1) % m_timingsBufferSize;
 	swapQueryBuffers();
+
+	for (int i = 0; i < 2; i++) // update the last two, in case current one isnt ready yet
+	{
+		int idx = mod(m_finishTimeBufferIdx - i, m_finishTimeBuffer.size());
+		m_finishTimeBuffer[idx].updateReadyTimings();
+	}
+	
+	for (int i = 0; i < m_finishTimeBuffer.size(); i++)
+	{
+		int idx = mod(m_finishTimeBufferIdx - i, m_finishTimeBuffer.size());
+		auto e = m_finishTimeBuffer[idx].m_timers.find("BeginToFinish");
+		if ( e != m_finishTimeBuffer[idx].m_timers.end() && (*e).second.lastTiming > 0.0 )
+		{
+			m_lastTotalFinishTime = (*e).second.lastTiming;
+			break;
+		}
+	}
 }
 
 namespace { static std::vector< std::pair<ChunkedAdaptiveRenderPass*, int>* > s_refs; 
@@ -351,10 +374,11 @@ void ChunkedAdaptiveRenderPass::imguiInterface(bool* open, std::string prefix)
 	ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.5f);
 	ImGui::SliderFloat("Render Time Bias", &getRenderTimeBias(), 0.5f, 2.0f);
 	ImGui::SliderFloat("Target Render Time", &getTargetRenderTime(), 0.0f, 20.0f);  
+	ImGui::SliderFloat("Last Begin To Finish Time", &getLastFinishTime(), 0.0f, 200.0f);  
 	//ImGui::Checkbox("Auto Adjust Render Time", &getAutoAdjustRenderTime());  
 	ImGui::PopItemWidth();
 	
-	//++++ View number of number of rendered chunks ++++//
+	//++++ View Total Render Time ++++//
 	if (ImGui::CollapsingHeader("Total Render Time"))
 	{
 		ImGui::PlotHistogram(
