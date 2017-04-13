@@ -101,6 +101,7 @@ public:
 	inline void advanceTime(float delta) { m_fTime += delta; m_iFrame = (int) (m_fTime / m_fRefreshTime); }
 	inline void setFrame(int idx){ m_iFrame = idx; m_fTime = ((float) m_iFrame) * m_fRefreshTime; }
 	inline float getTimeToUpdate() { return ((float) (m_iFrame + 1)) * m_fRefreshTime - m_fTime; } 
+	inline float getTimeToUpdateFromTime( float time ) { return ( m_fRefreshTime - fmodf(time, m_fRefreshTime) ); } 
 	inline float getTimeOfFrame(int idx) { return ((float) (idx)) * m_fRefreshTime; } 
 };
 
@@ -320,7 +321,9 @@ private:
 	glm::vec3 m_shadowDir;
 	float m_fShadowAngles[2];
 
-	SimpleDoubleBuffer<OpenGLTimings> m_timings[NUM_WARPTECHNIQUES][2]; // for each warp method
+	OpenGLTimings m_timings[NUM_WARPTECHNIQUES][2]; // for each warp method
+	float m_fTotalFinishTimeBuffer[NUM_WARPTECHNIQUES][2]; // for each warp method
+	float m_fTotalFinishTimestampBuffer[NUM_WARPTECHNIQUES][2]; // for each warp method
 
 public:
 	CMainApplication(int argc, char *argv[]);
@@ -344,6 +347,8 @@ public:
 	void loadVolume();
 	void updateShaderDefines();
 	float getPredictionTimeOffset(float simTime, int idx, int eye); 
+	void updatePredictionTimes();
+
 	// per frame
 	void updateGui();
 	void updateWarpShader(float lastTime, float warpTime, int idx, int eye);
@@ -417,6 +422,8 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	DEBUGLOG->setAutoPrint(true);
 	m_fShadowAngles[0] = -0.5f;
 	m_fShadowAngles[1] = -0.5f;
+	
+	for (auto e : m_fTotalFinishTimeBuffer) { e[0] = 0.016f; e[1] = 0.016f; }
 
 	std::string fullExecutableName( argv[0] );
 	m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
@@ -451,6 +458,17 @@ void CMainApplication::printProgress(float progress, std::string msg)
 	SDL_GL_SwapWindow( m_pWindow ); // swap buffers
 }
 
+void CMainApplication::updatePredictionTimes()
+{
+	for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+	{
+	for (int j = LEFT; j <= RIGHT; j++)
+	{
+		m_fTotalFinishTimeBuffer[i][j] = m_pChunkedRaycast[i][j]->getLastFinishTime() / 1000.0f;
+	}
+	}
+}
+
 
 void CMainApplication::loop()
 {
@@ -482,6 +500,7 @@ void CMainApplication::loop()
 			else
 			{
 				renderViews(ImGui::GetTime(), m_iActiveWarpingTechnique);
+				updatePredictionTimes();
 			}
 
 			renderToScreen(
@@ -550,6 +569,7 @@ void CMainApplication::loop()
 				m_fSimLastTime[i][j]   = 0.0f;
 				m_fSimRenderTime[i][j] = 0.0f;
 				m_fWarpTime[i][j]      = 0.0f;
+				m_fTotalFinishTimestampBuffer[i][j] = 0.0f;
 			}
 			}
 			// enable animation
@@ -573,13 +593,22 @@ void CMainApplication::loop()
 				renderViews(lastVanillaRenderTime, NONE, false);
 				
 				// WARP ITERATIONS 
-				//TODO set timestamp queries for each rendering
 				renderViews(simTime, QUAD );
 				renderViews(simTime, GRID );
 				renderViews(simTime, NOVELVIEW );
 				glFinish();
 
-				//TODO retrieve timestamp queries, calculate 'render times'
+				//timestamp queries, calculate 'render times'
+				for (int i = QUAD; i < NUM_WARPTECHNIQUES; i++)
+				{ for (int j = LEFT; j <= RIGHT; j++)
+				{
+					if (m_pChunkedRaycast[i][j]->isFinished())
+					{
+						float lastTime = m_fTotalFinishTimestampBuffer[i][j];
+						m_fTotalFinishTimeBuffer[i][j] = simTime - lastTime;
+						m_fTotalFinishTimestampBuffer[i][j] = simTime;
+					}
+				}}
 
 				// DIFFERENCES
 				renderDiffs(NONE);
@@ -1129,10 +1158,12 @@ void CMainApplication::updateGui()
 			ImGui::SliderFloat("Duration", &m_hmdSimulation.m_fDuration, 0.0f, 5.0f);
 			ImGui::SliderFloat("Distance", &m_hmdSimulation.m_fDistance, 0.0f, 2.0f);
 			float arcLength = glm::radians(m_hmdSimulation.m_fAngle) * m_hmdSimulation.m_fDistance;
-			if (m_hmdSimulation.m_mode == HmdSimulation::TRANSLATE)
-			ImGui::Value("Length [m]", arcLength); ImGui::SameLine(); ImGui::Value("Speed [m/s]", arcLength / m_hmdSimulation.m_fDuration);
-			if (m_hmdSimulation.m_mode == HmdSimulation::ROTATE)
-			ImGui::Value("Angle  [deg]", m_hmdSimulation.m_fAngle); ImGui::SameLine(); ImGui::Value("Speed [deg/s]", m_hmdSimulation.m_fAngle / m_hmdSimulation.m_fDuration);
+			if (m_hmdSimulation.m_mode == HmdSimulation::TRANSLATE){
+				ImGui::Value("Length [m]", arcLength); ImGui::SameLine(); ImGui::Value("Speed [m/s]", arcLength / m_hmdSimulation.m_fDuration);
+			}
+			if (m_hmdSimulation.m_mode == HmdSimulation::ROTATE){
+				ImGui::Value("Angle  [deg]", m_hmdSimulation.m_fAngle); ImGui::SameLine(); ImGui::Value("Speed [deg/s]", m_hmdSimulation.m_fAngle / m_hmdSimulation.m_fDuration);
+			}
 		}
 
 		/**
@@ -1301,25 +1332,12 @@ void CMainApplication::renderGui()
 
 float CMainApplication::getPredictionTimeOffset(float simTime, int idx, int eye)
 {
-	//auto f = m_timings[idx][eye].getFront().m_timestamps.find("Swap " + std::to_string(idx));
-	//auto b = m_timings[idx][eye].getBack().m_timestamps.find("Swap " + std::to_string(idx));
-	//if ( f != m_timings[idx][eye].getFront().m_timestamps.end() && b != m_timings[idx][eye].getBack().m_timestamps.end())
-	//{
-	//	return ( (*b).second.lastTime > (*f).second.lastTime) ? (*b).second.lastTime - (*f).second.lastTime : (*f).second.lastTime - (*b).second.lastTime;
-	//}
+	float renderTime = m_fTotalFinishTimeBuffer[idx][eye];
+	float timeToNextUpdateThen = m_displaySimulation.getTimeToUpdateFromTime( simTime + renderTime );
+	return renderTime + timeToNextUpdateThen;
 
-	return (m_pChunkedRaycast[idx][eye]->getLastFinishTime() / 1000.0) + m_displaySimulation.getTimeToUpdate();
-
-	//switch (idx)
-	//{
-	//case NONE:
-	//	return (m_pChunkedRaycast[idx][LEFT]->getLastTotalRenderTime() + (m_pChunkedRaycast[idx][RIGHT]->getLastTotalRenderTime())) / 1000.0f;
-	//default:
-	//case QUAD:
-	//case GRID:
-	//case NOVELVIEW:
-	//	return ((m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime()) * 3.0f) / 1000.0f;
-	//}
+	// acutally, this doesnt work, because finish time is based on GPU time and is agnostic to what is happening around it
+	// return (m_pChunkedRaycast[idx][eye]->getLastFinishTime() / 1000.0) + m_displaySimulation.getTimeToUpdate();
 }
 
 void CMainApplication::renderView(float simTime, int idx, int eye, bool doPrediction)
@@ -1327,8 +1345,6 @@ void CMainApplication::renderView(float simTime, int idx, int eye, bool doPredic
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
 		m_pSimFBO[idx][eye].swap();
-		m_timings[idx][eye].swap();
-		m_timings[idx][eye].getBack().timestamp("Swap " + std::to_string(idx));
 		m_pChunkedRaycast[idx][eye]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][eye].getBack() );
 
 		m_fSimLastTime[idx][eye] = m_fSimRenderTime[idx][eye];
