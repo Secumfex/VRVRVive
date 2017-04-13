@@ -112,21 +112,25 @@ public:
 	bool m_bAnimateView;
 	bool m_bAnimateRotation;
 	bool m_bAnimateTranslation;
+	bool m_bClampTime;
 
 	float m_fStartAngle; //!< start angle
 	float m_fAngle;      //!< angle to turn around pivot
 	float m_fDuration;   //!< duration for translation of angle
 	float m_fDistance;   //!< distance of view to center
+	float m_fNeckOffsetZ; //!< distance to the neck (axis of rotation)
 public: 
 	HmdSimulation() 
 		: m_bAnimateView(true)
 		, m_bAnimateRotation(false)
 		, m_bAnimateTranslation(true) 
+		, m_bClampTime(false)
 		, m_mode(TRANSLATE)
 		, m_fStartAngle(0.f)
 		, m_fAngle(0.f)
 		, m_fDuration(1.f)
 		, m_fDistance(1.5f)
+		, m_fNeckOffsetZ(0.07)
 		{}
 
 	glm::mat4 getView(float timeParam, int eye);
@@ -142,6 +146,11 @@ glm::mat4 HmdSimulation::getView(float timeParam, int eye)
 	if (m_bAnimateView)
 	{
 		time = timeParam;
+
+		if (m_bClampTime)
+		{
+			time = max(0.0f, min(m_fDuration, timeParam));
+		}
 	}
 
 	switch (m_mode)
@@ -171,35 +180,50 @@ glm::mat4 HmdSimulation::getView(float timeParam, int eye)
 		// initial
 		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
 		glm::vec3 rotAxis = glm::vec3(0.f,1.f,0.f);
-		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
 		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
 		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
 
 		// current
 		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
-		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ); 
-		eyePos = rotation * initialRotation * eyePos;
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ) * initialRotation; 
+		headPos = rotation * headPos;
 
 		//resulting view
-		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
-		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
+		glm::mat4 translate = glm::translate( glm::vec3(-s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		glm::mat4 translate_r = glm::translate( glm::vec3(s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		view = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		//view = glm::inverse(rotation) * view;
+		view = glm::inverse(translate) * view; 
+		
+		view_r = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		//view_r = glm::inverse(rotation) * view_r;
+		view_r = glm::inverse(translate_r) * view_r; 
 		break;
 	}
 	case ROTATE:
-		glm::vec3 rotAxis = glm::vec3(0.f,1.f,0.f);
-		glm::vec4 eyePos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
-		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::vec3 rotAxis = glm::vec3(s_up);
 		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
+
+		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
 		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
 
 		// current
 		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
-		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ); 
-		center = eyePos + rotation * initialRotation * (center - eyePos);
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ) * initialRotation; 
 		
+
 		//resulting view
-		view   = glm::lookAt(glm::vec3(eyePos), glm::vec3(center), up);
-		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
+		glm::mat4 translate = glm::translate( glm::vec3(-s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		glm::mat4 translate_r = glm::translate( glm::vec3(s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		view = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view = glm::inverse(rotation) * view;
+		view = glm::inverse(translate) * view; 
+		
+		view_r = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view_r = glm::inverse(rotation) * view_r;
+		view_r = glm::inverse(translate_r) * view_r; 
 		break;
 	}
 
@@ -312,7 +336,7 @@ public:
 	void initRenderPasses();
 	void initEventHandlers();
 	void initGui();
-
+	float getPredictionTimeOffset(float simTime, int idx, int eye); 
 	// on event
 	void handleVolume();
 	void loadVolume();
@@ -325,10 +349,10 @@ public:
 	void updateRaycastShader(float simTime, int idx, int eye);
 	void updateUvwShader(float simTime, int idx, int eye);
 	void renderGui();
-	void renderView(float simTime, int idx, int eye);
-	void renderViews(float simTime, int idx);
+	void renderView(float simTime, int idx, int eye, bool doPrediction = true);
+	void renderViews(float simTime, int idx, bool doPrediction = true);
 	void renderRef(float simTime);
-	void renderVolume(float renderTime, float nextRenderTime, int idx, int eye);
+	void renderVolume(float renderTime, int idx, int eye);
 	void renderWarp(float lastTime, float warpTime, int idx, int eye);
 	void renderDiff(int idx, int eye); 
 	void renderDiffs(int idx); 
@@ -448,7 +472,7 @@ void CMainApplication::loop()
 			// auxiliary
 			auto lastTimeBefore = [](std::vector<float>& times, float time)
 			{
-				float last = 0.0f;	for ( auto t: times) if( t > time ){ return last; }else{ last = t; } return 0.0f;
+				float last = 0.0f;	for ( auto t: times) if( t > time ){ return last; }else{ last = t; } return last;
 			};
 			std::string prefix = std::to_string( (std::time(0) / 6) % 10000) + "_";
 
@@ -475,25 +499,33 @@ void CMainApplication::loop()
 			for (int j = LEFT; j <= RIGHT; j++)
 			{
 				// reset sim and warp times
-				m_fSimLastTime[i][j]   = 0.0f;
-				m_fSimRenderTime[i][j] = 0.0f;
-				m_fWarpTime[i][j]      = 0.0f;
+				m_fSimLastTime[i][j]   = -1.0f;
+				m_fSimRenderTime[i][j] = -1.0f;
+				m_fWarpTime[i][j]      = -1.0f;
 
 				// render t=0 views / warps
 				// reset ChunkedRenderPasses
 				m_pChunkedRaycast[i][j]->reset();
-				for (int k = 0; k < 10; k++){ // actually, do it a couple of times to make sure grid render times are available
+				int numSetupFrames = 5;
+				for (int k = 0; k < numSetupFrames; k++){ // actually, do it a couple of times to make sure grid render times are available
 				do {
 					renderView(0.0f, i, j);
 					glFinish();
 				} while (!m_pChunkedRaycast[i][j]->isFinished());}
+
+				// reset sim and warp times
+				m_fSimLastTime[i][j]   = 0.0f;
+				m_fSimRenderTime[i][j] = 0.0f;
+				m_fWarpTime[i][j]      = 0.0f;
 			}
 			}
 			// enable animation
 			m_hmdSimulation.m_bAnimateView = true;
+			bool tmpClampTime = m_hmdSimulation.m_bClampTime;
+			m_hmdSimulation.m_bClampTime = true;
 
 			//----------- PROFILING -------------
-			for (int i = 0; i <= numFrames; i++)
+			for (int i = 0; i < numFrames; i++)
 			{
 				m_displaySimulation.setFrame(i);
 				float simTime = m_displaySimulation.getTimeOfFrame(i); // [s]
@@ -503,7 +535,7 @@ void CMainApplication::loop()
 				
 				// NONE
 				float lastVanillaRenderTime = lastTimeBefore( vanillaTimes, simTime );
-				renderViews(lastVanillaRenderTime, NONE);
+				renderViews(lastVanillaRenderTime, NONE, false);
 				
 				// WARP ITERATIONS 
 				//TODO set timestamp queries for each rendering
@@ -548,6 +580,7 @@ void CMainApplication::loop()
 			csvWriter.writeToFile(prefix + "AVERAGES.csv" );
 
 			// reset
+			m_hmdSimulation.m_bClampTime = tmpClampTime;
 			mode = SETUP;
 		}
 	}
@@ -1055,7 +1088,10 @@ void CMainApplication::updateGui()
 			ImGui::SliderFloat("Duration", &m_hmdSimulation.m_fDuration, 0.0f, 5.0f);
 			ImGui::SliderFloat("Distance", &m_hmdSimulation.m_fDistance, 0.0f, 2.0f);
 			float arcLength = glm::radians(m_hmdSimulation.m_fAngle) * m_hmdSimulation.m_fDistance;
+			if (m_hmdSimulation.m_mode == HmdSimulation::TRANSLATE)
 			ImGui::Value("Length [m]", arcLength); ImGui::SameLine(); ImGui::Value("Speed [m/s]", arcLength / m_hmdSimulation.m_fDuration);
+			if (m_hmdSimulation.m_mode == HmdSimulation::ROTATE)
+			ImGui::Value("Angle  [deg]", m_hmdSimulation.m_fAngle); ImGui::SameLine(); ImGui::Value("Speed [deg/s]", m_hmdSimulation.m_fAngle / m_hmdSimulation.m_fDuration);
 		}
 
 		/**
@@ -1222,7 +1258,23 @@ void CMainApplication::renderGui()
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // this is altered by ImGui::Render(), so set it every frame
 }
 
-void CMainApplication::renderView(float simTime, int idx, int eye)
+float CMainApplication::getPredictionTimeOffset(float simTime, int idx, int eye)
+{
+	switch (idx)
+	{
+	case NONE:
+		return (m_pChunkedRaycast[idx][LEFT]->getLastTotalRenderTime() + (m_pChunkedRaycast[idx][RIGHT]->getLastTotalRenderTime())) / 1000.0f;
+	default:
+	case QUAD:
+	case GRID:
+	case NOVELVIEW:
+		return ((m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime()) * 3.0f) / 1000.0f;
+	}
+
+}
+
+
+void CMainApplication::renderView(float simTime, int idx, int eye, bool doPrediction)
 {
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
@@ -1231,18 +1283,24 @@ void CMainApplication::renderView(float simTime, int idx, int eye)
 		m_pChunkedRaycast[idx][eye]->getRenderPass()->setFrameBufferObject( m_pSimFBO[idx][eye].getBack() );
 
 		m_fSimLastTime[idx][eye] = m_fSimRenderTime[idx][eye];
-		float predictTimeOffset = (m_pChunkedRaycast[idx][eye]->getLastTotalRenderTime() * 2.0f) / 1000.0f; // [ms] to [s] //TODO replace with time sinceLastFinish
-		m_fSimRenderTime[idx][eye] = simTime + predictTimeOffset;
+		if (doPrediction) {
+			m_fSimRenderTime[idx][eye] = simTime + getPredictionTimeOffset(simTime, idx, eye); // [ms] to [s] 
+		}
+		else
+		{
+			m_fSimRenderTime[idx][eye] = simTime;
+		}
+
 	}
 
 	float predictTimeOffset = m_displaySimulation.getTimeToUpdate(); //'time until display flashes'
 	m_fWarpTime[idx][eye] = simTime + predictTimeOffset;
 
-	renderVolume(m_fSimRenderTime[idx][eye], m_fWarpTime[idx][eye], idx, eye);
+	renderVolume(m_fSimRenderTime[idx][eye], idx, eye);
 	renderWarp(  m_fSimLastTime[idx][eye],   m_fWarpTime[idx][eye], idx, eye);
 }
 
-void CMainApplication::renderViews(float simTime, int idx)
+void CMainApplication::renderViews(float simTime, int idx, bool doPrediction)
 {
 	for (int i = 0; i < 2; i++)
 	{
@@ -1264,18 +1322,16 @@ void CMainApplication::renderRef(float simTime)
 	}
 }
 
-
-
-void CMainApplication::renderVolume(float renderTime, float simTime, int idx, int eye)
+void CMainApplication::renderVolume(float renderTime, int idx, int eye)
 {
 	if (m_pChunkedRaycast[idx][eye]->isFinished())
 	{
-		updateUvwShader(simTime, idx, eye);
+		updateUvwShader(renderTime, idx, eye);
 		m_pUvw[idx]->setFrameBufferObject( m_pUvwFBO[idx][eye] );
 		m_pUvw[idx]->render();
 	}
 
-	updateRaycastShader(simTime, idx, eye);
+	updateRaycastShader(renderTime, idx, eye);
 
 	m_pChunkedRaycast[idx][eye]->render();
 }
@@ -1337,7 +1393,7 @@ std::vector<float> CMainApplication::getVanillaTimes()
 {
 	std::vector<float> result;
 	//+++++++++++ DEBUG ++++++++++++++
-	for(float t = 0.0f; t < m_hmdSimulation.m_fDuration; t+= 1.0f/8.0f){ result.push_back(t); } //TODO replace when implemented
+	for(float t = 0.0f; t <= m_hmdSimulation.m_fDuration; t+= 1.0f/8.0f){ result.push_back(t); } //TODO replace when implemented
 	return result;
 	//++++++++++++++++++++++++++++++++
 
