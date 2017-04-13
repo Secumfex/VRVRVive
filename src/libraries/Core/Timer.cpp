@@ -271,4 +271,44 @@ void OpenGLTimings::updateReadyTimings()
 	}
 }
 
+OpenGLTimings::Timer OpenGLTimings::waitForTimerResult(const std::string& timer)
+{
+	OpenGLTimings::Timer result;
+	auto kv = m_timers.find(timer);
+	if (kv != m_timers.end())
+	{
+		// wait until the results are available
+		GLint stopTimerAvailable = 0;
+		while (!stopTimerAvailable) {
+			glGetQueryObjectiv((*kv).second.queryID[1], GL_QUERY_RESULT_AVAILABLE, &stopTimerAvailable);
+		}
 
+		glGetQueryObjectui64v((*kv).second.queryID[0], GL_QUERY_RESULT, &(*kv).second.startTime);
+		glGetQueryObjectui64v((*kv).second.queryID[1], GL_QUERY_RESULT, &(*kv).second.stopTime);
+		(*kv).second.lastTime = (*kv).second.startTime / 1000000.0;
+		(*kv).second.lastTiming = ((*kv).second.stopTime - (*kv).second.startTime) / 1000000.0;
+		result = (*kv).second;
+	}
+
+	return result;
+}
+
+OpenGLTimings::Timestamp OpenGLTimings::waitForTimestampResult(const std::string& timestamp)
+{
+	OpenGLTimings::Timestamp result;
+	auto kv = m_timestamps.find(timestamp);
+	if (kv != m_timestamps.end())
+	{
+		// wait until the results are available
+		GLint timestampAvailable = 0;
+		while (!timestampAvailable) {
+			glGetQueryObjectiv((*kv).second.queryID, GL_QUERY_RESULT_AVAILABLE, &timestampAvailable);
+		}
+
+		glGetQueryObjectui64v((*kv).second.queryID, GL_QUERY_RESULT, &(*kv).second.timestamp);
+		(*kv).second.lastTime = (*kv).second.timestamp / 1000000.0;
+		result = (*kv).second;
+	}
+
+	return result;
+}

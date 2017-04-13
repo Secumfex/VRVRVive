@@ -73,6 +73,7 @@ public:
 
 class OpenGLTimings
 {
+public:
 	struct Timer {
 		unsigned int queryID[2];
 		unsigned long long startTime;
@@ -98,6 +99,7 @@ class OpenGLTimings
 		TimerElapsed(){queryID[0] = -1;queryID[1] = -1;}
 	};
 
+protected:
 	bool m_enabled;
 
 public:
@@ -112,6 +114,8 @@ public:
 	void stopTimerElapsed(); //!< caution: Do not use if other TIME_ELAPSED queries are issued in between!!!
 	void resetTimer(const std::string& timer){}
 	void updateReadyTimings();
+	Timer waitForTimerResult(const std::string& timer); //!< caution: might freeze?
+	Timestamp waitForTimestampResult(const std::string& timestamp); //!< caution: might freeze?
 	inline void setEnabled(bool enabled){m_enabled = enabled;};
 };
 

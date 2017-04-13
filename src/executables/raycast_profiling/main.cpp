@@ -362,6 +362,9 @@ public:
 	// profiling
 	std::vector<float> getVanillaTimes(); // return the timestamps at wich a new raycasting frame is issued
 	float getAvgDssim(int idx, int eye);
+	
+	// aux
+	void printProgress(float progress, std::string msg = "");
 };
 
 int main(int argc, char *argv[])
@@ -424,6 +427,28 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	printOpenGLInfo();
 	printSDLRenderDriverInfo();
 }
+
+// auxiliary
+void CMainApplication::printProgress(float progress, std::string msg)
+{
+	ImGui_ImplSdlGL3_NewFrame(m_pWindow);
+	ImGui::OpenPopup("Progress");
+	if (ImGui::BeginPopupModal("Progress", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		static float _progress = progress;
+		_progress = progress;
+		ImGui::SliderFloat("##progress", &_progress, 0.0, 100.0);
+		if (msg != "") { ImGui::Text(msg.c_str()); }
+		ImGui::EndPopup();
+	}
+	renderToScreen(
+	m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
+	m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
+	);
+	renderGui();
+	SDL_GL_SwapWindow( m_pWindow ); // swap buffers
+}
+
 
 void CMainApplication::loop()
 {
@@ -493,27 +518,15 @@ void CMainApplication::loop()
 			
 			//----------- SETUP/RESET/INITIALIZE -------------
 			// temporarily disable animation --> hmd only returns values for time = 0.0
+			bool tmpClampTime = m_hmdSimulation.m_bClampTime;
+			m_hmdSimulation.m_bClampTime = true;
 			m_hmdSimulation.m_bAnimateView = false;
 			for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
 			{
 			for (int j = LEFT; j <= RIGHT; j++)
 			{
 				//+++++++++++++ DEBUG ++++++++++++++
-					ImGui_ImplSdlGL3_NewFrame(m_pWindow);
-					ImGui::OpenPopup("Setup");
-					if (ImGui::BeginPopupModal("Setup", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-					{
-						static float progress = 0.0f;
-						progress = ((float) ((i-1) * 2 + j) / ((float) (NUM_WARPTECHNIQUES - 1) * 2)) * 100.0f;
-						ImGui::SliderFloat("##progress", &progress, 0.0, 100.0);
-						ImGui::EndPopup();
-					}
-					renderToScreen(
-					m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
-					m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
-					);
-					renderGui();
-					SDL_GL_SwapWindow( m_pWindow ); // swap buffers
+				printProgress(((float) ((i-1) * 2 + j) / ((float) (NUM_WARPTECHNIQUES - 1) * 2)) * 100.0f, "Setup...");
 				//++++++++++++++++++++++++++++++++++
 
 				// reset sim and warp times
@@ -527,7 +540,7 @@ void CMainApplication::loop()
 				int numSetupFrames = 5;
 				for (int k = 0; k < numSetupFrames; k++){ // actually, do it a couple of times to make sure grid render times are available
 				do {
-					renderView(0.0f, i, j);
+					renderView(0.0f, i, j, false);
 					glFinish();
 				} while (!m_pChunkedRaycast[i][j]->isFinished());}
 
@@ -539,29 +552,12 @@ void CMainApplication::loop()
 			}
 			// enable animation
 			m_hmdSimulation.m_bAnimateView = true;
-			bool tmpClampTime = m_hmdSimulation.m_bClampTime;
-			m_hmdSimulation.m_bClampTime = true;
 
 			//----------- PROFILING -------------
 			for (int i = 0; i < numFrames; i++)
 			{
 				//+++++++++++++ DEBUG ++++++++++++++
-				ImGui_ImplSdlGL3_NewFrame(m_pWindow);
-				ImGui::OpenPopup("Progress");
-				if (ImGui::BeginPopupModal("Progress", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-				{
-					static float progress = 0.0f;
-					progress = ((float) i / (float) numFrames) * 100.0f;
-					ImGui::SliderFloat("##progress", &progress, 0.0, 100.0);
-					ImGui::EndPopup();
-				}
-
-				renderToScreen(
-				m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
-				m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
-				);
-				renderGui();
-				SDL_GL_SwapWindow( m_pWindow ); // swap buffers
+				printProgress(((float) i / (float) numFrames) * 100.0f, "Profiling...");
 				//++++++++++++++++++++++++++++++++++
 
 				m_displaySimulation.setFrame(i);
@@ -1429,18 +1425,64 @@ void CMainApplication::profileFPS(float fps)
 std::vector<float> CMainApplication::getVanillaTimes()
 {
 	std::vector<float> result;
-	//+++++++++++ DEBUG ++++++++++++++
-	for(float t = 0.0f; t <= m_hmdSimulation.m_fDuration; t+= 1.0f/8.0f){ result.push_back(t); } //TODO replace when implemented
-	return result;
-	//++++++++++++++++++++++++++++++++
 
-	float simTime = 0.0f;
-	// TODO get GPU Time (synchronize CPU/GPU)
-	// TODO render frame 0
-	// TODO while time < hmd animation time loop
-	//      update time, add timestamp to vector
-	//      run renderpass(es LEFT and RIGHT)
-	//      SDL_GL_SwapWindow( m_pWindow ); <--- OR: glFinish, then wait until rendering returns (using query object)
+	OpenGLTimings timings;
+	m_displaySimulation.setFrame(0);
+	bool tmpClampTime = m_hmdSimulation.m_bClampTime;
+	m_hmdSimulation.m_bClampTime = true;
+
+	// setup
+	for (int j = LEFT; j <= RIGHT; j++)
+	{
+		// reset sim and warp times
+		m_fSimLastTime[NONE][j]   = -1.0f;
+		m_fSimRenderTime[NONE][j] = -1.0f;
+		m_fWarpTime[NONE][j]      = -1.0f;
+
+		// reset ChunkedRenderPasses
+		m_pChunkedRaycast[NONE][j]->reset();
+		int numSetupFrames = 5;
+		for (int k = 0; k < numSetupFrames; k++){ // actually, do it a couple of times to make sure grid render times are available
+		//+++++++++++++ DEBUG ++++++++++++++
+		printProgress( ((float) (j * 2 + k)/((float) (2 * numSetupFrames))) * 100.0f, "Setup...");
+		//++++++++++++++++++++++++++++++++++
+			do {
+			renderView(0.0f, NONE, j, false);
+			glFinish();
+		} while (!m_pChunkedRaycast[NONE][j]->isFinished());}
+
+		// reset sim and warp times
+		m_fSimLastTime[NONE][j]   = 0.0f;
+		m_fSimRenderTime[NONE][j] = 0.0f;
+		m_fWarpTime[NONE][j]      = 0.0f;
+	}
+
+	int maxNumFrames = (m_hmdSimulation.m_fDuration / m_displaySimulation.m_fRefreshTime) + 1;
+
+	int i = 0;
+	result.push_back(m_displaySimulation.m_fTime);
+	while(m_displaySimulation.m_fTime <= m_hmdSimulation.m_fDuration && i <= maxNumFrames)
+	{
+		//+++++++++++++ DEBUG ++++++++++++++
+		printProgress((m_displaySimulation.m_fTime/ m_hmdSimulation.m_fDuration) * 100.0f, "Vanilla Times...");
+		//++++++++++++++++++++++++++++++++++
+		
+		// render view and retrieve time
+		timings.beginTimer(std::to_string(i));
+			renderViews(m_displaySimulation.m_fTime, NONE, true);
+		timings.stopTimer(std::to_string(i));
+		glFinish();
+
+		// retrieve render time and advance display simulation
+		OpenGLTimings::Timer timer = timings.waitForTimerResult(std::to_string(i));
+		m_displaySimulation.advanceTime( timer.lastTiming / 1000.0f );
+		result.push_back(m_displaySimulation.m_fTime);
+
+		// advance until next 'VSync'
+		m_displaySimulation.advanceTime( m_displaySimulation.getTimeToUpdate() );
+		i++;
+	}
+
 	return result;
 }
 
