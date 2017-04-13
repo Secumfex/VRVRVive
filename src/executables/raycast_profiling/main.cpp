@@ -498,6 +498,24 @@ void CMainApplication::loop()
 			{
 			for (int j = LEFT; j <= RIGHT; j++)
 			{
+				//+++++++++++++ DEBUG ++++++++++++++
+					ImGui_ImplSdlGL3_NewFrame(m_pWindow);
+					ImGui::OpenPopup("Setup");
+					if (ImGui::BeginPopupModal("Setup", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+					{
+						static float progress = 0.0f;
+						progress = ((float) ((i-1) * 2 + j) / ((float) (NUM_WARPTECHNIQUES - 1) * 2)) * 100.0f;
+						ImGui::SliderFloat("##progress", &progress, 0.0, 100.0);
+						ImGui::EndPopup();
+					}
+					renderToScreen(
+					m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
+					m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
+					);
+					renderGui();
+					SDL_GL_SwapWindow( m_pWindow ); // swap buffers
+				//++++++++++++++++++++++++++++++++++
+
 				// reset sim and warp times
 				m_fSimLastTime[i][j]   = -1.0f;
 				m_fSimRenderTime[i][j] = -1.0f;
@@ -527,6 +545,25 @@ void CMainApplication::loop()
 			//----------- PROFILING -------------
 			for (int i = 0; i < numFrames; i++)
 			{
+				//+++++++++++++ DEBUG ++++++++++++++
+				ImGui_ImplSdlGL3_NewFrame(m_pWindow);
+				ImGui::OpenPopup("Progress");
+				if (ImGui::BeginPopupModal("Progress", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+				{
+					static float progress = 0.0f;
+					progress = ((float) i / (float) numFrames) * 100.0f;
+					ImGui::SliderFloat("##progress", &progress, 0.0, 100.0);
+					ImGui::EndPopup();
+				}
+
+				renderToScreen(
+				m_pWarpFBO[m_iActiveWarpingTechnique][LEFT]->getBuffer("fragColor"), 
+				m_pWarpFBO[m_iActiveWarpingTechnique][RIGHT]->getBuffer("fragColor")
+				);
+				renderGui();
+				SDL_GL_SwapWindow( m_pWindow ); // swap buffers
+				//++++++++++++++++++++++++++++++++++
+
 				m_displaySimulation.setFrame(i);
 				float simTime = m_displaySimulation.getTimeOfFrame(i); // [s]
 				
