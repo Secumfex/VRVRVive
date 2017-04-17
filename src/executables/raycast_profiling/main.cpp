@@ -688,11 +688,11 @@ void CMainApplication::loop()
 				{
 					row.push_back( getAvgDssim(i,LEFT) );
 				}
-				row.push_back(referenceTime);
 				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
 				{
 					row.push_back( m_fSimRenderTime[i][LEFT] );
 				}
+				row.push_back(referenceTime);
 				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
 				{
 					row.push_back( m_fSimLastTime[i][LEFT] );
