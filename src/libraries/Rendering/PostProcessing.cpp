@@ -293,9 +293,9 @@ GLuint PostProcessing::SunOcclusionQuery::performQuery(const glm::vec4& sunScree
 
 #include <Importing/stb_image.h>
 //#include <Rendering/GLTools.h>
-GLuint PostProcessing::LensFlare::loadLensColorTexture()
+GLuint PostProcessing::LensFlare::loadLensColorTexture(std::string resourcesPath)
 {
-	std::string fileName = RESOURCES_PATH "/lenscolor.png";
+	std::string fileName = resourcesPath +  "/lenscolor.png";
 	std::string fileString = std::string(fileName);
 	fileString = fileString.substr(fileString.find_last_of("/"));
 

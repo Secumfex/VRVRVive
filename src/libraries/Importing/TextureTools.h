@@ -22,7 +22,7 @@ namespace TextureTools {
 	 * @param texInfo (optional) pointer to a TextureInfo instance which will be filled with the texture's properties
 	 * @return the texture's texture handle or -1 (that is, the maximum unsigned int, since it's unsigned)*/
     GLuint loadTexture(std::string fileName, TextureInfo* texInfo = nullptr);
-    GLuint loadTextureFromResourceFolder(std::string fileName, TextureInfo* texInfo = nullptr); //!< like above, but the file name given relative to RESOURCES_PATH, e.g. "cubeTexture.jpg" 
+	GLuint loadTextureFromResourceFolder(std::string fileName, TextureInfo* texInfo = nullptr, std::string resourcesPath = RESOURCES_PATH); //!< like above, but the file name given relative to RESOURCES_PATH, e.g. "cubeTexture.jpg" 
 
 	/* Loads a cubemap texture from 6 individual texture faces
 	// Order should be:
@@ -36,8 +36,8 @@ namespace TextureTools {
 	GLuint loadCubemap(std::vector<std::string> faces, bool generateMipMaps = true);
 	
 	// +X (right), -X(left), +Y (top), -Y (bottom), +Z (front), -Z (back)
-	GLuint loadCubemapFromResourceFolder(std::vector<std::string> fileNames, bool generateMipMaps = true);
-	GLuint loadDefaultCubemap(bool generateMipMaps = true);
+	GLuint loadCubemapFromResourceFolder(std::vector<std::string> fileNames, bool generateMipMaps = true, std::string resourcesPath = RESOURCES_PATH);
+	GLuint loadDefaultCubemap(bool generateMipMaps = true, std::string resourcesPath = RESOURCES_PATH);
 
 	bool saveTexture(std::string fileName, GLuint texture);
 	bool saveTextureArray(std::string fileName, GLuint texture);

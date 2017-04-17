@@ -117,8 +117,8 @@ namespace Importer {
 
 		float scalex,scaley,scalez;
 
-		char *output,*dot;
-		char *outname;
+		//char *output,*dot;
+		//char *outname;
 
 		// read and uncompress PVM volume
 		VolumeData<T> volData;
@@ -179,12 +179,12 @@ namespace Importer {
 	}
 
 
-	VolumeData<short> loadBruder();
+	VolumeData<short> loadBruder(std::string path = std::string(RESOURCES_PATH "/volumes/Bruder/psirInt16Signed.raw") );
 
 	template<class T>
-	VolumeData<T> loadBruder()
+	VolumeData<T> loadBruder(std::string path = std::string(RESOURCES_PATH "/volumes/Bruder/psirInt16Signed.raw"))
 	{
-		VolumeData<short> result_ = loadBruder();
+		VolumeData<short> result_ = loadBruder(path);
 		VolumeData<T> result;
 		result.size_x = (T) result_.size_x;
 		result.size_y = (T) result_.size_y;

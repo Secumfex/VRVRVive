@@ -137,7 +137,7 @@ namespace PostProcessing
 
 	private:
 		Quad m_quad;
-		GLuint loadLensColorTexture();
+		GLuint loadLensColorTexture(std::string resourcesPath = RESOURCES_PATH);
 	};
 
 } // namespace PostProcessing

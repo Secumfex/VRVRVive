@@ -61,7 +61,7 @@ namespace VolumePresets
 	glm::mat4 getRotation(Preset preset);
 
 	template<class T>
-	void loadPreset(VolumeData<T>& volData, Preset preset);
+	void loadPreset(VolumeData<T>& volData, Preset preset, std::string directory = RESOURCES_PATH);
 }
 
 
@@ -72,6 +72,7 @@ std::string VolumePresets::getPath(Preset preset)
 	{
 		case Preset::CT_Head: return "/volumes/CTHead/CThead";
 		case Preset::MRT_Brain_Stanford: return "/volumes/MRbrain/MRbrain";
+		case Preset::MRT_Brain: return "/volumes/Bruder/psirInt16Signed.raw";
 		case Preset::Bucky_Ball: return "/volumes/BuckyBall/Bucky.pvm";
 		case Preset::SolidBox: return "/volumes/SolidBox/Box.pvm";
 		case Preset::Foot: return "/volumes/Foot/Foot.pvm";
@@ -94,10 +95,10 @@ std::string VolumePresets::getPath(Preset preset)
 }
 
 template<class T>
-void VolumePresets::loadPreset(VolumeData<T>& volData, Preset preset)
+void VolumePresets::loadPreset(VolumeData<T>& volData, Preset preset, std::string directory)
 {
-	std::string file = RESOURCES_PATH;
-	
+	std::string file = directory;
+
 	switch(preset)
 	{
 		case CT_Head:
@@ -107,7 +108,7 @@ void VolumePresets::loadPreset(VolumeData<T>& volData, Preset preset)
 			volData = Importer::load3DData<T>(file + getPath(preset), 256, 256, 109, 2);
 			break;
 		case MRT_Brain:
-			volData = Importer::loadBruder<T>();
+			volData = Importer::loadBruder<T>(file + getPath(preset));
 			break;
 		case Homogeneous:
 			volData = SyntheticVolume::generateHomogeneousVolume<T>(64,64,64,1.0f);

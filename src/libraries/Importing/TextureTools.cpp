@@ -75,8 +75,8 @@ namespace TextureTools {
         return textureHandle;
     }
 
-	GLuint loadTextureFromResourceFolder(std::string fileName, TextureInfo* texInfo){
-    	std::string filePath = RESOURCES_PATH "/" + fileName;
+	GLuint loadTextureFromResourceFolder(std::string fileName, TextureInfo* texInfo, std::string resourcesPath){
+    	std::string filePath = resourcesPath + "/" + fileName;
 
 		return loadTexture(filePath, texInfo);
     }
@@ -156,15 +156,15 @@ namespace TextureTools {
     }
 
 
-    GLuint loadCubemapFromResourceFolder(std::vector<std::string> fileNames, bool generateMipMaps){
+    GLuint loadCubemapFromResourceFolder(std::vector<std::string> fileNames, bool generateMipMaps, std::string resourcesPath){
         for (unsigned int i = 0; i < fileNames.size(); i++)
         {
-            fileNames[i] = RESOURCES_PATH "/" + fileNames[i];
+            fileNames[i] = resourcesPath + "/" + fileNames[i];
         }
         return loadCubemap(fileNames, generateMipMaps);
     }
 
-    GLuint loadDefaultCubemap(bool generateMipMaps)
+    GLuint loadDefaultCubemap(bool generateMipMaps, std::string resourcesPath)
     {
         std::vector<std::string> cubeMapFiles;
         cubeMapFiles.push_back("cubemap/cloudtop_rt.tga");
@@ -173,7 +173,7 @@ namespace TextureTools {
         cubeMapFiles.push_back("cubemap/cloudtop_dn.tga");
         cubeMapFiles.push_back("cubemap/cloudtop_bk.tga");
         cubeMapFiles.push_back("cubemap/cloudtop_ft.tga");
-        return TextureTools::loadCubemapFromResourceFolder(cubeMapFiles, generateMipMaps);
+        return TextureTools::loadCubemapFromResourceFolder(cubeMapFiles, generateMipMaps, resourcesPath);
     }
 
 	bool saveTexture(std::string fileName, GLuint texture)

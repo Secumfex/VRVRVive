@@ -66,7 +66,7 @@ namespace AssimpTools {
 	* @param steps flags form the aiPostProcessSteps namespace
 	* @return const pointer to the aiScene
 	*/
-	const aiScene* importAssetFromResourceFolder(std::string filename, Assimp::Importer& importer, int steps = aiProcessPreset_TargetRealtime_MaxQuality);
+	const aiScene* importAssetFromResourceFolder(std::string filename, Assimp::Importer& importer, int steps = aiProcessPreset_TargetRealtime_MaxQuality, std::string resourcesPath = RESOURCES_PATH);
 	
 	/** @brief Struct that saves info about a texture used by a material. */
 	struct MaterialTextureInfo

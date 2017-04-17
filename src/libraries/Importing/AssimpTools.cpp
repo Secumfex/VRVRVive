@@ -440,9 +440,9 @@ void AssimpTools::checkMax(glm::vec3& max, const glm::vec3& point)
 
 
 #include <assimp/Importer.hpp>
-const aiScene* AssimpTools::importAssetFromResourceFolder(std::string filename, Assimp::Importer& importer,int steps)
+const aiScene* AssimpTools::importAssetFromResourceFolder(std::string filename, Assimp::Importer& importer,int steps, std::string resourcesPath)
 {
-	const aiScene* scene = importer.ReadFile( RESOURCES_PATH "/" + filename, steps);
+	const aiScene* scene = importer.ReadFile( resourcesPath + "/" + filename, steps);
 	
 	if (scene == NULL)
 	{

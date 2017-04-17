@@ -1,9 +1,7 @@
 #include "Importer.h"
 
-VolumeData<short> Importer::loadBruder()
+VolumeData<short> Importer::loadBruder(std::string path)
 {
-	std::string path = RESOURCES_PATH + std::string("/volumes/Bruder/psirInt16Signed.raw");
-
 	DEBUGLOG->log("Loading file: " + path);
 	DEBUGLOG->log("Reading slice data...");
 
