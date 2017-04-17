@@ -401,8 +401,6 @@ public:
 			argIdx++;
 		}
 
-		m_sResourceDirectory = RESOURCES_PATH;
-		
 		updateNearHeightWidth();
 		updatePerspective();
 		updateScreenToViewMatrix();
@@ -625,9 +623,14 @@ public:
 
 	void CMainApplication::loadShaders()
 	{
-		DEBUGLOG->log("Shader Compilation: shaders"); DEBUGLOG->indent();
+		DEBUGLOG->log("Shader Compilation: shaders");
+		DEBUGLOG->indent();
 		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines, m_sShaderDirectory);
+		DEBUGLOG->outdent();
+
 		loadRaycastingShaders();
+
+		DEBUGLOG->indent();
 		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines, m_sShaderDirectory);
 		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines, m_sShaderDirectory);
 		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines, m_sShaderDirectory);
