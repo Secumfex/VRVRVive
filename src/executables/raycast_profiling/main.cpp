@@ -762,6 +762,9 @@ void CMainApplication::initFramebuffers()
 		OPENGLCONTEXT->bindTexture( m_pDiffFBO[i][j]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT0) );
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		OPENGLCONTEXT->bindTexture(m_pDiffFBO[i][j]->getColorAttachmentTextureHandle(GL_COLOR_ATTACHMENT1));
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST); // or else texturelod doesn't work
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		OPENGLCONTEXT->bindTexture(0);
 		FrameBufferObject::s_internalFormat = GL_RGBA8;
 		FrameBufferObject::s_useTexStorage2D = false;
@@ -1514,6 +1517,8 @@ std::vector<float> CMainApplication::getVanillaTimes()
 		m_displaySimulation.advanceTime( m_displaySimulation.getTimeToUpdate() );
 		i++;
 	}
+
+	m_hmdSimulation.m_bClampTime = tmpClampTime;
 
 	return result;
 }
