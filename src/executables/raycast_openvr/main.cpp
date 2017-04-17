@@ -226,6 +226,8 @@ private:
 	float m_fMirrorScreenTimer;
 	
 	std::string m_executableName;
+	std::string m_sResourceDirectory;
+	std::string m_sShaderDirectory;
 
 	glm::mat4 m_volumeScale;
 
@@ -348,20 +350,51 @@ public:
 		, m_cullAxis(0.0f)
 		, m_lastControllerPos(0.0f)
 		, m_iLowerOrUpper(0)
+		, m_sResourceDirectory(RESOURCES_PATH)
+		, m_sShaderDirectory(SHADERS_PATH)
 	{
 		DEBUGLOG->setAutoPrint(true);
 
 		m_texData.resize((int) WINDOW_RESOLUTION.x * (int) WINDOW_RESOLUTION.y * 4, 0.0f);
 
 		std::string fullExecutableName( argv[0] );
-		m_executableName = fullExecutableName.substr( fullExecutableName.rfind("\\") + 1);
+		int lastBackSlashIdx = fullExecutableName.rfind("\\");
+		
+		std::string executableDirectory =  fullExecutableName.substr(0,lastBackSlashIdx);
+		m_executableName = fullExecutableName.substr( lastBackSlashIdx + 1);
 		m_executableName = m_executableName.substr(0, m_executableName.find(".exe"));
 		DEBUGLOG->log("Executable name: " + m_executableName);
 
-		if (argc >= 2)
+		int argIdx = 1;
+		while (argIdx < argc)
 		{
-			FRAMEBUFFER_SCALE = atof(argv[1]);
+			if (argv[argIdx] == "-scale")
+			{
+				argIdx++;
+				FRAMEBUFFER_SCALE = atof(argv[1]);
+			}
+
+			if (argv[argIdx] == "-relative")
+			{
+				m_sResourceDirectory = executableDirectory;
+				m_sShaderDirectory   = executableDirectory;
+			}
+
+			if (argv[argIdx] == "-resourcesdir")
+			{
+				argIdx++;
+				m_sResourceDirectory = argv[argIdx];
+			}
+
+			if (argv[argIdx] == "-shadersdir")
+			{
+				argIdx++;
+				m_sShaderDirectory = argv[argIdx];
+			}
+			argIdx++;
 		}
+
+		m_sResourceDirectory = RESOURCES_PATH;
 		
 		updateNearHeightWidth();
 		updatePerspective();
@@ -411,7 +444,7 @@ public:
 			numLevels = 4;
 		}}
 
-		VolumePresets::loadPreset( m_volumeData, (VolumePresets::Preset) m_iActiveModel);
+		VolumePresets::loadPreset( m_volumeData, (VolumePresets::Preset) m_iActiveModel, m_sResourceDirectory);
 		m_volumeTexture = loadTo3DTexture<float>(m_volumeData, numLevels, GL_R16F, GL_RED, GL_FLOAT);
 		m_volumeData.data.clear(); // set free	
 
@@ -565,20 +598,20 @@ public:
 	void CMainApplication::loadRaycastingShaders()
 	{
 		DEBUGLOG->log("Shader Compilation: ray casting shader"); DEBUGLOG->indent();
-		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines);
-		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer_simple.frag", m_shaderDefines); 
+		m_pRaycastShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/unified_raycast.frag", m_shaderDefines, m_sShaderDirectory);
+		m_pRaycastLayersShader = new ShaderProgram("/raycast/simpleRaycastChunked.vert", "/raycast/synth_raycastLayer_simple.frag", m_shaderDefines, m_sShaderDirectory); 
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("Shader Compilation: compose tex array shader"); DEBUGLOG->indent();
-		m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines); 
+		m_pComposeTexArrayShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/composeTextureArray.frag", m_shaderDefines, m_sShaderDirectory); 
 		DEBUGLOG->outdent();
 
 		DEBUGLOG->log("Shader Compilation: novel view warp shader"); DEBUGLOG->indent();
-		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines);
+		m_pNovelViewWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/synth_novelView_simple.frag", m_shaderDefines, m_sShaderDirectory);
 		DEBUGLOG->outdent();
 	
 		DEBUGLOG->log("Shader Compilation: grid warp shader"); DEBUGLOG->indent();
-		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines);
+		m_pGridWarpShader = new ShaderProgram("/raycast/gridWarp.vert", "/raycast/gridWarp.frag", m_shaderDefines, m_sShaderDirectory);
 		DEBUGLOG->outdent();
 	
 	}
@@ -586,13 +619,13 @@ public:
 	void CMainApplication::loadShaders()
 	{
 		DEBUGLOG->log("Shader Compilation: shaders"); DEBUGLOG->indent();
-		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines);
+		m_pUvwShader = new ShaderProgram("/modelSpace/volumeMVP.vert", "/modelSpace/volumeUVW.frag", m_shaderDefines, m_sShaderDirectory);
 		loadRaycastingShaders();
-		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines);
-		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines);
-		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines);
-		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag");
-		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag");
+		m_pOcclusionFrustumShader = new ShaderProgram("/raycast/occlusionFrustum.vert", "/raycast/occlusionFrustum.frag", "/raycast/occlusionFrustum.geom", m_shaderDefines, m_sShaderDirectory);
+		m_pOcclusionClipFrustumShader = new ShaderProgram("/raycast/occlusionClipFrustum.vert", "/raycast/occlusionClipFrustum.frag", m_shaderDefines, m_sShaderDirectory);
+		m_pQuadWarpShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleWarp.frag", m_shaderDefines, m_sShaderDirectory);
+		m_pShowTexShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/screenSpace/simpleAlphaTexture.frag", std::vector<std::string>(), m_sShaderDirectory);
+		m_pDepthToTextureShader = new ShaderProgram("/screenSpace/fullscreen.vert", "/raycast/debug_depthToTexture.frag", std::vector<std::string>(), m_sShaderDirectory);
 		DEBUGLOG->outdent();
 	}
 

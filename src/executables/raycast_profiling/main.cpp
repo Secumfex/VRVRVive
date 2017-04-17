@@ -436,7 +436,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_shaderDefines(0) // currently set defines
 	, m_fpsCounter(120)
 	, m_iCurFpsIdx(0)
-	, m_iActiveModel(0)
+	, m_iActiveModel(VolumePresets::CT_Head)
 	, m_bHasLod(false)
 	, m_bHasShadow(false)
 	, m_fOldX(0.0f)
