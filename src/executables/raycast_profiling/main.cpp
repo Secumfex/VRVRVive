@@ -34,7 +34,7 @@ using namespace RaycastingParameters;
 using namespace ViewParameters;
 using namespace VolumeParameters;
 
-const glm::vec2 FRAMEBUFFER_RESOLUTION = glm::vec2( 800, 800);
+const glm::vec2 FRAMEBUFFER_RESOLUTION = glm::vec2( 768, 768);
 const glm::vec2 WINDOW_RESOLUTION = glm::vec2( 1600, 800);
 
 const int LEFT = 0;
@@ -108,15 +108,15 @@ public:
 class HmdSimulation
 {
 public:
-	enum Mode {BASIC, TRANSLATE, ROTATE, NUM_ANIMATIONMODES};
+	enum Mode {BASIC, ROTATE, TRANSLATE, PIVOT, NUM_ANIMATIONMODES};
 	int m_mode;
 	bool m_bAnimateView;
 	bool m_bAnimateRotation;
 	bool m_bAnimateTranslation;
 	bool m_bClampTime;
 
-	float m_fStartAngle; //!< start angle
-	float m_fAngle;      //!< angle to turn around pivot
+	float m_fStartValue; //!< start value
+	float m_fValue;      //!< animation value
 	float m_fDuration;   //!< duration for translation of angle
 	float m_fDistance;   //!< distance of view to center
 	float m_fNeckOffsetZ; //!< distance to the neck (axis of rotation)
@@ -127,8 +127,8 @@ public:
 		, m_bAnimateTranslation(true) 
 		, m_bClampTime(false)
 		, m_mode(TRANSLATE)
-		, m_fStartAngle(0.f)
-		, m_fAngle(0.f)
+		, m_fStartValue(0.f)
+		, m_fValue(0.f)
 		, m_fDuration(1.f)
 		, m_fDistance(1.5f)
 		, m_fNeckOffsetZ(0.07)
@@ -176,18 +176,67 @@ glm::mat4 HmdSimulation::getView(float timeParam, int eye)
 		view_r = glm::lookAt(glm::vec3(eyePos) + glm::vec3(s_eyeDistance,0.0,0.0), glm::vec3(center) + glm::vec3(s_eyeDistance,0.0,0.0), up);
 		break;
 	}
+	case ROTATE:
+	{
+		glm::vec3 rotAxis = glm::vec3(s_up);
+		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
+
+		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartValue), rotAxis );
+
+		// current
+		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fValue), rotAxis ) * initialRotation; 
+		
+		//resulting view
+		glm::mat4 translate = glm::translate( glm::vec3(-s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		glm::mat4 translate_r = glm::translate( glm::vec3(s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		view = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view = glm::inverse(rotation) * view;
+		view = glm::inverse(translate) * view; 
+		
+		view_r = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view_r = glm::inverse(rotation) * view_r;
+		view_r = glm::inverse(translate_r) * view_r; 
+		break;
+	}
 	case TRANSLATE:
+	{
+		// initial
+		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
+		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
+		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
+		glm::mat4 initialTranslation = glm::translate(glm::vec3(0.01f * m_fStartValue,0.0f,0.0f));
+
+		// current
+		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
+		glm::mat4 translation = glm::translate( t * glm::vec3(0.01f * m_fValue,0.0f,0.0f) ); 
+		headPos = translation * initialTranslation  * headPos;
+		center  = translation * initialTranslation  * center;
+
+		//resulting view
+		glm::mat4 translate = glm::translate( glm::vec3(-s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		glm::mat4 translate_r = glm::translate( glm::vec3(s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
+		view = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view = glm::inverse(translate) * view; 
+		
+		view_r = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
+		view_r = glm::inverse(translate_r) * view_r; 
+		break;
+	}
+	case PIVOT:
 	{
 		// initial
 		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
 		glm::vec3 rotAxis = glm::vec3(0.f,1.f,0.f);
 		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
 		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
-		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
+		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartValue), rotAxis );
 
 		// current
 		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
-		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ) * initialRotation; 
+		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fValue), rotAxis ) * initialRotation; 
 		headPos = rotation * headPos;
 
 		//resulting view
@@ -202,30 +251,6 @@ glm::mat4 HmdSimulation::getView(float timeParam, int eye)
 		view_r = glm::inverse(translate_r) * view_r; 
 		break;
 	}
-	case ROTATE:
-		glm::vec3 rotAxis = glm::vec3(s_up);
-		glm::vec3 up = glm::vec3(s_up); // TODO animate aswell?
-
-		glm::vec4 headPos = glm::vec4(0.f, 0.f, m_fDistance, 1.0f);
-		glm::vec4 center = glm::vec4(0.f, 0.f, 0.f, 1.0f);
-		glm::mat4 initialRotation = glm::rotate(glm::radians(m_fStartAngle), rotAxis );
-
-		// current
-		float t = -0.5f * ( cos( ((time) * glm::pi<float>()) / m_fDuration ) ) + 0.5f; // parametric 0..1
-		glm::mat4 rotation = glm::rotate( t * glm::radians(m_fAngle), rotAxis ) * initialRotation; 
-		
-
-		//resulting view
-		glm::mat4 translate = glm::translate( glm::vec3(-s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
-		glm::mat4 translate_r = glm::translate( glm::vec3(s_eyeDistance * 0.5f, 0.0f, -m_fNeckOffsetZ) );
-		view = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
-		view = glm::inverse(rotation) * view;
-		view = glm::inverse(translate) * view; 
-		
-		view_r = glm::lookAt(glm::vec3(headPos), glm::vec3(center), up);
-		view_r = glm::inverse(rotation) * view_r;
-		view_r = glm::inverse(translate_r) * view_r; 
-		break;
 	}
 
 	return (eye == LEFT) ? view : view_r;
@@ -316,6 +341,8 @@ private:
 	float m_fOldY;
 
 	int m_iNumNovelViewSamples;
+
+	int m_iSaveImageIdxMod;
 
 	int m_iNumShadowSamples;
 	glm::vec3 m_shadowDir;
@@ -417,6 +444,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_iNumNovelViewSamples(12)
 	, m_iActiveWarpingTechnique(0)
 	, m_iNumShadowSamples(12)
+	, m_iSaveImageIdxMod(10)
 	, m_shadowDir( glm::normalize( glm::vec3( std::cos( -glm::half_pi<float>() ) * std::cos( -glm::quarter_pi<float>() ), std::sin( -glm::half_pi<float>() ) * std::cos( -glm::quarter_pi<float>() ), std::tan( -glm::quarter_pi<float>() ) ) ) )
 {
 	DEBUGLOG->setAutoPrint(true);
@@ -526,11 +554,24 @@ void CMainApplication::loop()
 			CSVWriter<float> csvWriter;
 			std::vector<std::string> headers;
 			headers.push_back("Frame");
-			headers.push_back("Time");
-			headers.push_back("NONE");
-			headers.push_back("QUAD");
-			headers.push_back("GRID");
-			headers.push_back("NOVELVIEW");
+			headers.push_back("Sim Time");
+			headers.push_back("DSSIM NONE (L)");
+			headers.push_back("DSSIM QUAD (L)");
+			headers.push_back("DSSIM GRID (L)");
+			headers.push_back("DSSIM NOVELVIEW (L)");
+			headers.push_back("Rt NONE (L)");
+			headers.push_back("Rt QUAD (L)");
+			headers.push_back("Rt GRID (L)");
+			headers.push_back("Rt NOVELVIEW (L)");
+			headers.push_back("Ref t (L/R)");
+			headers.push_back("Lt NONE (L)");
+			headers.push_back("Lt QUAD (L)");
+			headers.push_back("Lt GRID (L)");
+			headers.push_back("Lt NOVELVIEW (L)");
+			headers.push_back("Wt NONE (L)");
+			headers.push_back("Wt QUAD (L)");
+			headers.push_back("Wt GRID (L)");
+			headers.push_back("Wt NOVELVIEW (L)");
 			csvWriter.setHeaders(headers);
 
 			//----------- VANILLA TIMES -------------
@@ -586,7 +627,12 @@ void CMainApplication::loop()
 				float simTime = m_displaySimulation.getTimeOfFrame(i); // [s]
 				
 				// REFERENCE
-				renderRef(simTime + m_displaySimulation.getTimeToUpdate()); // i.e.: what should be visible at the time the display flashes
+				float referenceTime = simTime + m_displaySimulation.getTimeToUpdate();
+				m_fSimLastTime[REFERENCE][LEFT]    = referenceTime;
+				m_fSimLastTime[REFERENCE][RIGHT]   = referenceTime;
+				m_fSimRenderTime[REFERENCE][LEFT]  = referenceTime;
+				m_fSimRenderTime[REFERENCE][RIGHT] = referenceTime;
+				renderRef( referenceTime ); // i.e.: what should be visible at the time the display flashes
 				
 				// NONE
 				float lastVanillaRenderTime = lastTimeBefore( vanillaTimes, simTime );
@@ -618,7 +664,7 @@ void CMainApplication::loop()
 				glFinish();
 				
 				//+++++++++++++ DEBUG ++++++++++++++
-				if (i%10==0){
+				if (i % m_iSaveImageIdxMod == 0){
 					//+++++++++++++ DEBUG ++++++++++++++
 					printProgress(((float) 0.0 / (float) NUM_WARPTECHNIQUES) * 100.0f, "Save Images...");
 					//++++++++++++++++++++++++++++++++++
@@ -630,7 +676,6 @@ void CMainApplication::loop()
 						std::string prefix_ = prefix + std::to_string(j) + "_" ;
 						TextureTools::saveTexture(prefix_ + "WRP_"    + std::to_string(i) + ".png", m_pWarpFBO[j][LEFT]->getBuffer("fragColor") );
 						TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragColor") );
-						TextureTools::saveTexture(prefix_ + "DSSIM_"  + std::to_string(i) + ".png", m_pDiffFBO[j][LEFT]->getBuffer("fragAvg") );
 					}
 				}
 				glFinish();
@@ -639,15 +684,27 @@ void CMainApplication::loop()
 				std::vector<float> row;
 				row.push_back((float) i);
 				row.push_back(simTime);
-				row.push_back( (getAvgDssim(NONE,LEFT) + getAvgDssim(NONE,RIGHT)) / 2.0f );
-				row.push_back( (getAvgDssim(QUAD,LEFT) + getAvgDssim(QUAD,RIGHT)) / 2.0f );
-				row.push_back( (getAvgDssim(GRID,LEFT) + getAvgDssim(GRID,RIGHT)) / 2.0f );
-				row.push_back( (getAvgDssim(NOVELVIEW,LEFT) + getAvgDssim(NOVELVIEW,RIGHT)) / 2.0f );
-
+				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+				{
+					row.push_back( getAvgDssim(i,LEFT) );
+				}
+				row.push_back(referenceTime);
+				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+				{
+					row.push_back( m_fSimRenderTime[i][LEFT] );
+				}
+				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+				{
+					row.push_back( m_fSimLastTime[i][LEFT] );
+				}
+				for (int i = NONE; i < NUM_WARPTECHNIQUES; i++)
+				{
+					row.push_back( m_fWarpTime[i][LEFT] );
+				}
 				csvWriter.addRow(row);
 			}
 
-			csvWriter.writeToFile(prefix + "AVERAGES.csv" );
+			csvWriter.writeToFile(prefix + "PROFILING.csv" );
 
 			// reset
 			m_hmdSimulation.m_bClampTime = tmpClampTime;
@@ -1155,17 +1212,24 @@ void CMainApplication::updateGui()
 
 		if ( ImGui::CollapsingHeader("Animation Settings") )
 		{
+			ImGui::SliderInt("Save Image Idx Mod", &m_iSaveImageIdxMod, 1, 100);
 			ImGui::SliderInt("Active Animation Mode", &m_hmdSimulation.m_mode, 0, HmdSimulation::NUM_ANIMATIONMODES - 1);
-			ImGui::SliderFloat("Start Angle", &m_hmdSimulation.m_fStartAngle, -90.0f, 90.0f);
-			ImGui::SliderFloat("Angle", &m_hmdSimulation.m_fAngle, -90.0f, 90.0f);
+			ImGui::SliderFloat("Start Value", &m_hmdSimulation.m_fStartValue, -90.0f, 90.0f);
+			ImGui::SliderFloat("Value", &m_hmdSimulation.m_fValue, -90.0f, 90.0f);
 			ImGui::SliderFloat("Duration", &m_hmdSimulation.m_fDuration, 0.0f, 5.0f);
 			ImGui::SliderFloat("Distance", &m_hmdSimulation.m_fDistance, 0.0f, 2.0f);
-			float arcLength = glm::radians(m_hmdSimulation.m_fAngle) * m_hmdSimulation.m_fDistance;
-			if (m_hmdSimulation.m_mode == HmdSimulation::TRANSLATE){
+			switch (m_hmdSimulation.m_mode)
+			{
+			case HmdSimulation::TRANSLATE:
+				ImGui::Value("Length [m]", m_hmdSimulation.m_fValue / 100.0f); ImGui::SameLine(); ImGui::Value("Speed [m/s]", m_hmdSimulation.m_fValue / (100.0f * m_hmdSimulation.m_fDuration) );
+				break;
+			case HmdSimulation::ROTATE:
+				ImGui::Value("Angle  [deg]", m_hmdSimulation.m_fValue); ImGui::SameLine(); ImGui::Value("Speed [deg/s]", m_hmdSimulation.m_fValue / m_hmdSimulation.m_fDuration);
+				break;
+			case HmdSimulation::PIVOT:
+				float arcLength = glm::radians(m_hmdSimulation.m_fValue) * m_hmdSimulation.m_fDistance;
 				ImGui::Value("Length [m]", arcLength); ImGui::SameLine(); ImGui::Value("Speed [m/s]", arcLength / m_hmdSimulation.m_fDuration);
-			}
-			if (m_hmdSimulation.m_mode == HmdSimulation::ROTATE){
-				ImGui::Value("Angle  [deg]", m_hmdSimulation.m_fAngle); ImGui::SameLine(); ImGui::Value("Speed [deg/s]", m_hmdSimulation.m_fAngle / m_hmdSimulation.m_fDuration);
+				break;
 			}
 		}
 
@@ -1361,9 +1425,14 @@ void CMainApplication::renderView(float simTime, int idx, int eye, bool doPredic
 		}
 	}
 
-	float predictTimeOffset = m_displaySimulation.getTimeToUpdate(); //'time until display flashes'
-	m_fWarpTime[idx][eye] = simTime + predictTimeOffset;
-
+	if (doPrediction) {
+		float predictTimeOffset = m_displaySimulation.getTimeToUpdate(); //'time until display flashes'
+		m_fWarpTime[idx][eye] = simTime + predictTimeOffset;
+	}
+	else
+	{
+		m_fWarpTime[idx][eye] = simTime;
+	}
 	renderVolume(m_fSimRenderTime[idx][eye], idx, eye);
 	renderWarp(  m_fSimLastTime[idx][eye],   m_fWarpTime[idx][eye], idx, eye);
 }

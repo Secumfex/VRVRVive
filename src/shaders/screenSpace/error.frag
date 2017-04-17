@@ -1,5 +1,13 @@
 #version 330
 
+////////////////////////////////     DEFINES      ////////////////////////////////
+/*********** LIST OF POSSIBLE DEFINES ***********
+	ABSOLUTE_ERROR
+	DISTRIBUTE_ALPHA //!< to encode fragColor as RGB-Image: adds ALPHA-Error to RGB channels, sets alpha to 1
+	DSSIM_ERROR
+	SQUARE_ERROR
+***********/
+
 //!< in-variable
 in vec3 passPosition;
 
@@ -90,6 +98,11 @@ void main()
 
 	vec4 errorColor = error;
 	float errorAvg = (errorColor.r + errorColor.g + errorColor.b + errorColor.a) / 4.0;
+
+	#ifdef DISTRIBUTE_ALPHA
+		error.rgb += error.a;
+		error.a = 1.0;
+	#endif
 
 	//!< fragcolor gets transparency by uniform
     fragColor = errorColor;
