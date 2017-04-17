@@ -319,7 +319,7 @@ public:
 		, m_shaderDefines(0) // currently set defines
 		, m_fpsCounter(120)
 		, m_iCurFpsIdx(0)
-		, m_iActiveModel(0)
+		, m_iActiveModel(VolumePresets::CT_Head)
 		, m_iActiveView(WARPED)
 		, m_iLeftDebugView(14)
 		, m_iRightDebugView(15)
