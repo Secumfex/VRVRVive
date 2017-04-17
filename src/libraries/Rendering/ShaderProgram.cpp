@@ -12,7 +12,7 @@
 
 using namespace std;
 
-ShaderProgram::ShaderProgram(std::string computeshader, const std::vector<std::string>& defines)
+ShaderProgram::ShaderProgram(std::string computeshader, const std::vector<std::string>& defines, std::string shadersPath)
 {
     // Initially, we have zero shaders attached to the program
 	m_shaderCount = 0;
@@ -24,7 +24,7 @@ ShaderProgram::ShaderProgram(std::string computeshader, const std::vector<std::s
 
     //Set up fragment shader
 	Shader computeShader(GL_COMPUTE_SHADER);
-	computeShader.loadFromFile(SHADERS_PATH + computeshader);
+	computeShader.loadFromFile(shadersPath + computeshader);
 	computeShader.addDefines(defines);
 	computeShader.compile();
 
@@ -37,7 +37,7 @@ ShaderProgram::ShaderProgram(std::string computeshader, const std::vector<std::s
     mapShaderProperties(GL_PROGRAM_OUTPUT, &m_outputMap);
 }
 
-ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, const std::vector<std::string>& defines)
+ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, const std::vector<std::string>& defines, std::string shadersPath)
 {
     // Initially, we have zero shaders attached to the program
 	m_shaderCount = 0;
@@ -49,13 +49,13 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 
     //Set up fragment shader
     Shader vertexShader(GL_VERTEX_SHADER);
-	vertexShader.loadFromFile(SHADERS_PATH + vertexshader);
+	vertexShader.loadFromFile(shadersPath + vertexshader);
 	vertexShader.addDefines(defines);
 	vertexShader.compile();
 
  	//Set up fragment shader
 	Shader fragmentShader(GL_FRAGMENT_SHADER);
-	fragmentShader.loadFromFile(SHADERS_PATH + fragmentshader);
+	fragmentShader.loadFromFile(shadersPath + fragmentshader);
 	fragmentShader.addDefines(defines);
 	fragmentShader.compile();
 
@@ -74,7 +74,7 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 }
 
 
-ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string geometryshader, const std::vector<std::string>& defines)
+ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string geometryshader, const std::vector<std::string>& defines, std::string shadersPath)
 {
     
     // Initially, we have zero shaders attached to the program
@@ -86,20 +86,20 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 	m_shaderProgramHandle = glCreateProgram();
 
     Shader vertexShader(GL_VERTEX_SHADER);
-	vertexShader.loadFromFile(SHADERS_PATH + vertexshader);
+	vertexShader.loadFromFile(shadersPath + vertexshader);
 	vertexShader.addDefines(defines);
 	vertexShader.compile();
 
 	//Set up fragment shader
 	Shader fragmentShader(GL_FRAGMENT_SHADER);
-	fragmentShader.loadFromFile(SHADERS_PATH + fragmentshader);
+	fragmentShader.loadFromFile(shadersPath + fragmentshader);
 	fragmentShader.addDefines(defines);
 	fragmentShader.compile();
 
 	//readOutputs(fragmentShader);
 
 	Shader geometryShader(GL_GEOMETRY_SHADER);
-	geometryShader.loadFromFile(SHADERS_PATH + geometryshader);
+	geometryShader.loadFromFile(shadersPath + geometryshader);
 	geometryShader.addDefines(defines);
 	geometryShader.compile();
 
@@ -116,7 +116,7 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 }
 
 //ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, const std::vector<std::string>& defines) 
-ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, std::string geometryshader, const std::vector<std::string>& defines)
+ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, std::string geometryshader, const std::vector<std::string>& defines, std::string shadersPath)
 {
     // Initially, we have zero shaders attached to the program
 	m_shaderCount = 0;
@@ -127,28 +127,28 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 	m_shaderProgramHandle = glCreateProgram();
 
     Shader vertexShader(GL_VERTEX_SHADER);
-	vertexShader.loadFromFile(SHADERS_PATH + vertexshader);
+	vertexShader.loadFromFile(shadersPath + vertexshader);
 	vertexShader.addDefines(defines);
 	vertexShader.compile();
 
 	Shader tessControllShader(GL_TESS_CONTROL_SHADER);
-	tessControllShader.loadFromFile(SHADERS_PATH + tessellationcontrollshader);
+	tessControllShader.loadFromFile(shadersPath + tessellationcontrollshader);
 	tessControllShader.addDefines(defines);
 	tessControllShader.compile();
 	
 	Shader tessEvalShader(GL_TESS_EVALUATION_SHADER);
-	tessEvalShader.loadFromFile(SHADERS_PATH + tessellationevaluationshader);
+	tessEvalShader.loadFromFile(shadersPath + tessellationevaluationshader);
 	tessEvalShader.addDefines(defines);
 	tessEvalShader.compile();
 
 	Shader geometryShader(GL_GEOMETRY_SHADER);
-	geometryShader.loadFromFile(SHADERS_PATH + geometryshader);
+	geometryShader.loadFromFile(shadersPath + geometryshader);
 	geometryShader.addDefines(defines);
 	geometryShader.compile();
 
 	//Set up fragment shader
 	Shader fragmentShader(GL_FRAGMENT_SHADER);
-	fragmentShader.loadFromFile(SHADERS_PATH + fragmentshader);
+	fragmentShader.loadFromFile(shadersPath + fragmentshader);
 	fragmentShader.addDefines(defines);
 	fragmentShader.compile();
 
@@ -169,7 +169,7 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 	//readUniforms();
 }
 
-ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, const std::vector<std::string>& defines)
+ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, const std::vector<std::string>& defines, std::string shadersPath)
 {
     // Initially, we have zero shaders attached to the program
 	m_shaderCount = 0;
@@ -180,23 +180,23 @@ ShaderProgram::ShaderProgram(std::string vertexshader, std::string fragmentshade
 	m_shaderProgramHandle = glCreateProgram();
 
     Shader vertexShader(GL_VERTEX_SHADER);
-	vertexShader.loadFromFile(SHADERS_PATH + vertexshader);
+	vertexShader.loadFromFile(shadersPath + vertexshader);
 	vertexShader.addDefines(defines);
 	vertexShader.compile();
 
 	Shader tessControllShader(GL_TESS_CONTROL_SHADER);
-	tessControllShader.loadFromFile(SHADERS_PATH + tessellationcontrollshader );
+	tessControllShader.loadFromFile(shadersPath + tessellationcontrollshader );
 	tessControllShader.addDefines(defines);
 	tessControllShader.compile();
 	
 	Shader tessEvalShader(GL_TESS_EVALUATION_SHADER);
-	tessEvalShader.loadFromFile(SHADERS_PATH + tessellationevaluationshader );
+	tessEvalShader.loadFromFile(shadersPath + tessellationevaluationshader );
 	tessEvalShader.addDefines(defines);
 	tessEvalShader.compile();
 
 	//Set up fragment shader
 	Shader fragmentShader(GL_FRAGMENT_SHADER);
-	fragmentShader.loadFromFile(SHADERS_PATH + fragmentshader);
+	fragmentShader.loadFromFile(shadersPath + fragmentshader);
 	fragmentShader.addDefines(defines);
 	fragmentShader.compile();
 

@@ -33,7 +33,7 @@ public:
 	 * @param computeshader path to the vertexshader
 	 * 
 	 */
-	ShaderProgram(std::string computeshader, const std::vector<std::string>& defines = std::vector<std::string>());
+	ShaderProgram(std::string computeshader, const std::vector<std::string>& defines = std::vector<std::string>(), std::string shadersPath = std::string(SHADERS_PATH));
 
 	/**
 	 * @brief Constructor
@@ -42,7 +42,7 @@ public:
 	 * @param fragmentshader path to the fragmentshader
 	 * 
 	 */
-	ShaderProgram(std::string vertexshader, std::string fragmentshader, const std::vector<std::string>& defines = std::vector<std::string>());
+	ShaderProgram(std::string vertexshader, std::string fragmentshader, const std::vector<std::string>& defines = std::vector<std::string>(), std::string shadersPath = std::string(SHADERS_PATH));
 
 	/**
 	 * @brief Constructor
@@ -52,7 +52,7 @@ public:
 	 * @param geometryshader path to the geometryshader
 	 * 
 	 */
-	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string geometryshader, const std::vector<std::string>& defines = std::vector<std::string>());
+	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string geometryshader, const std::vector<std::string>& defines = std::vector<std::string>(), std::string shadersPath = std::string(SHADERS_PATH));
 
 		/**
 	 * @brief Constructor
@@ -62,9 +62,9 @@ public:
 	 * @param geometryshader path to the geometryshader
 	 * 
 	 */
-	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, std::string geometryshader, const std::vector<std::string>& defines = std::vector<std::string>());
+	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, std::string geometryshader, const std::vector<std::string>& defines = std::vector<std::string>(), std::string shadersPath = std::string(SHADERS_PATH));
 	
-	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, const std::vector<std::string>& defines = std::vector<std::string>());
+	ShaderProgram(std::string vertexshader, std::string fragmentshader, std::string tessellationcontrollshader, std::string tessellationevaluationshader, const std::vector<std::string>& defines = std::vector<std::string>(), std::string shadersPath = std::string(SHADERS_PATH));
 
 
 	/**
