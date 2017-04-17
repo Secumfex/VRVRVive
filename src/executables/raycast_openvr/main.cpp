@@ -368,28 +368,35 @@ public:
 		int argIdx = 1;
 		while (argIdx < argc)
 		{
-			if (argv[argIdx] == "-scale")
+			DEBUGLOG->log("Arg[" + std::to_string(argIdx) + "]: " + argv[argIdx]);
+			
+			if ( strcmp( argv[argIdx], "-scale")  == 0)
 			{
 				argIdx++;
-				FRAMEBUFFER_SCALE = atof(argv[1]);
+				FRAMEBUFFER_SCALE = atof(argv[argIdx]);
+				DEBUGLOG->log("Set Framebuffer scale: ", FRAMEBUFFER_SCALE);
 			}
 
-			if (argv[argIdx] == "-relative")
+			if (strcmp( argv[argIdx], "-relative") == 0)
 			{
 				m_sResourceDirectory = executableDirectory;
 				m_sShaderDirectory   = executableDirectory;
+				DEBUGLOG->log("Set Resources Directory: " + m_sResourceDirectory);
+				DEBUGLOG->log("Set Shader Directory: " + m_sResourceDirectory);
 			}
 
-			if (argv[argIdx] == "-resourcesdir")
+			if (strcmp( argv[argIdx], "-resourcesdir") == 0)
 			{
 				argIdx++;
 				m_sResourceDirectory = argv[argIdx];
+				DEBUGLOG->log("Set Resources Directory: " + m_sResourceDirectory);
 			}
 
-			if (argv[argIdx] == "-shadersdir")
+			if (strcmp( argv[argIdx], "-shadersdir") == 0)
 			{
 				argIdx++;
 				m_sShaderDirectory = argv[argIdx];
+				DEBUGLOG->log("Set Shaders Directory: " + m_sShaderDirectory);
 			}
 			argIdx++;
 		}
