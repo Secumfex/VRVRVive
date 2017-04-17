@@ -89,6 +89,12 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 	s_windowingRange = s_windowingMaxValue - s_windowingMinValue;
 }
 
+static const char* s_warpingNames[]  = {
+		"Quad Warping",
+		"Grid Warping",
+		"Volumetric Warping",
+	};
+
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -174,7 +180,7 @@ private:
 	int m_iOcclusionBlockSize;
 	int m_iVertexGridWidth;
 	int m_iVertexGridHeight;
-	
+
 	enum WarpingTechniques{
 		QUAD,
 		GRID,
@@ -465,7 +471,7 @@ public:
 
 		if (m_pOvr->m_pHMD)
 		{
-			s_translation = glm::translate(glm::vec3(0.0f,1.25f,0.0f));
+			s_translation = glm::translate(glm::vec3(0.0f,1.5f,0.0f));
 			s_scale = glm::scale(glm::vec3(0.5f,0.5f,0.5f));
 		}
 		else
@@ -1375,9 +1381,12 @@ public:
 		ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 
-		ImGui::Value("FPS", io.Framerate);
+		ImGui::Value( "Output FPS         ", io.Framerate);
 		m_fMirrorScreenTimer += io.DeltaTime;
 		m_fElapsedTime += io.DeltaTime;
+
+		ImGui::Value( "Volume Renderer FPS", 1000.f / ( m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->getLastTotalRenderTime() ) );
+		ImGui::Text("Active Warping Technique: "); ImGui::SameLine(); ImGui::Text(s_warpingNames[m_iActiveWarpingTechnique]);
 
 		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f) );
 		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
@@ -1647,7 +1656,7 @@ public:
 		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
 		if (m_iActiveWarpingTechnique == NOVELVIEW)
 		{
-			static int numSamples = 32;
+			static int numSamples = 12;
 			if (ImGui::SliderInt("Num Novel-View Samples", &numSamples, 4, 96))
 			{
 				m_pNovelViewWarpShader->update("uThreshold", numSamples);
