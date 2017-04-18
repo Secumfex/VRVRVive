@@ -157,7 +157,7 @@ private:
 	// Event handler bookkeeping
 	std::function<bool(SDL_Event*)> m_sdlEventFunc;
 	std::function<bool(const vr::VREvent_t&)> m_vrEventFunc;
-	std::function<void(bool, int)> m_trackpadEventFunc;
+	std::function<void(bool, int)> m_touchpadTouchedFunc;
 	std::function<void(bool, int)> m_triggerPressedFunc;
 	std::function<void(bool, int)> m_touchpadPressedFunc;
 	std::function<void(int)> m_setDebugViewFunc;
@@ -212,15 +212,36 @@ private:
 	bool m_bAnimateRotation;
 	bool m_bAnimateTranslation;
 
-	bool  m_bIsTouchpadTouched;
-	int   m_iTouchpadTrackedDeviceIdx;
-	float m_fOldTouchX;
-	float m_fOldTouchY;
+	struct DeviceInfo
+	{
+		std::unordered_map<int, bool> button;
+		bool touch;
+		int iDeviceIdx;
+		DeviceInfo():iDeviceIdx(-1){}
+	};
 
-	bool  m_bIsTriggerPressed;
-	int   m_iTriggerPressedTrackedDeviceIdx;
-	bool  m_bIsTouchpadPressed;
-	int   m_iTouchpadPressedTrackedDeviceIdx;
+	std::unordered_map<int, DeviceInfo> m_deviceInfo;
+
+	struct TouchInfo
+	{
+		float lastX;
+		float lastY;
+	};
+	std::unordered_map<int, TouchInfo> m_touchInfo;
+
+	struct CullInfo
+	{
+		glm::vec4 lastPos;
+		glm::vec3 cullAxis;
+	};
+	std::unordered_map<int, CullInfo> m_cullInfo;
+
+	struct WindowingInfo
+	{
+		glm::vec4 lastPos;
+		int lowerOrUpper;
+	};
+	std::unordered_map<int, WindowingInfo> m_windowingInfo;
 
 	float m_fOldX;
 	float m_fOldY;
@@ -254,10 +275,6 @@ private:
 		glm::mat4 view;
 		glm::mat4 perspective;
 	} matrices[2][2]; // left, right, firsthit, current
-
-	glm::vec3 m_cullAxis;
-	glm::vec4 m_lastControllerPos;
-	int m_iLowerOrUpper; // -1: lower, 0: unset, 1: upper boundary
 
 public:
 
@@ -332,14 +349,16 @@ public:
 		, m_iNumLayers(32)
 		, m_fOldX(0.0f)
 		, m_fOldY(0.0f)
-		, m_fOldTouchX(0.5f)
-		, m_fOldTouchY(0.5f)
-		, m_iTriggerPressedTrackedDeviceIdx(-1)
-		, m_bIsTriggerPressed(false)
-		, m_bIsTouchpadPressed(false)
-		, m_iTouchpadPressedTrackedDeviceIdx(-1)
-		, m_bIsTouchpadTouched(false)
-		, m_iTouchpadTrackedDeviceIdx(-1)
+		//, m_fOldTouchX(0.5f)
+		//, m_fOldTouchY(0.5f)
+		//, m_iTriggerPressedTrackedDeviceIdx(-1)
+		//, m_bIsTriggerPressed(false)
+		//, m_bIsTouchpadPressed(false)
+		//, m_iTouchpadPressedTrackedDeviceIdx(-1)
+		//, m_bIsTouchpadTouched(false)
+		//, m_iTouchpadTrackedDeviceIdx(-1)
+		//, m_lastControllerPos(0.0f)
+		//, m_iLowerOrUpper(0)
 		, m_bPredictPose(false)
 		, m_iOcclusionBlockSize(6)
 		, m_fMirrorScreenTimer(0.f)
@@ -353,9 +372,6 @@ public:
 		, m_pixelOffsetFar(0.0f)
 		, m_pixelOffsetNear(0.0f)
 		, m_clearColor(0.17f, 0.211f, 0.266f, 0.0f)
-		, m_cullAxis(0.0f)
-		, m_lastControllerPos(0.0f)
-		, m_iLowerOrUpper(0)
 		, m_sResourceDirectory(RESOURCES_PATH)
 		, m_sShaderDirectory(SHADERS_PATH)
 	{
@@ -1127,21 +1143,17 @@ public:
 		{
 			switch( event.eventType )
 			{
+				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
+				
+				m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+				
 				case vr::VREvent_ButtonPress:
 				{
-					if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				
+					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = true;
+					
 					switch(event.data.controller.button)
 					{
-					case vr::k_EButton_Axis0: // touchpad
-						m_bIsTouchpadPressed = true;
-						m_iTouchpadPressedTrackedDeviceIdx = event.trackedDeviceIndex;
-						break;
-					case vr::k_EButton_Axis1: // trigger
-						m_bIsTriggerPressed = true;
-						m_iTriggerPressedTrackedDeviceIdx = event.trackedDeviceIndex;
-						break;
-					case vr::k_EButton_Grip: // grip
+					case vr::k_EButton_ApplicationMenu:
 						m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
 						break;
 					}
@@ -1150,40 +1162,29 @@ public:
 					break;
 				}
 				case vr::VREvent_ButtonUnpress:
-					if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-					switch(event.data.controller.button)
-					{
-					case vr::k_EButton_Axis0: // touchpad
-						m_bIsTouchpadPressed = false;
-						//m_iTouchpadPressedTrackedDeviceIdx = -1;
-						break;
-					case vr::k_EButton_Axis1: // trigger
-						m_bIsTriggerPressed = false;
-						m_iTriggerPressedTrackedDeviceIdx = -1; // reset in func
-						break;
-					}
+					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = false;
 					break;
 				case vr::VREvent_ButtonTouch: // generated for touchpad
 					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
 					{ 
-						m_iTouchpadTrackedDeviceIdx = event.trackedDeviceIndex;
-						m_bIsTouchpadTouched = true;
-						m_turntable.setDragActive(m_bIsTouchpadTouched);
+						m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+						m_deviceInfo[event.trackedDeviceIndex].touch = true;
+
+						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
 
 						vr::VRControllerState_t state_;
 						if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
 						{
-							m_fOldTouchX = state_.rAxis[0].x;
-							m_fOldTouchY = state_.rAxis[0].y;
+							m_touchInfo[event.trackedDeviceIndex].lastX = state_.rAxis[0].x;
+							m_touchInfo[event.trackedDeviceIndex].lastY = state_.rAxis[0].y;
 						}
 					}
 					break;
 				case vr::VREvent_ButtonUntouch:
 					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
 					{
-						m_iTouchpadTrackedDeviceIdx = -1;
-						m_bIsTouchpadTouched = false;
-						m_turntable.setDragActive(m_bIsTouchpadTouched);
+						m_deviceInfo[event.trackedDeviceIndex].touch = false;
+						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
 					}
 					break;
 				//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
@@ -1193,45 +1194,49 @@ public:
 		};
 
 		// seperate handler for touchpad, since no event will be generated for touch-movement
-		m_trackpadEventFunc = [&](bool isTouched, int deviceIdx)
+		m_touchpadTouchedFunc = [&](bool isTouched, int deviceIdx)
 		{
-			if (isTouched && deviceIdx != -1)
+			if ( isTouched )
 			{
 				vr::VRControllerState_t state;
-				m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state);
+				if ( !m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state) ) { return; }
 
-				float d_x = state.rAxis[0].x - m_fOldTouchX;
-				float d_y = state.rAxis[0].y - m_fOldTouchY;
+				float d_x = state.rAxis[0].x - m_touchInfo[deviceIdx].lastX;
+				float d_y = state.rAxis[0].y - m_touchInfo[deviceIdx].lastY;
 
 				if (m_turntable.getDragActive())
 				{
 					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
 				}
 
-				m_fOldTouchX = state.rAxis[0].x;
-				m_fOldTouchY = state.rAxis[0].y;
+				m_touchInfo[deviceIdx].lastX = state.rAxis[0].x;
+				m_touchInfo[deviceIdx].lastY = state.rAxis[0].y;
+			}
+			else
+			{
+				m_touchInfo.erase(deviceIdx);
 			}
 		};
 
 		m_triggerPressedFunc = [&](bool isPressed, int deviceIdx)
 		{
-			if (isPressed && deviceIdx != -1)
+			if ( isPressed )
 			{
 			bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes )
 			{		
-			if (m_pOvr->m_rTrackedDevicePose[m_iTriggerPressedTrackedDeviceIdx].bPoseIsValid) 
+			if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
 			{
 				// transform controller pose to texture space
-				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[m_iTriggerPressedTrackedDeviceIdx];
+				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
 				glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
 
 				// find nearest cull plane: largest scalar of direction from center to point
-				if (m_cullAxis == glm::vec3(0.0f))
+				if (m_cullInfo.find(deviceIdx) == m_cullInfo.end())
 				{
 					glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
 					dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
 					dirCP = glm::normalize(dirCP);
-					m_cullAxis = glm::vec3( 
+					m_cullInfo[deviceIdx].cullAxis = glm::vec3( 
 						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
 						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
 						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
@@ -1239,26 +1244,30 @@ public:
 				}
 
 				// set corresponding cull scalar to controller pose
-				if ( glm::any(glm::lessThan( m_cullAxis, glm::vec3(0.0f) )) ) 
+				if ( glm::any(glm::lessThan( m_cullInfo[deviceIdx].cullAxis, glm::vec3(0.0f) )) ) 
 				{ 
 					s_cullMin = glm::vec3(
-						(m_cullAxis.x == 0.0f) ? s_cullMin.x : min( s_cullMax.x, max(0.0f, point.x)),
-						(m_cullAxis.y == 0.0f) ? s_cullMin.y : min( s_cullMax.y, max(0.0f, point.y)),
-						(m_cullAxis.z == 0.0f) ? s_cullMin.z : min( s_cullMax.z, max(0.0f, point.z))
+						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMin.x : min( s_cullMax.x, max(0.0f, point.x)),
+						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMin.y : min( s_cullMax.y, max(0.0f, point.y)),
+						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMin.z : min( s_cullMax.z, max(0.0f, point.z))
 						);
 				}
 				else
 				{
 					s_cullMax = glm::vec3(
-						(m_cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
-						(m_cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
-						(m_cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
+						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
+						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
+						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
 						);
 				}
+
+				if (abs(s_cullMax.x - s_cullMin.x) < s_rayStepSize) { s_cullMin.x -= 0.5f * s_rayStepSize; s_cullMax.x += 0.5f * s_rayStepSize; }
+				if (abs(s_cullMax.y - s_cullMin.y) < s_rayStepSize) { s_cullMin.y -= 0.5f * s_rayStepSize; s_cullMax.y += 0.5f * s_rayStepSize; }
+				if (abs(s_cullMax.z - s_cullMin.z) < s_rayStepSize) { s_cullMin.z -= 0.5f * s_rayStepSize; s_cullMax.z += 0.5f * s_rayStepSize; }
 			}}}
 			else // reset
 			{
-				m_cullAxis = glm::vec3(0.0f);
+				m_cullInfo.erase(deviceIdx);
 			}
 		};
 
@@ -1274,18 +1283,18 @@ public:
 				glm::vec4 point = m_pOvr->m_mat4HMDPose * pose * glm::vec4(0.f, 0.f, 0.f, 1.f);
 
 				// set pose if just pressed
-				if (m_lastControllerPos == glm::vec4(0.0f) || m_iLowerOrUpper == 0)
+				if (m_windowingInfo.find(deviceIdx) == m_windowingInfo.end())
 				{
-					m_lastControllerPos = point;
-					m_iLowerOrUpper = (int) glm::sign(point.x); // "left" or "right" in view space
+					m_windowingInfo[deviceIdx].lastPos = point;
+					m_windowingInfo[deviceIdx].lowerOrUpper = (int) glm::sign(point.x); // "left" or "right" in view space
 				}
 				
 				// calculate difference to last time
-				glm::vec4 diff = point - m_lastControllerPos;
+				glm::vec4 diff = point - m_windowingInfo[deviceIdx].lastPos;
 
 				// set corresponding windowing limit
 				float diffVal = (diff.x * (s_maxValue - s_minValue));  // scaled 1 meter = value range
-				if (m_iLowerOrUpper == -1)
+				if (m_windowingInfo[deviceIdx].lowerOrUpper == -1)
 				{
 					s_windowingMinValue = std::max(s_minValue, std::min(s_windowingMinValue + diffVal, s_windowingMaxValue));
 				}
@@ -1295,22 +1304,20 @@ public:
 				}
 				
 				//+++++++++++++++DEBUG+++++++++++++++++++++++++++
-				DEBUGLOG->log("Controller - Windowing Interaction Info"); DEBUGLOG->indent();
-				DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
-				DEBUGLOG->log("view    : ", point);
-				DEBUGLOG->log("diff    : ", diff);
-				DEBUGLOG->log("diffVal : ", diffVal);
-				DEBUGLOG->outdent();
+				//DEBUGLOG->log("Controller - Windowing Interaction Info"); DEBUGLOG->indent();
+				//DEBUGLOG->log("world   : ", pose * glm::vec4(0.f, 0.f, 0.f, 1.0f));
+				//DEBUGLOG->log("view    : ", point);
+				//DEBUGLOG->log("diff    : ", diff);
+				//DEBUGLOG->log("diffVal : ", diffVal);
+				//DEBUGLOG->outdent();
 				//+++++++++++++++++++++++++++++++++++++++++++++++
 
 				// update last position
-				m_lastControllerPos = point;
+				m_windowingInfo[deviceIdx].lastPos = point;
 			}}
 			else // reset
 			{
-				m_iTouchpadPressedTrackedDeviceIdx = -1;
-				m_iLowerOrUpper = 0;
-				m_lastControllerPos = glm::vec4(0.0f);
+				m_windowingInfo.erase(deviceIdx);
 			}
 		};
 
@@ -1352,9 +1359,12 @@ public:
 	{
 		pollSDLEvents(m_pWindow, m_sdlEventFunc);
 		m_pOvr->PollVREvents(m_vrEventFunc);
-		m_trackpadEventFunc(m_bIsTouchpadTouched, m_iTouchpadTrackedDeviceIdx); // handle trackpad touch seperately
-		m_triggerPressedFunc(m_bIsTriggerPressed, m_iTriggerPressedTrackedDeviceIdx); // handle trigger press seperately
-		m_touchpadPressedFunc(m_bIsTouchpadPressed, m_iTouchpadPressedTrackedDeviceIdx); // handle trackpad press seperately
+		for (auto e: m_deviceInfo)
+		{ 
+			m_touchpadTouchedFunc(e.second.touch, e.first); // handle trackpad touch seperately
+			m_touchpadPressedFunc(e.second.button[vr::k_EButton_Axis0], e.first); // handle trackpad press seperately
+			m_triggerPressedFunc(e.second.button[vr::k_EButton_Axis1], e.first); // handle trigger press seperately
+		}
 	}
 	
 	void CMainApplication::handleVolume()
