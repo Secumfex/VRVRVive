@@ -269,8 +269,8 @@ public:
 	void renderViews();
 	void submitView(int eye);
 	void renderGui();
-	void renderGuiToTexture();
-	void renderGuiToScene(int eye);
+	//void renderGuiToTexture();
+	//void renderGuiToScene(int eye);
 	void renderToScreen();
 	void renderDisplayImages();
 	void renderWarpedImages();
