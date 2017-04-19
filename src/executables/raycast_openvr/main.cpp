@@ -159,6 +159,8 @@ private:
 	std::function<bool(const vr::VREvent_t&)> m_vrEventFunc;
 	std::function<void(bool, int)> m_touchpadTouchedFunc;
 	std::function<void(bool, int)> m_triggerPressedFunc;
+	std::function<void(bool, int)> m_gripPressedFunc;
+	std::function<void(bool, int)> m_dualGripPressedFunc;
 	std::function<void(bool, int)> m_touchpadPressedFunc;
 	std::function<void(int)> m_setDebugViewFunc;
 
@@ -243,6 +245,12 @@ private:
 	};
 	std::unordered_map<int, WindowingInfo> m_windowingInfo;
 
+	struct GripInfo
+	{
+		glm::mat4 lastPose;
+	};
+	std::unordered_map<int, GripInfo> m_gripInfo;
+
 	float m_fOldX;
 	float m_fOldY;
 
@@ -257,7 +265,8 @@ private:
 	std::string m_sShaderDirectory;
 
 	glm::mat4 m_volumeScale;
-
+	glm::mat4 m_modelTransform;
+	
 	int m_iNumSamples;
 	int m_iNumLayers;
 	
@@ -1064,129 +1073,131 @@ public:
 		m_sdlEventFunc = [&](SDL_Event *event)
 		{
 			bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
-			switch(event->type)
+			switch (event->type)
 			{
-				case SDL_KEYDOWN:
+			case SDL_KEYDOWN:
+			{
+				int k = event->key.keysym.sym;
+				switch (k)
 				{
-					int k = event->key.keysym.sym;
-					switch (k)
-					{
-						case SDLK_w:
-							s_translation = glm::translate( glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f))) * s_translation;
-							break;
-						case SDLK_a:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f))) * s_translation;
-							break;
-						case SDLK_s:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f))) * s_translation;
-							break;
-						case SDLK_d:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
-							break;
-						case SDLK_SPACE:
-							m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
-							break;
-						default:
-							break;
-					}
+				case SDLK_w:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, -0.1f, 0.0f))) * s_translation;
+					break;
+				case SDLK_a:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
+					break;
+				case SDLK_s:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, 0.1f, 0.0f))) * s_translation;
+					break;
+				case SDLK_d:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
+					break;
+				case SDLK_SPACE:
+					m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
+					break;
+				default:
 					break;
 				}
-				case SDL_MOUSEMOTION:
+				break;
+			}
+			case SDL_MOUSEMOTION:
+			{
+				ImGuiIO& io = ImGui::GetIO();
+				if (io.WantCaptureMouse)
 				{
-					ImGuiIO& io = ImGui::GetIO();
-					if ( io.WantCaptureMouse )
-					{ break; } // ImGUI is handling this
-
-					float d_x = event->motion.x - m_fOldX;
-					float d_y = event->motion.y - m_fOldY;
-
-					if ( m_turntable.getDragActive() )
-					{
-						m_turntable.dragBy(d_x, d_y, s_view);
-					}
-
-					m_fOldX = (float) event->motion.x;
-					m_fOldY = (float) event->motion.y;
 					break;
-				}
-				case SDL_MOUSEBUTTONDOWN:
+				} // ImGUI is handling this
+
+				float d_x = event->motion.x - m_fOldX;
+				float d_y = event->motion.y - m_fOldY;
+
+				if (m_turntable.getDragActive())
 				{
-					if (event->button.button == SDL_BUTTON_LEFT)
-					{
-						m_turntable.setDragActive(true);
-					}
-					if (event->button.button == SDL_BUTTON_RIGHT)
-					{
-						unsigned char pick_col[20];
-						glReadPixels((int) m_fOldX - 2, (int) WINDOW_RESOLUTION.y - (int) m_fOldY, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+					m_turntable.dragBy(d_x, d_y, s_view);
+				}
 
-						for (int i = 0; i < 20; i += 4)
-						{
-							DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i+2], pick_col[i+3]));
-						}
-					}
-					break;
-				}
-				case SDL_MOUSEBUTTONUP:
+				m_fOldX = (float)event->motion.x;
+				m_fOldY = (float)event->motion.y;
+				break;
+			}
+			case SDL_MOUSEBUTTONDOWN:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
 				{
-					if (event->button.button == SDL_BUTTON_LEFT)
-					{
-						m_turntable.setDragActive(false);
-					}
-					break;
+					m_turntable.setDragActive(true);
 				}
+				if (event->button.button == SDL_BUTTON_RIGHT)
+				{
+					unsigned char pick_col[20];
+					glReadPixels((int)m_fOldX - 2, (int)WINDOW_RESOLUTION.y - (int)m_fOldY, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+
+					for (int i = 0; i < 20; i += 4)
+					{
+						DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i + 2], pick_col[i + 3]));
+					}
+				}
+				break;
+			}
+			case SDL_MOUSEBUTTONUP:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
+				{
+					m_turntable.setDragActive(false);
+				}
+				break;
+			}
 			}
 			return true;
 		};
 
 		m_vrEventFunc = [&](const vr::VREvent_t & event)
 		{
-			switch( event.eventType )
+			switch (event.eventType)
 			{
 				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				
-				m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
-				
-				case vr::VREvent_ButtonPress:
-				{
-					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = true;
-					
-					switch(event.data.controller.button)
-					{
-					case vr::k_EButton_ApplicationMenu:
-						m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
-						break;
-					}
 
-					DEBUGLOG->log("button press: ", event.data.controller.button);
+				m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+
+			case vr::VREvent_ButtonPress:
+			{
+				m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = true;
+
+				switch (event.data.controller.button)
+				{
+				case vr::k_EButton_ApplicationMenu:
+					m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
 					break;
 				}
-				case vr::VREvent_ButtonUnpress:
-					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = false;
-					break;
-				case vr::VREvent_ButtonTouch: // generated for touchpad
-					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
-					{ 
-						m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
-						m_deviceInfo[event.trackedDeviceIndex].touch = true;
 
-						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+				DEBUGLOG->log("button press: ", event.data.controller.button);
+				break;
+			}
+			case vr::VREvent_ButtonUnpress:
+				m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = false;
+				break;
+			case vr::VREvent_ButtonTouch: // generated for touchpad
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+				{
+					m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+					m_deviceInfo[event.trackedDeviceIndex].touch = true;
 
-						vr::VRControllerState_t state_;
-						if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
-						{
-							m_touchInfo[event.trackedDeviceIndex].lastX = state_.rAxis[0].x;
-							m_touchInfo[event.trackedDeviceIndex].lastY = state_.rAxis[0].y;
-						}
-					}
-					break;
-				case vr::VREvent_ButtonUntouch:
-					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+					m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+
+					vr::VRControllerState_t state_;
+					if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
 					{
-						m_deviceInfo[event.trackedDeviceIndex].touch = false;
-						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+						m_touchInfo[event.trackedDeviceIndex].lastX = state_.rAxis[0].x;
+						m_touchInfo[event.trackedDeviceIndex].lastY = state_.rAxis[0].y;
 					}
-					break;
+				}
+				break;
+			case vr::VREvent_ButtonUntouch:
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+				{
+					m_deviceInfo[event.trackedDeviceIndex].touch = false;
+					m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+				}
+				break;
 				//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
 				//	break;
 			}
@@ -1196,10 +1207,10 @@ public:
 		// seperate handler for touchpad, since no event will be generated for touch-movement
 		m_touchpadTouchedFunc = [&](bool isTouched, int deviceIdx)
 		{
-			if ( isTouched )
+			if (isTouched)
 			{
 				vr::VRControllerState_t state;
-				if ( !m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state) ) { return; }
+				if (!m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state)) { return; }
 
 				float d_x = state.rAxis[0].x - m_touchInfo[deviceIdx].lastX;
 				float d_y = state.rAxis[0].y - m_touchInfo[deviceIdx].lastY;
@@ -1220,54 +1231,121 @@ public:
 
 		m_triggerPressedFunc = [&](bool isPressed, int deviceIdx)
 		{
-			if ( isPressed )
+			if (isPressed)
 			{
-			bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes )
-			{		
-			if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
-			{
-				// transform controller pose to texture space
-				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
-				glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
-
-				// find nearest cull plane: largest scalar of direction from center to point
-				if (m_cullInfo.find(deviceIdx) == m_cullInfo.end())
+				bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if (hasCullPlanes)
 				{
-					glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
-					dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
-					dirCP = glm::normalize(dirCP);
-					m_cullInfo[deviceIdx].cullAxis = glm::vec3( 
-						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
-						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
-						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
-						);
-				}
+					if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
+					{
+						// transform controller pose to texture space
+						glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
+						glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
 
-				// set corresponding cull scalar to controller pose
-				if ( glm::any(glm::lessThan( m_cullInfo[deviceIdx].cullAxis, glm::vec3(0.0f) )) ) 
-				{ 
-					s_cullMin = glm::vec3(
-						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMin.x : min( s_cullMax.x, max(0.0f, point.x)),
-						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMin.y : min( s_cullMax.y, max(0.0f, point.y)),
-						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMin.z : min( s_cullMax.z, max(0.0f, point.z))
-						);
-				}
-				else
-				{
-					s_cullMax = glm::vec3(
-						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
-						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
-						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
-						);
-				}
+						// find nearest cull plane: largest scalar of direction from center to point
+						if (m_cullInfo.find(deviceIdx) == m_cullInfo.end())
+						{
+							glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
+							dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
+							dirCP = glm::normalize(dirCP);
+							m_cullInfo[deviceIdx].cullAxis = glm::vec3(
+								(float)((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
+								(float)((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
+								(float)((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
+								);
+						}
 
-				if (abs(s_cullMax.x - s_cullMin.x) < s_rayStepSize) { s_cullMin.x -= 0.5f * s_rayStepSize; s_cullMax.x += 0.5f * s_rayStepSize; }
-				if (abs(s_cullMax.y - s_cullMin.y) < s_rayStepSize) { s_cullMin.y -= 0.5f * s_rayStepSize; s_cullMax.y += 0.5f * s_rayStepSize; }
-				if (abs(s_cullMax.z - s_cullMin.z) < s_rayStepSize) { s_cullMin.z -= 0.5f * s_rayStepSize; s_cullMax.z += 0.5f * s_rayStepSize; }
-			}}}
+						// set corresponding cull scalar to controller pose
+						if (glm::any(glm::lessThan(m_cullInfo[deviceIdx].cullAxis, glm::vec3(0.0f))))
+						{
+							s_cullMin = glm::vec3(
+								(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMin.x : min(s_cullMax.x, max(0.0f, point.x)),
+								(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMin.y : min(s_cullMax.y, max(0.0f, point.y)),
+								(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMin.z : min(s_cullMax.z, max(0.0f, point.z))
+								);
+						}
+						else
+						{
+							s_cullMax = glm::vec3(
+								(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
+								(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
+								(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
+								);
+						}
+
+						if (abs(s_cullMax.x - s_cullMin.x) < s_rayStepSize) { s_cullMin.x -= 1.f * s_rayStepSize; s_cullMax.x += 1.f * s_rayStepSize; }
+						if (abs(s_cullMax.y - s_cullMin.y) < s_rayStepSize) { s_cullMin.y -= 1.f * s_rayStepSize; s_cullMax.y += 1.f * s_rayStepSize; }
+						if (abs(s_cullMax.z - s_cullMin.z) < s_rayStepSize) { s_cullMin.z -= 1.f * s_rayStepSize; s_cullMax.z += 1.f * s_rayStepSize; }
+					}
+				}
+			}
 			else // reset
 			{
 				m_cullInfo.erase(deviceIdx);
+			}
+		};
+
+		m_gripPressedFunc = [&](bool isPressed, int deviceIdx)
+		{
+			if (isPressed)
+			{
+				if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
+				{
+					// transform controller pose to texture space
+					glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
+
+					if ( m_gripInfo.find(deviceIdx) == m_gripInfo.end() )
+					{
+						m_gripInfo[deviceIdx].lastPose = pose;
+					}
+
+					if ( m_gripInfo.size() == 1 ) { // else dual grip method will handle this
+						// compute difference, apply to model
+						glm::mat4 transform = pose * glm::inverse(m_gripInfo[deviceIdx].lastPose);
+						m_modelTransform = transform * m_modelTransform;
+
+						// update
+						m_gripInfo[deviceIdx].lastPose = pose;
+					} 
+				}
+			}
+			else // reset
+			{
+				m_gripInfo.erase(deviceIdx);
+			}
+		};
+
+		m_dualGripPressedFunc = [&](int deviceIdx1, int deviceIdx2)
+		{
+			if (m_gripInfo.find(deviceIdx1) == m_gripInfo.end() || m_gripInfo.find(deviceIdx2) == m_gripInfo.end())
+			{
+				return;
+			}
+			
+			if (m_pOvr->m_rTrackedDevicePose[deviceIdx1].bPoseIsValid
+				&& m_pOvr->m_rTrackedDevicePose[deviceIdx2].bPoseIsValid)
+			{
+				// get pose, compute transform
+				glm::mat4 pose1 = m_pOvr->m_rmat4DevicePose[deviceIdx1];
+				glm::mat4 pose2 = m_pOvr->m_rmat4DevicePose[deviceIdx2];
+
+				glm::mat4 lastPose1 = m_gripInfo[deviceIdx1].lastPose;
+				glm::mat4 lastPose2 = m_gripInfo[deviceIdx2].lastPose;
+
+				// scalation that happens somewhere in between
+				float distOld = glm::distance( glm::vec3(lastPose1[3]), glm::vec3(lastPose2[3]) );
+				float distNew = glm::distance( glm::vec3(pose1[3]), glm::vec3(pose2[3]) );
+				glm::mat4 scalation = glm::scale( glm::vec3(distNew / distOld) );
+
+				// TODO think of a clever way to figure out rotation / translation etc.
+				//glm::mat4 pose1To2     = pose2 * glm::inverse(pose1);
+				//glm::mat4 lastPose1To2 = lastPose2 * glm::inverse(lastPose1);
+				//glm::mat4 transform1 = pose1To2 * glm::inverse(lastPose1To2);
+
+				// compute difference, apply to model
+				s_scale = scalation * s_scale;
+
+				m_gripInfo[deviceIdx1].lastPose = pose1;
+				m_gripInfo[deviceIdx2].lastPose = pose2;
 			}
 		};
 
@@ -1359,11 +1437,18 @@ public:
 	{
 		pollSDLEvents(m_pWindow, m_sdlEventFunc);
 		m_pOvr->PollVREvents(m_vrEventFunc);
+		std::vector<int> gripPressed;
 		for (auto e: m_deviceInfo)
 		{ 
 			m_touchpadTouchedFunc(e.second.touch, e.first); // handle trackpad touch seperately
 			m_touchpadPressedFunc(e.second.button[vr::k_EButton_Axis0], e.first); // handle trackpad press seperately
 			m_triggerPressedFunc(e.second.button[vr::k_EButton_Axis1], e.first); // handle trigger press seperately
+			m_gripPressedFunc(e.second.button[vr::k_EButton_Grip], e.first);
+			if (e.second.button[vr::k_EButton_Grip]) { gripPressed.push_back(e.first); }
+		}
+		if (gripPressed.size() >= 2)
+		{
+			m_dualGripPressedFunc(gripPressed[0], gripPressed[1]);
 		}
 	}
 	
@@ -1515,10 +1600,10 @@ public:
 		}}
 
 		{
-			static float scale = s_scale[0][0];
-			if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 100.0f))
+			static float* scale = &s_scale[0][0];
+			if (ImGui::DragFloat("Scale", scale, 0.01f, 0.1f, 100.0f))
 			{
-				s_scale = glm::scale(glm::vec3(scale));
+				s_scale = glm::scale(glm::vec3(*scale));
 
 				{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
 					s_near = getIdealNearValue();
@@ -2506,7 +2591,7 @@ public:
 			
 			//////////////////////////////////////////////////////////////////////////////
 			//updateModel(); 
-			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
+			s_model = m_modelTransform * s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 			
 			//////////////////////////////////////////////////////////////////////////////
 			m_frame.Timings.getBack().timestamp("Frame Begin");
