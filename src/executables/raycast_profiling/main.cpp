@@ -664,7 +664,7 @@ void CMainApplication::loop()
 				glFinish();
 				
 				//+++++++++++++ DEBUG ++++++++++++++
-				if (i % m_iSaveImageIdxMod == 0){
+				if (m_iSaveImageIdxMod >= 1 && i % m_iSaveImageIdxMod == 0){
 					//+++++++++++++ DEBUG ++++++++++++++
 					printProgress(((float) 0.0 / (float) NUM_WARPTECHNIQUES) * 100.0f, "Save Images...");
 					//++++++++++++++++++++++++++++++++++
@@ -1212,7 +1212,7 @@ void CMainApplication::updateGui()
 
 		if ( ImGui::CollapsingHeader("Animation Settings") )
 		{
-			ImGui::SliderInt("Save Image Idx Mod", &m_iSaveImageIdxMod, 1, 100);
+			ImGui::SliderInt("Save Image Idx Mod", &m_iSaveImageIdxMod, 0, 100); if (ImGui::IsItemHovered()) ImGui::SetTooltip("0 == disabled");
 			ImGui::SliderInt("Active Animation Mode", &m_hmdSimulation.m_mode, 0, HmdSimulation::NUM_ANIMATIONMODES - 1);
 			ImGui::SliderFloat("Start Value", &m_hmdSimulation.m_fStartValue, -90.0f, 90.0f);
 			ImGui::SliderFloat("Value", &m_hmdSimulation.m_fValue, -90.0f, 90.0f);
