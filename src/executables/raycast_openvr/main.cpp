@@ -265,7 +265,7 @@ private:
 	std::string m_sShaderDirectory;
 
 	glm::mat4 m_volumeScale;
-	glm::mat4 m_modelTransform;
+	//glm::mat4 m_modelTransform;
 	
 	int m_iNumSamples;
 	int m_iNumLayers;
@@ -1301,7 +1301,6 @@ public:
 					if (m_gripInfo.size() == 1) { // else dual grip method will handle this
 						// compute difference, apply to model
 						glm::mat4 transform = pose * glm::inverse(m_gripInfo[deviceIdx].lastPose);
-						m_modelTransform = transform * m_modelTransform;
 
 						//m_modelTransform = transform * m_modelTransform;
 						glm::mat4 translation = glm::mat4(1.0f);
@@ -1483,20 +1482,23 @@ public:
 		ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 
+		ImGui::Separator();
 		ImGui::Value( "Output FPS         ", io.Framerate);
 		m_fMirrorScreenTimer += io.DeltaTime;
 		m_fElapsedTime += io.DeltaTime;
 
 		ImGui::Value( "Volume Renderer FPS", 1000.f / ( m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->getLastTotalRenderTime() ) );
-		ImGui::Text("Active Warping Technique: "); ImGui::SameLine(); ImGui::Text(s_warpingNames[m_iActiveWarpingTechnique]);
+		ImGui::Text(  "Warping Technique  : "); ImGui::SameLine(); ImGui::Text(s_warpingNames[m_iActiveWarpingTechnique]);
 
-		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f) );
-		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 90.0, ImVec2(0, 60));
 		ImGui::PopStyleColor();
+		ImGui::Separator();
+
 	
 		ImGui::Text("Active Model");
 		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
-		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
+		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 6))
 		{
 			handleVolume();
 		}
@@ -1509,7 +1511,8 @@ public:
 			bool changed = false;
 			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f); 
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Value relative to windowing limits");
 				ImGui::NextColumn();
 				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
@@ -1526,23 +1529,30 @@ public:
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
     	{
-			ImGui::Text("Parameters related to m_pVolume rendering");
-			ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 1.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
-        	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+			ImGui::Text("Parameters related to Volume rendering");
+			ImGui::DragFloatRange2("Windowing Range", &s_windowingMinValue, &s_windowingMaxValue, 1.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Value range to which the transfer function is mapped");
+        	ImGui::SliderFloat("Ray Step Size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Texture space ray step size in range [0..1]");
 			{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
 				ImGui::SliderFloat3("Cull Max", glm::value_ptr(s_cullMax),0.0f, 1.0f);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal culling limits in texture space");
 				ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Minimal culling limits in texture space");
 			}}
 		}
-        		
+
 		ImGui::Separator();
 
 		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 		if (ImGui::CollapsingHeader("Level of Detail Settings"))
 		{
 			ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal volume mipmap-Level for sampling");
 			ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Distance to camera [m] at which level-of-detail sampling begins");
 			ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("View space range [m] to which the level-of-detail range is mapped");
 		}
 		}}
 		
@@ -1562,9 +1572,11 @@ public:
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the performance information for the viewport chunks");
 		if (profiler_visible) { m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible, "LEFT "); };
 		ImGui::NextColumn();
 		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the performance information for the viewport chunks");
 		if (profiler_visible_r) { m_pRaycastChunked[RIGHT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible_r, "RIGHT "); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
@@ -1586,7 +1598,9 @@ public:
 
 		{bool changed = false;
 		changed |= ImGui::SliderFloat("Near", &s_near, 0.1f, s_far);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Camera's near plane distance");
 		changed |= ImGui::SliderFloat("Far", &s_far, s_near, 100.0f);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Camera's far plane distance");
 		if ( changed )
 		{
 			updateNearHeightWidth();
@@ -1632,12 +1646,18 @@ public:
 
 				}}
 			}
+			else
+			{
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
+			}
 		}
 
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the rendering task times of last frame");
 		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pause profiler to inspect a single frame");
 		m_frame.Timings.getFront().setEnabled(!pause_frame_profiler);
 		m_frame.Timings.getBack().setEnabled(!pause_frame_profiler);
 		
