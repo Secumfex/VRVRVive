@@ -1298,17 +1298,10 @@ public:
 						m_gripInfo[deviceIdx].lastPose = pose;
 					}
 
-					if (m_gripInfo.size() == 1) { // else dual grip method will handle this
+					if ( m_gripInfo.size() == 1 ) { // else dual grip method will handle this
 						// compute difference, apply to model
 						glm::mat4 transform = pose * glm::inverse(m_gripInfo[deviceIdx].lastPose);
 
-						//m_modelTransform = transform * m_modelTransform;
-						glm::mat4 translation = glm::mat4(1.0f);
-						translation[3] = transform[3];
-						s_translation = translation * s_translation;
-						glm::mat4 rotation = glm::mat4(glm::mat3(transform));
-						s_rotation = rotation * s_rotation;
-						
 						// update
 						m_gripInfo[deviceIdx].lastPose = pose;
 					} 
@@ -2653,7 +2646,7 @@ public:
 			
 			//////////////////////////////////////////////////////////////////////////////
 			//updateModel(); 
-			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
+			s_model = m_modelTransform * s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 			
 			//////////////////////////////////////////////////////////////////////////////
 			m_frame.Timings.getBack().timestamp("Frame Begin");
