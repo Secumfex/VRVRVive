@@ -1504,6 +1504,8 @@ public:
 		}
 		ImGui::PopItemWidth();
 
+		ImGui::Separator();
+		
 		if (ImGui::CollapsingHeader("Transfer Function Settings"))
 		{
 			ImGui::Columns(2, "mycolumns2", true);
@@ -1556,24 +1558,23 @@ public:
 		}
 		}}
 		
-		{if (ImGui::CollapsingHeader("Shader Defines")){
+
+		{
+		bool expanded = ImGui::CollapsingHeader("Shader Defines");
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
+		if (expanded){
 			for (unsigned int i = 0; i < m_issetDefine.size(); i++)
 			{
 				ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*) &(m_issetDefine[i]) );
 			}
-		} else
-		{
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
-		}}
+		}
+		}
 
 		if (ImGui::Button("Recompile Shaders"))
 		{
 			recompileShaders();
 		}
-		else
-		{
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
-		}
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
 
 		ImGui::Separator();
 		ImGui::Columns(2);
@@ -1588,15 +1589,7 @@ public:
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		
-		ImGui::Separator();
-		ImGui::Columns(2);
-		ImGui::SliderInt("Left Debug View", &m_iLeftDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
-		ImGui::NextColumn();
-		ImGui::SliderInt("Right Debug View", &m_iRightDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
-		ImGui::NextColumn();
-		ImGui::Columns(1);
-		ImGui::Separator();
-		if (ImGui::ColorEdit4("Clear Color", &m_clearColor[0]))
+		if (ImGui::ColorEdit4("Background Color", &m_clearColor[0]))
 		{
 			m_pGridWarpShader->update("color", m_clearColor);
 		}
@@ -1653,10 +1646,7 @@ public:
 
 				}}
 			}
-			else
-			{
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
-			}
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
 		}
 
 		static bool frame_profiler_visible = false;
@@ -1797,11 +1787,7 @@ public:
 			{
 				m_pNovelViewWarpShader->update("uThreshold", numSamples);
 			}
-			else
-			{
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
-			}
-
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
 		}
 
 		//++++++++++++++ DEBUG
@@ -1849,22 +1835,17 @@ public:
 			float beta  = angles[1] * glm::half_pi<float>();
 			static int numSteps = 16;
 			static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
 			if (ImGui::CollapsingHeader("Shadow Properties"))
 			{	
 				if (ImGui::SliderFloat2("Light Direction", angles, -0.999f, 0.999f) )
 				{
 					shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
 				}
-				else
-				{
-					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
-				}
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
+
 				ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
 				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-sample steps traced in light direction");
-			}
-			else
-			{
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
 			}
 
 
@@ -1951,8 +1932,19 @@ public:
 			m_pixelOffsetFar  = abs(sdf.x);
 			//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-			if(ImGui::CollapsingHeader("Debugging Information"))
+			ImGui::Separator();
 			{
+			bool expanded = ImGui::CollapsingHeader("Debugging Information");
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Values related to re-projection for single-pass stereo rendering");
+			if(expanded)
+			{
+			ImGui::Columns(2);
+			ImGui::SliderInt("Left Debug View", &m_iLeftDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
+			ImGui::NextColumn();
+			ImGui::SliderInt("Right Debug View", &m_iRightDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
+			ImGui::NextColumn();
+			ImGui::Columns(1);
+			
 			if (ImGui::CollapsingHeader("Epipolar Info"))
 			{
 			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
@@ -1973,12 +1965,10 @@ public:
 			ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Length of a left view's ray after re-projection to the right view's image pixel coordinates");
 			}
-			else
-			{
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Values related to re-projection for single-pass stereo rendering");
-			}
 
-			if (ImGui::CollapsingHeader("Epipolar Info Details"))
+			{bool expanded = ImGui::CollapsingHeader("Epipolar Info Details");
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Debugging infos, nothing relevant to see here...");
+			if (expanded)
 			{
 				ImGui::Separator();
 				ImGui::InputFloat4("b", glm::value_ptr(b)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Base line (left to right eye)");
@@ -2002,13 +1992,8 @@ public:
 				ImGui::InputFloat4("sdn", glm::value_ptr(sdn)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at near distance");
 				ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at far distance");
 				ImGui::Separator();
-			}
-			}
-			else
-			{
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Debugging infos, nothing relevant to see here...");
-			}
-
+			}}
+			}}
 		}
 
 		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
