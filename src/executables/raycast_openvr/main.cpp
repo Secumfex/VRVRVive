@@ -1556,16 +1556,23 @@ public:
 		}
 		}}
 		
-		{if (ImGui::CollapsingHeader("Defines")){
+		{if (ImGui::CollapsingHeader("Shader Defines")){
 			for (unsigned int i = 0; i < m_issetDefine.size(); i++)
 			{
 				ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*) &(m_issetDefine[i]) );
 			}
+		} else
+		{
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
 		}}
 
 		if (ImGui::Button("Recompile Shaders"))
 		{
 			recompileShaders();
+		}
+		else
+		{
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
 		}
 
 		ImGui::Separator();
@@ -1704,12 +1711,14 @@ public:
 				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[LEFT]).lastTime;
 				if (t > lastSwapTimestampLeft) { lastSwapTimeLeft = t - lastSwapTimestampLeft; lastSwapTimestampLeft = t; }
 				ImGui::Value("Swap Time Left", lastSwapTimeLeft);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Time between last Double-Buffer swaps (i.e. raycasting render time).");
 			}
 			if (m_frame.Timings.getFront().m_timestamps.find("Swap Time" + STR_SUFFIX[RIGHT]) != m_frame.Timings.getFront().m_timestamps.end())
 			{
 				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[RIGHT]).lastTime;
 				if (t > lastSwapTimestampRight) { lastSwapTimeRight = t - lastSwapTimestampRight; lastSwapTimestampRight = t; }
 				ImGui::Value("Swap Time Right", lastSwapTimeRight);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Time between last Double-Buffer swaps (i.e. raycasting render time).");
 			}
 			ImGui::Separator();
 			}
@@ -1751,7 +1760,10 @@ public:
 		// Update Matrices
 
 		//++++++++++++++ DEBUG
+		ImGui::BeginGroup();
 		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Anim Translation", &m_bAnimateTranslation); ImGui::SameLine(); ImGui::Checkbox("Anim Rotation", &m_bAnimateRotation);
+		ImGui::EndGroup();
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Static animation of the camera. Animate movement and/or head-rotation.");
 		if (m_bAnimateView)
 		{
 			glm::vec4 warpCenter = s_center;
@@ -1770,19 +1782,26 @@ public:
 		}
 
 		ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Use prediction to counter long render times");
 		//++++++++++++++ DEBUG
 
 		ImGui::Checkbox("Auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
 		//++++++++++++++ DEBUG
 		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Switch warping technique. 0: Quad, 1: Grid, 2: Volumetric");
 		if (m_iActiveWarpingTechnique == NOVELVIEW)
 		{
 			static int numSamples = 12;
-			if (ImGui::SliderInt("Num Novel-View Samples", &numSamples, 4, 96))
+			if (ImGui::SliderInt("Num Volumetric Warp Samples", &numSamples, 4, 96))
 			{
 				m_pNovelViewWarpShader->update("uThreshold", numSamples);
 			}
+			else
+			{
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
+			}
+
 		}
 
 		//++++++++++++++ DEBUG
@@ -1832,12 +1851,22 @@ public:
 			static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
 			if (ImGui::CollapsingHeader("Shadow Properties"))
 			{	
-				if (ImGui::SliderFloat2("Shadow Dir", angles, -0.999f, 0.999f) )
+				if (ImGui::SliderFloat2("Light Direction", angles, -0.999f, 0.999f) )
 				{
 					shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
 				}
+				else
+				{
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
+				}
 				ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-sample steps traced in light direction");
 			}
+			else
+			{
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
+			}
+
 
 			m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); 
 			m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 
@@ -1847,7 +1876,8 @@ public:
 		}}
 
 		{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
-			ImGui::SliderInt("Num Samples", &m_iNumSamples, 0, 128);
+			ImGui::SliderInt("Num Cubemap Samples", &m_iNumSamples, 0, 128);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set per-sample number of environment samples. Multiples of 4 add another direction, each direction is traced for max. 4 samples.");
 			m_pRaycastShader->update("uNumSamples", m_iNumSamples);
 			m_pRaycastLayersShader->update("uNumSamples", m_iNumSamples);
 		}}
@@ -1921,17 +1951,31 @@ public:
 			m_pixelOffsetFar  = abs(sdf.x);
 			//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+			if(ImGui::CollapsingHeader("Debugging Information"))
+			{
 			if (ImGui::CollapsingHeader("Epipolar Info"))
 			{
 			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
+			ImGui::BeginGroup();
 			ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
+			ImGui::EndGroup();
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Framebuffer resolution");
 			ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Minimal distance to the camera at which a ray enters the bounding sphere of the volume (at least focal length)");
 			ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal distance to the camera at which a ray leaves the bounding sphere of the volume");
 			//ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
 			//ImGui::Value("Pixel Offset of Images", imageOffset);
 			ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Where the start point lies on the right image, compared to the pixel coordinate of the point in the left view");
 			ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Where the end point lies on the right image, compared to the pixel coordinate of the point in the left view");
 			ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Length of a left view's ray after re-projection to the right view's image pixel coordinates");
+			}
+			else
+			{
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Values related to re-projection for single-pass stereo rendering");
 			}
 
 			if (ImGui::CollapsingHeader("Epipolar Info Details"))
@@ -1959,11 +2003,17 @@ public:
 				ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at far distance");
 				ImGui::Separator();
 			}
+			}
+			else
+			{
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Debugging infos, nothing relevant to see here...");
+			}
+
 		}
 
 		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
 		static int debugIdx = -1;
-		ImGui::SliderInt( "DEBUG LAYER", &debugIdx, -1, m_iNumLayers - 1 ); 
+		ImGui::SliderInt( "Debugging Layer Index", &debugIdx, -1, m_iNumLayers - 1 ); 
 		if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
 		if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
 		}}
