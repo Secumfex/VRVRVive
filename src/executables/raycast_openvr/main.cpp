@@ -1217,7 +1217,7 @@ public:
 
 				if (m_turntable.getDragActive())
 				{
-					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
+					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view * m_modelTransform);
 				}
 
 				m_touchInfo[deviceIdx].lastX = state.rAxis[0].x;
@@ -1313,8 +1313,27 @@ public:
 			}
 		};
 
-		m_dualGripPressedFunc = [&](int deviceIdx1, int deviceIdx2)
+		m_dualGripPressedFunc = [&](int deviceIdx1_, int deviceIdx2_)
 		{
+			//++++ WORKAROUND fix ++++
+			std::vector<int> gripPressed;
+			for (auto e : m_deviceInfo)
+			{
+				if (e.second.button.find(vr::k_EButton_Grip) != e.second.button.end() && e.second.button.at(vr::k_EButton_Grip) == true)
+				{
+					gripPressed.push_back(e.first);
+				}
+			}
+			if (gripPressed.size() < 2)
+			{
+				return;
+			}
+			int deviceIdx1 = gripPressed[0];
+			int deviceIdx2 = gripPressed[1];
+			//int deviceIdx1 = deviceIdx1_;
+			//int deviceIdx2 = deviceIdx2_;
+			//+++++++++++++++++++++
+
 			if (m_gripInfo.find(deviceIdx1) == m_gripInfo.end() || m_gripInfo.find(deviceIdx2) == m_gripInfo.end())
 			{
 				return;
@@ -1443,10 +1462,14 @@ public:
 			m_touchpadPressedFunc(e.second.button[vr::k_EButton_Axis0], e.first); // handle trackpad press seperately
 			m_triggerPressedFunc(e.second.button[vr::k_EButton_Axis1], e.first); // handle trigger press seperately
 			m_gripPressedFunc(e.second.button[vr::k_EButton_Grip], e.first);
-			if (e.second.button[vr::k_EButton_Grip]) { gripPressed.push_back(e.first); }
+			if (e.second.button.find(vr::k_EButton_Grip) != e.second.button.end() && e.second.button.at(vr::k_EButton_Grip) == true) 
+			{ 
+				gripPressed.push_back(e.first); 
+			}
 		}
 		if (gripPressed.size() >= 2)
 		{
+			//TODO this is buggy, for some reason... gripPressed[0] is 1 inside function sometimes...
 			m_dualGripPressedFunc(gripPressed[0], gripPressed[1]);
 		}
 	}
@@ -2303,17 +2326,15 @@ public:
 
 		{
 			m_pShowTexShader->update("tex", m_iLeftDebugView);
-			m_pShowTex->setViewport(0, 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
+			m_pShowTex->setViewport(0, 0, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f));
 			m_pShowTex->render();
 		}
 		{
 			m_pShowTexShader->update("tex", m_iRightDebugView);
-			m_pShowTex->setViewport((int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
+			m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), 0, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f));
 			m_pShowTex->render();
 		}
 		//////////////////////////////////////////////////////////////////////////////
-
-		m_fMirrorScreenTimer = 0.0f;
 	}
 
 	void CMainApplication::renderGui()
@@ -2578,11 +2599,13 @@ public:
 			submitView(RIGHT);
 		}
 
+		renderToScreen();
+
+		renderGui();
+
 		if (m_fMirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !m_pOvr->m_pHMD)
 		{
-			renderToScreen();
-
-			renderGui();
+			m_fMirrorScreenTimer = 0.0f;
 
 			SDL_GL_SwapWindow( m_pWindow ); // swap buffers
 		}
