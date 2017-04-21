@@ -530,6 +530,7 @@ public:
 			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
 
 			//++++++++++++++DEBUG++++++++++++
+			/*
 			{
 			glm::mat4 p0 = s_perspective;
 			glm::mat4 p1 = m_pOvr->m_mat4ProjectionLeft;
@@ -542,12 +543,14 @@ public:
 			DEBUGLOG->log("GLM near:", n1);
 			DEBUGLOG->log("OVR near:", n2);
 			}
+			*/
 			//+++++++++++++++++++++++++++++++
 
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 
-			//++++++++++++++DEBUG+++++++++++<
+			//++++++++++++++DEBUG+++++++++++< 
+			/*
 			{
 			DEBUGLOG->log("Perspective matrices"); DEBUGLOG->indent();
 			DEBUGLOG->log("p_l: ", s_perspective);
@@ -584,6 +587,7 @@ public:
 			DEBUGLOG->outdent();
 			DEBUGLOG->outdent();
 			}
+			*/
 			//+++++++++++++++++++++++++++++++
 
 
