@@ -265,7 +265,7 @@ private:
 	std::string m_sShaderDirectory;
 
 	glm::mat4 m_volumeScale;
-	//glm::mat4 m_modelTransform;
+	glm::mat4 m_modelTransform;
 	
 	int m_iNumSamples;
 	int m_iNumLayers;
@@ -1301,7 +1301,7 @@ public:
 					if ( m_gripInfo.size() == 1 ) { // else dual grip method will handle this
 						// compute difference, apply to model
 						glm::mat4 transform = pose * glm::inverse(m_gripInfo[deviceIdx].lastPose);
-
+						m_modelTransform = transform * m_modelTransform;
 						// update
 						m_gripInfo[deviceIdx].lastPose = pose;
 					} 
