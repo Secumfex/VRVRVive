@@ -63,8 +63,8 @@ float getRatio(SDL_Window* window); //!< returns (width / height) of the window
 * @param defaultFBOSize (optional) size of 0 framebuffer object, will be read from mainWindowResolution if omitted
 */
 void copyFBOContent(FrameBufferObject* source, FrameBufferObject* target, GLbitfield bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE , glm::vec2 defaultFBOSize = glm::vec2(-1.0f, -1.0f));
-void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, glm::vec2 targetResolution, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< like above, but without FBO class
-void copyFBOContent(GLuint source, GLuint target, glm::vec4 sourceViewport, glm::vec4 targetViewport, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< without FBO class, custom viewport
+void copyFBOContent(GLuint source, GLuint target, const glm::vec2& sourceResolution, const glm::vec2& targetResolution, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< like above, but without FBO class
+void copyFBOContent(GLuint source, GLuint target, const glm::vec4& sourceViewport, const glm::vec4& targetViewport, GLenum bitField, GLenum readBuffer = GL_NONE, GLenum filter = GL_NONE); //!< without FBO class, custom viewport
 
 GLuint createTexture(int width, int height, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);
 GLuint createTextureArray(int width, int height, int length, GLenum internalFormat = GL_RGBA8, GLsizei levels = 1);

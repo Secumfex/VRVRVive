@@ -461,7 +461,7 @@ void copyFBOContent(FrameBufferObject* source, FrameBufferObject* target, GLbitf
 		bitField, filter);
 	OPENGLCONTEXT->bindFBO(0);
 }
-void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, glm::vec2 targetResolution, GLenum bitField, GLenum readBuffer, GLenum filter)
+void copyFBOContent(GLuint source, GLuint target, const glm::vec2& sourceResolution, const glm::vec2& targetResolution, GLenum bitField, GLenum readBuffer, GLenum filter)
 {
 		// bind framebuffers
 	OPENGLCONTEXT->bindFBO(source, GL_READ_FRAMEBUFFER);
@@ -506,7 +506,7 @@ void copyFBOContent(GLuint source, GLuint target, glm::vec2 sourceResolution, gl
 		bitField, filter);
 	OPENGLCONTEXT->bindFBO(0);
 }
-void copyFBOContent(GLuint source, GLuint target, glm::vec4 sourceViewport, glm::vec4 targetViewport, GLenum bitField, GLenum readBuffer, GLenum filter)
+void copyFBOContent(GLuint source, GLuint target, const glm::vec4& sourceViewport, const glm::vec4& targetViewport, GLenum bitField, GLenum readBuffer, GLenum filter)
 {
 		// bind framebuffers
 	OPENGLCONTEXT->bindFBO(source, GL_READ_FRAMEBUFFER);
