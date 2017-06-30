@@ -63,6 +63,8 @@ using namespace ViewParameters;
 using namespace VolumeParameters;
 using namespace RaycastingParameters;
 
+static bool useClearTexImage = false;
+
 //////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MAIN ///////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -265,7 +267,7 @@ CMainApplication::CMainApplication(int argc, char *argv[])
 	, m_iCsvCounter(0)
 	, m_iCsvNumFramesToProfile(50)
 	, m_bCsvDoRun(false)
-	, m_iActiveModel(0)
+	, m_iActiveModel(VolumePresets::CT_Head)
 	, m_bUseCompute(false)
 	, m_bAutoTranslate(false)
 	, m_cubemapTexture(0)
@@ -305,9 +307,17 @@ void CMainApplication::clearOutputTexture(GLuint texture)
 	
 	OPENGLCONTEXT->activeTexture(GL_TEXTURE6);
 	OPENGLCONTEXT->bindTexture(texture, GL_TEXTURE_2D_ARRAY);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
+
+	if (useClearTexImage)
+	{
+		glClearTexImage(texture, 0, GL_RGBA, GL_FLOAT, NULL);
+	}
+	else
+	{
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
 		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, (int) m_textureResolution.x, (int) m_textureResolution.y, m_iNumLayers, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	}
 }
 
 void updateTransferFunctionTex()
@@ -1229,6 +1239,7 @@ void CMainApplication::updateGui()
 	ImGui::Checkbox("auto-rotate", &s_isRotating); // enable/disable rotating volume
 	ImGui::Checkbox("Use Compute", &m_bUseCompute);
 	ImGui::Checkbox("Show Debug View", &m_bShowDebugView);
+	ImGui::Checkbox("Use glClearTexImage", &useClearTexImage);
 	ImGui::Checkbox("Debug Show Layers", &m_bDebugShowLayers);
 	if (m_bDebugShowLayers)
 	{
