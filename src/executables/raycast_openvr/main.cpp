@@ -159,6 +159,8 @@ private:
 	std::function<bool(const vr::VREvent_t&)> m_vrEventFunc;
 	std::function<void(bool, int)> m_touchpadTouchedFunc;
 	std::function<void(bool, int)> m_triggerPressedFunc;
+	std::function<void(bool, int)> m_gripPressedFunc;
+	std::function<void(bool, int)> m_dualGripPressedFunc;
 	std::function<void(bool, int)> m_touchpadPressedFunc;
 	std::function<void(int)> m_setDebugViewFunc;
 
@@ -243,6 +245,12 @@ private:
 	};
 	std::unordered_map<int, WindowingInfo> m_windowingInfo;
 
+	struct GripInfo
+	{
+		glm::mat4 lastPose;
+	};
+	std::unordered_map<int, GripInfo> m_gripInfo;
+
 	float m_fOldX;
 	float m_fOldY;
 
@@ -257,7 +265,8 @@ private:
 	std::string m_sShaderDirectory;
 
 	glm::mat4 m_volumeScale;
-
+	glm::mat4 m_modelTransform;
+	
 	int m_iNumSamples;
 	int m_iNumLayers;
 	
@@ -521,6 +530,7 @@ public:
 			s_view_r = m_pOvr->m_mat4eyePosRight * s_view_r;
 
 			//++++++++++++++DEBUG++++++++++++
+			/*
 			{
 			glm::mat4 p0 = s_perspective;
 			glm::mat4 p1 = m_pOvr->m_mat4ProjectionLeft;
@@ -533,12 +543,14 @@ public:
 			DEBUGLOG->log("GLM near:", n1);
 			DEBUGLOG->log("OVR near:", n2);
 			}
+			*/
 			//+++++++++++++++++++++++++++++++
 
 			s_perspective = m_pOvr->m_mat4ProjectionLeft; 
 			s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 
-			//++++++++++++++DEBUG+++++++++++<
+			//++++++++++++++DEBUG+++++++++++< 
+			/*
 			{
 			DEBUGLOG->log("Perspective matrices"); DEBUGLOG->indent();
 			DEBUGLOG->log("p_l: ", s_perspective);
@@ -575,6 +587,7 @@ public:
 			DEBUGLOG->outdent();
 			DEBUGLOG->outdent();
 			}
+			*/
 			//+++++++++++++++++++++++++++++++
 
 
@@ -1064,129 +1077,131 @@ public:
 		m_sdlEventFunc = [&](SDL_Event *event)
 		{
 			bool imguiHandlesEvent = ImGui_ImplSdlGL3_ProcessEvent(event);
-			switch(event->type)
+			switch (event->type)
 			{
-				case SDL_KEYDOWN:
+			case SDL_KEYDOWN:
+			{
+				int k = event->key.keysym.sym;
+				switch (k)
 				{
-					int k = event->key.keysym.sym;
-					switch (k)
-					{
-						case SDLK_w:
-							s_translation = glm::translate( glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,-0.1f,0.0f))) * s_translation;
-							break;
-						case SDLK_a:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f,0.0f,0.0f,0.0f))) * s_translation;
-							break;
-						case SDLK_s:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f,0.0f,0.1f,0.0f))) * s_translation;
-							break;
-						case SDLK_d:
-							s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f,0.0f,0.0f,0.0f))) * s_translation;
-							break;
-						case SDLK_SPACE:
-							m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
-							break;
-						default:
-							break;
-					}
+				case SDLK_w:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, -0.1f, 0.0f))) * s_translation;
+					break;
+				case SDLK_a:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(-0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
+					break;
+				case SDLK_s:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.0f, 0.0f, 0.1f, 0.0f))) * s_translation;
+					break;
+				case SDLK_d:
+					s_translation = glm::translate(glm::vec3(glm::inverse(s_view) * glm::vec4(0.1f, 0.0f, 0.0f, 0.0f))) * s_translation;
+					break;
+				case SDLK_SPACE:
+					m_iActiveView = (m_iActiveView + 1) % NUM_VIEWS;
+					break;
+				default:
 					break;
 				}
-				case SDL_MOUSEMOTION:
+				break;
+			}
+			case SDL_MOUSEMOTION:
+			{
+				ImGuiIO& io = ImGui::GetIO();
+				if (io.WantCaptureMouse)
 				{
-					ImGuiIO& io = ImGui::GetIO();
-					if ( io.WantCaptureMouse )
-					{ break; } // ImGUI is handling this
-
-					float d_x = event->motion.x - m_fOldX;
-					float d_y = event->motion.y - m_fOldY;
-
-					if ( m_turntable.getDragActive() )
-					{
-						m_turntable.dragBy(d_x, d_y, s_view);
-					}
-
-					m_fOldX = (float) event->motion.x;
-					m_fOldY = (float) event->motion.y;
 					break;
-				}
-				case SDL_MOUSEBUTTONDOWN:
+				} // ImGUI is handling this
+
+				float d_x = event->motion.x - m_fOldX;
+				float d_y = event->motion.y - m_fOldY;
+
+				if (m_turntable.getDragActive())
 				{
-					if (event->button.button == SDL_BUTTON_LEFT)
-					{
-						m_turntable.setDragActive(true);
-					}
-					if (event->button.button == SDL_BUTTON_RIGHT)
-					{
-						unsigned char pick_col[20];
-						glReadPixels((int) m_fOldX - 2, (int) WINDOW_RESOLUTION.y - (int) m_fOldY, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+					m_turntable.dragBy(d_x, d_y, s_view);
+				}
 
-						for (int i = 0; i < 20; i += 4)
-						{
-							DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i+2], pick_col[i+3]));
-						}
-					}
-					break;
-				}
-				case SDL_MOUSEBUTTONUP:
+				m_fOldX = (float)event->motion.x;
+				m_fOldY = (float)event->motion.y;
+				break;
+			}
+			case SDL_MOUSEBUTTONDOWN:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
 				{
-					if (event->button.button == SDL_BUTTON_LEFT)
-					{
-						m_turntable.setDragActive(false);
-					}
-					break;
+					m_turntable.setDragActive(true);
 				}
+				if (event->button.button == SDL_BUTTON_RIGHT)
+				{
+					unsigned char pick_col[20];
+					glReadPixels((int)m_fOldX - 2, (int)WINDOW_RESOLUTION.y - (int)m_fOldY, 5, 1, GL_RGBA, GL_UNSIGNED_BYTE, pick_col);
+
+					for (int i = 0; i < 20; i += 4)
+					{
+						DEBUGLOG->log("color: ", glm::vec4(pick_col[i + 0], pick_col[i + 1], pick_col[i + 2], pick_col[i + 3]));
+					}
+				}
+				break;
+			}
+			case SDL_MOUSEBUTTONUP:
+			{
+				if (event->button.button == SDL_BUTTON_LEFT)
+				{
+					m_turntable.setDragActive(false);
+				}
+				break;
+			}
 			}
 			return true;
 		};
 
 		m_vrEventFunc = [&](const vr::VREvent_t & event)
 		{
-			switch( event.eventType )
+			switch (event.eventType)
 			{
 				if (event.trackedDeviceIndex == vr::k_unTrackedDeviceIndex_Hmd) { return false; } // nevermind
-				
-				m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
-				
-				case vr::VREvent_ButtonPress:
-				{
-					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = true;
-					
-					switch(event.data.controller.button)
-					{
-					case vr::k_EButton_ApplicationMenu:
-						m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
-						break;
-					}
 
-					DEBUGLOG->log("button press: ", event.data.controller.button);
+				m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+
+			case vr::VREvent_ButtonPress:
+			{
+				m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = true;
+
+				switch (event.data.controller.button)
+				{
+				case vr::k_EButton_ApplicationMenu:
+					m_iActiveWarpingTechnique = (m_iActiveWarpingTechnique + 1) % NUM_WARPTECHNIQUES;
 					break;
 				}
-				case vr::VREvent_ButtonUnpress:
-					m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = false;
-					break;
-				case vr::VREvent_ButtonTouch: // generated for touchpad
-					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
-					{ 
-						m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
-						m_deviceInfo[event.trackedDeviceIndex].touch = true;
 
-						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+				DEBUGLOG->log("button press: ", event.data.controller.button);
+				break;
+			}
+			case vr::VREvent_ButtonUnpress:
+				m_deviceInfo[event.trackedDeviceIndex].button[event.data.controller.button] = false;
+				break;
+			case vr::VREvent_ButtonTouch: // generated for touchpad
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+				{
+					m_deviceInfo[event.trackedDeviceIndex].iDeviceIdx = event.trackedDeviceIndex;
+					m_deviceInfo[event.trackedDeviceIndex].touch = true;
 
-						vr::VRControllerState_t state_;
-						if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
-						{
-							m_touchInfo[event.trackedDeviceIndex].lastX = state_.rAxis[0].x;
-							m_touchInfo[event.trackedDeviceIndex].lastY = state_.rAxis[0].y;
-						}
-					}
-					break;
-				case vr::VREvent_ButtonUntouch:
-					if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+					m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+
+					vr::VRControllerState_t state_;
+					if (m_pOvr->m_pHMD->GetControllerState(event.trackedDeviceIndex, &state_))
 					{
-						m_deviceInfo[event.trackedDeviceIndex].touch = false;
-						m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+						m_touchInfo[event.trackedDeviceIndex].lastX = state_.rAxis[0].x;
+						m_touchInfo[event.trackedDeviceIndex].lastY = state_.rAxis[0].y;
 					}
-					break;
+				}
+				break;
+			case vr::VREvent_ButtonUntouch:
+				if (event.data.controller.button == vr::k_EButton_Axis0) // reset coords 
+				{
+					m_deviceInfo[event.trackedDeviceIndex].touch = false;
+					m_turntable.setDragActive(m_deviceInfo[event.trackedDeviceIndex].touch);
+				}
+				break;
 				//case vr::VREvent_TouchPadMove: // this event is never fired in normal mode
 				//	break;
 			}
@@ -1196,17 +1211,17 @@ public:
 		// seperate handler for touchpad, since no event will be generated for touch-movement
 		m_touchpadTouchedFunc = [&](bool isTouched, int deviceIdx)
 		{
-			if ( isTouched )
+			if (isTouched)
 			{
 				vr::VRControllerState_t state;
-				if ( !m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state) ) { return; }
+				if (!m_pOvr->m_pHMD->GetControllerState(deviceIdx, &state)) { return; }
 
 				float d_x = state.rAxis[0].x - m_touchInfo[deviceIdx].lastX;
 				float d_y = state.rAxis[0].y - m_touchInfo[deviceIdx].lastY;
 
 				if (m_turntable.getDragActive())
 				{
-					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view);
+					m_turntable.dragBy(d_x * 40.0f, -d_y * 40.0f, s_view * m_modelTransform);
 				}
 
 				m_touchInfo[deviceIdx].lastX = state.rAxis[0].x;
@@ -1220,54 +1235,139 @@ public:
 
 		m_triggerPressedFunc = [&](bool isPressed, int deviceIdx)
 		{
-			if ( isPressed )
+			if (isPressed)
 			{
-			bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes )
-			{		
-			if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
-			{
-				// transform controller pose to texture space
-				glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
-				glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
-
-				// find nearest cull plane: largest scalar of direction from center to point
-				if (m_cullInfo.find(deviceIdx) == m_cullInfo.end())
+				bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if (hasCullPlanes)
 				{
-					glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
-					dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
-					dirCP = glm::normalize(dirCP);
-					m_cullInfo[deviceIdx].cullAxis = glm::vec3( 
-						(float) ((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
-						(float) ((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
-						(float) ((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
-						);
-				}
+					if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
+					{
+						// transform controller pose to texture space
+						glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
+						glm::vec4 point = s_modelToTexture * glm::inverse(s_model) * pose * glm::vec4(0.f, 0.f, 0.f, 1.0f);
 
-				// set corresponding cull scalar to controller pose
-				if ( glm::any(glm::lessThan( m_cullInfo[deviceIdx].cullAxis, glm::vec3(0.0f) )) ) 
-				{ 
-					s_cullMin = glm::vec3(
-						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMin.x : min( s_cullMax.x, max(0.0f, point.x)),
-						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMin.y : min( s_cullMax.y, max(0.0f, point.y)),
-						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMin.z : min( s_cullMax.z, max(0.0f, point.z))
-						);
-				}
-				else
-				{
-					s_cullMax = glm::vec3(
-						(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
-						(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
-						(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
-						);
-				}
+						// find nearest cull plane: largest scalar of direction from center to point
+						if (m_cullInfo.find(deviceIdx) == m_cullInfo.end())
+						{
+							glm::vec3 dirCP = glm::vec3(point) - (s_cullMin + 0.5f * (s_cullMax - s_cullMin));
+							dirCP /= (s_cullMax - s_cullMin); // 'scale' to cull bbox space
+							dirCP = glm::normalize(dirCP);
+							m_cullInfo[deviceIdx].cullAxis = glm::vec3(
+								(float)((abs(dirCP.x) >= abs(dirCP.y)) && (abs(dirCP.x) >= abs(dirCP.z))) * glm::sign(dirCP.x),
+								(float)((abs(dirCP.y) >= abs(dirCP.x)) && (abs(dirCP.y) >= abs(dirCP.z))) * glm::sign(dirCP.y),
+								(float)((abs(dirCP.z) >= abs(dirCP.x)) && (abs(dirCP.z) >= abs(dirCP.y))) * glm::sign(dirCP.z)
+								);
+						}
 
-				if (abs(s_cullMax.x - s_cullMin.x) < s_rayStepSize) { s_cullMin.x -= 0.5f * s_rayStepSize; s_cullMax.x += 0.5f * s_rayStepSize; }
-				if (abs(s_cullMax.y - s_cullMin.y) < s_rayStepSize) { s_cullMin.y -= 0.5f * s_rayStepSize; s_cullMax.y += 0.5f * s_rayStepSize; }
-				if (abs(s_cullMax.z - s_cullMin.z) < s_rayStepSize) { s_cullMin.z -= 0.5f * s_rayStepSize; s_cullMax.z += 0.5f * s_rayStepSize; }
-			}}}
+						// set corresponding cull scalar to controller pose
+						if (glm::any(glm::lessThan(m_cullInfo[deviceIdx].cullAxis, glm::vec3(0.0f))))
+						{
+							s_cullMin = glm::vec3(
+								(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMin.x : min(s_cullMax.x, max(0.0f, point.x)),
+								(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMin.y : min(s_cullMax.y, max(0.0f, point.y)),
+								(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMin.z : min(s_cullMax.z, max(0.0f, point.z))
+								);
+						}
+						else
+						{
+							s_cullMax = glm::vec3(
+								(m_cullInfo[deviceIdx].cullAxis.x == 0.0f) ? s_cullMax.x : max(s_cullMin.x, min(1.0f, point.x)),
+								(m_cullInfo[deviceIdx].cullAxis.y == 0.0f) ? s_cullMax.y : max(s_cullMin.y, min(1.0f, point.y)),
+								(m_cullInfo[deviceIdx].cullAxis.z == 0.0f) ? s_cullMax.z : max(s_cullMin.z, min(1.0f, point.z))
+								);
+						}
+
+						if (abs(s_cullMax.x - s_cullMin.x) < s_rayStepSize) { s_cullMin.x -= 1.f * s_rayStepSize; s_cullMax.x += 1.f * s_rayStepSize; }
+						if (abs(s_cullMax.y - s_cullMin.y) < s_rayStepSize) { s_cullMin.y -= 1.f * s_rayStepSize; s_cullMax.y += 1.f * s_rayStepSize; }
+						if (abs(s_cullMax.z - s_cullMin.z) < s_rayStepSize) { s_cullMin.z -= 1.f * s_rayStepSize; s_cullMax.z += 1.f * s_rayStepSize; }
+					}
+				}
+			}
 			else // reset
 			{
 				m_cullInfo.erase(deviceIdx);
+			}
+		};
+
+		m_gripPressedFunc = [&](bool isPressed, int deviceIdx)
+		{
+			if (isPressed)
+			{
+				if (m_pOvr->m_rTrackedDevicePose[deviceIdx].bPoseIsValid)
+				{
+					// transform controller pose to texture space
+					glm::mat4 pose = m_pOvr->m_rmat4DevicePose[deviceIdx];
+
+					if ( m_gripInfo.find(deviceIdx) == m_gripInfo.end() )
+					{
+						m_gripInfo[deviceIdx].lastPose = pose;
+					}
+
+					if ( m_gripInfo.size() == 1 ) { // else dual grip method will handle this
+						// compute difference, apply to model
+						glm::mat4 transform = pose * glm::inverse(m_gripInfo[deviceIdx].lastPose);
+						m_modelTransform = transform * m_modelTransform;
+						// update
+						m_gripInfo[deviceIdx].lastPose = pose;
+					} 
+				}
+			}
+			else // reset
+			{
+				m_gripInfo.erase(deviceIdx);
+			}
+		};
+
+		m_dualGripPressedFunc = [&](int deviceIdx1_, int deviceIdx2_)
+		{
+			//++++ WORKAROUND fix ++++
+			std::vector<int> gripPressed;
+			for (auto e : m_deviceInfo)
+			{
+				if (e.second.button.find(vr::k_EButton_Grip) != e.second.button.end() && e.second.button.at(vr::k_EButton_Grip) == true)
+				{
+					gripPressed.push_back(e.first);
+				}
+			}
+			if (gripPressed.size() < 2)
+			{
+				return;
+			}
+			int deviceIdx1 = gripPressed[0];
+			int deviceIdx2 = gripPressed[1];
+			//int deviceIdx1 = deviceIdx1_;
+			//int deviceIdx2 = deviceIdx2_;
+			//+++++++++++++++++++++
+
+			if (m_gripInfo.find(deviceIdx1) == m_gripInfo.end() || m_gripInfo.find(deviceIdx2) == m_gripInfo.end())
+			{
+				return;
+			}
+			
+			if (m_pOvr->m_rTrackedDevicePose[deviceIdx1].bPoseIsValid
+				&& m_pOvr->m_rTrackedDevicePose[deviceIdx2].bPoseIsValid)
+			{
+				// get pose, compute transform
+				glm::mat4 pose1 = m_pOvr->m_rmat4DevicePose[deviceIdx1];
+				glm::mat4 pose2 = m_pOvr->m_rmat4DevicePose[deviceIdx2];
+
+				glm::mat4 lastPose1 = m_gripInfo[deviceIdx1].lastPose;
+				glm::mat4 lastPose2 = m_gripInfo[deviceIdx2].lastPose;
+
+				// scalation that happens somewhere in between
+				float distOld = glm::distance( glm::vec3(lastPose1[3]), glm::vec3(lastPose2[3]) );
+				float distNew = glm::distance( glm::vec3(pose1[3]), glm::vec3(pose2[3]) );
+				glm::mat4 scalation = glm::scale( glm::vec3(distNew / distOld) );
+
+				// TODO think of a clever way to figure out rotation / translation etc.
+				//glm::mat4 pose1To2     = pose2 * glm::inverse(pose1);
+				//glm::mat4 lastPose1To2 = lastPose2 * glm::inverse(lastPose1);
+				//glm::mat4 transform1 = pose1To2 * glm::inverse(lastPose1To2);
+
+				// compute difference, apply to model
+				s_scale = scalation * s_scale;
+
+				m_gripInfo[deviceIdx1].lastPose = pose1;
+				m_gripInfo[deviceIdx2].lastPose = pose2;
 			}
 		};
 
@@ -1359,11 +1459,22 @@ public:
 	{
 		pollSDLEvents(m_pWindow, m_sdlEventFunc);
 		m_pOvr->PollVREvents(m_vrEventFunc);
+		std::vector<int> gripPressed;
 		for (auto e: m_deviceInfo)
 		{ 
 			m_touchpadTouchedFunc(e.second.touch, e.first); // handle trackpad touch seperately
 			m_touchpadPressedFunc(e.second.button[vr::k_EButton_Axis0], e.first); // handle trackpad press seperately
 			m_triggerPressedFunc(e.second.button[vr::k_EButton_Axis1], e.first); // handle trigger press seperately
+			m_gripPressedFunc(e.second.button[vr::k_EButton_Grip], e.first);
+			if (e.second.button.find(vr::k_EButton_Grip) != e.second.button.end() && e.second.button.at(vr::k_EButton_Grip) == true) 
+			{ 
+				gripPressed.push_back(e.first); 
+			}
+		}
+		if (gripPressed.size() >= 2)
+		{
+			//TODO this is buggy, for some reason... gripPressed[0] is 1 inside function sometimes...
+			m_dualGripPressedFunc(gripPressed[0], gripPressed[1]);
 		}
 	}
 	
@@ -1391,25 +1502,30 @@ public:
 		ImGuiIO& io = ImGui::GetIO();
 		profileFPS(ImGui::GetIO().Framerate);
 
+		ImGui::Separator();
 		ImGui::Value( "Output FPS         ", io.Framerate);
 		m_fMirrorScreenTimer += io.DeltaTime;
 		m_fElapsedTime += io.DeltaTime;
 
 		ImGui::Value( "Volume Renderer FPS", 1000.f / ( m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->getLastTotalRenderTime() ) );
-		ImGui::Text("Active Warping Technique: "); ImGui::SameLine(); ImGui::Text(s_warpingNames[m_iActiveWarpingTechnique]);
+		ImGui::Text(  "Warping Technique  : "); ImGui::SameLine(); ImGui::Text(s_warpingNames[m_iActiveWarpingTechnique]);
 
-		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f) );
-		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 65.0, ImVec2(120,60));
+		ImGui::PushStyleColor(ImGuiCol_PlotLines, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 90.0, ImVec2(0, 60));
 		ImGui::PopStyleColor();
+		ImGui::Separator();
+
 	
 		ImGui::Text("Active Model");
 		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
-		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 5))
+		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 6))
 		{
 			handleVolume();
 		}
 		ImGui::PopItemWidth();
 
+		ImGui::Separator();
+		
 		if (ImGui::CollapsingHeader("Transfer Function Settings"))
 		{
 			ImGui::Columns(2, "mycolumns2", true);
@@ -1417,7 +1533,8 @@ public:
 			bool changed = false;
 			for (unsigned int n = 0; n < TransferFunctionPresets::s_transferFunction.getValues().size(); n++)
 			{
-				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f);
+				changed |= ImGui::SliderFloat(("V" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getValues()[n], 0.0f, 1.0f); 
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Value relative to windowing limits");
 				ImGui::NextColumn();
 				changed |= ImGui::ColorEdit4(("C" + std::to_string(n)).c_str(), &TransferFunctionPresets::s_transferFunction.getColors()[n][0]);
 				ImGui::NextColumn();
@@ -1434,58 +1551,65 @@ public:
 		ImGui::PushItemWidth(-100);
 		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
     	{
-			ImGui::Text("Parameters related to m_pVolume rendering");
-			ImGui::DragFloatRange2("windowing range", &s_windowingMinValue, &s_windowingMaxValue, 1.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
-        	ImGui::SliderFloat("ray step size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+			ImGui::Text("Parameters related to Volume rendering");
+			ImGui::DragFloatRange2("Windowing Range", &s_windowingMinValue, &s_windowingMaxValue, 1.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Value range to which the transfer function is mapped");
+        	ImGui::SliderFloat("Ray Step Size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Texture space ray step size in range [0..1]");
 			{bool hasCullPlanes = false; for (auto e : m_shaderDefines) { hasCullPlanes |= (e == "CULL_PLANES"); } if ( hasCullPlanes ){
 				ImGui::SliderFloat3("Cull Max", glm::value_ptr(s_cullMax),0.0f, 1.0f);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal culling limits in texture space");
 				ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Minimal culling limits in texture space");
 			}}
 		}
-        		
+
 		ImGui::Separator();
 
 		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
 		if (ImGui::CollapsingHeader("Level of Detail Settings"))
 		{
 			ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal volume mipmap-Level for sampling");
 			ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Distance to camera [m] at which level-of-detail sampling begins");
 			ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("View space range [m] to which the level-of-detail range is mapped");
 		}
 		}}
 		
-		{if (ImGui::CollapsingHeader("Defines")){
+
+		{
+		bool expanded = ImGui::CollapsingHeader("Shader Defines");
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
+		if (expanded){
 			for (unsigned int i = 0; i < m_issetDefine.size(); i++)
 			{
 				ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*) &(m_issetDefine[i]) );
 			}
-		}}
+		}
+		}
 
 		if (ImGui::Button("Recompile Shaders"))
 		{
 			recompileShaders();
 		}
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
 
 		ImGui::Separator();
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the performance information for the viewport chunks");
 		if (profiler_visible) { m_pRaycastChunked[LEFT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible, "LEFT "); };
 		ImGui::NextColumn();
 		ImGui::Checkbox("Chunk Perf Profiler Right", &profiler_visible_r);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the performance information for the viewport chunks");
 		if (profiler_visible_r) { m_pRaycastChunked[RIGHT + 2 * (int) (m_iActiveWarpingTechnique == NOVELVIEW)]->imguiInterface(&profiler_visible_r, "RIGHT "); };
 		ImGui::NextColumn();
 		ImGui::Columns(1);
 		
-		ImGui::Separator();
-		ImGui::Columns(2);
-		ImGui::SliderInt("Left Debug View", &m_iLeftDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
-		ImGui::NextColumn();
-		ImGui::SliderInt("Right Debug View", &m_iRightDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
-		ImGui::NextColumn();
-		ImGui::Columns(1);
-		ImGui::Separator();
-		if (ImGui::ColorEdit4("Clear Color", &m_clearColor[0]))
+		if (ImGui::ColorEdit4("Background Color", &m_clearColor[0]))
 		{
 			m_pGridWarpShader->update("color", m_clearColor);
 		}
@@ -1494,7 +1618,9 @@ public:
 
 		{bool changed = false;
 		changed |= ImGui::SliderFloat("Near", &s_near, 0.1f, s_far);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Camera's near plane distance");
 		changed |= ImGui::SliderFloat("Far", &s_far, s_near, 100.0f);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Camera's far plane distance");
 		if ( changed )
 		{
 			updateNearHeightWidth();
@@ -1515,10 +1641,10 @@ public:
 		}}
 
 		{
-			static float scale = s_scale[0][0];
-			if (ImGui::DragFloat("Scale", &scale, 0.01f, 0.1f, 100.0f))
+			static float* scale = &s_scale[0][0];
+			if (ImGui::DragFloat("Scale", scale, 0.01f, 0.1f, 100.0f))
 			{
-				s_scale = glm::scale(glm::vec3(scale));
+				s_scale = glm::scale(glm::vec3(*scale));
 
 				{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
 					s_near = getIdealNearValue();
@@ -1540,12 +1666,15 @@ public:
 
 				}}
 			}
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
 		}
 
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
 		ImGui::Checkbox("Frame Profiler", &frame_profiler_visible);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show the rendering task times of last frame");
 		ImGui::Checkbox("Pause Frame Profiler", &pause_frame_profiler);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pause profiler to inspect a single frame");
 		m_frame.Timings.getFront().setEnabled(!pause_frame_profiler);
 		m_frame.Timings.getBack().setEnabled(!pause_frame_profiler);
 		
@@ -1592,12 +1721,14 @@ public:
 				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[LEFT]).lastTime;
 				if (t > lastSwapTimestampLeft) { lastSwapTimeLeft = t - lastSwapTimestampLeft; lastSwapTimestampLeft = t; }
 				ImGui::Value("Swap Time Left", lastSwapTimeLeft);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Time between last Double-Buffer swaps (i.e. raycasting render time).");
 			}
 			if (m_frame.Timings.getFront().m_timestamps.find("Swap Time" + STR_SUFFIX[RIGHT]) != m_frame.Timings.getFront().m_timestamps.end())
 			{
 				float t = m_frame.Timings.getFront().m_timestamps.at("Swap Time" + STR_SUFFIX[RIGHT]).lastTime;
 				if (t > lastSwapTimestampRight) { lastSwapTimeRight = t - lastSwapTimestampRight; lastSwapTimestampRight = t; }
 				ImGui::Value("Swap Time Right", lastSwapTimeRight);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Time between last Double-Buffer swaps (i.e. raycasting render time).");
 			}
 			ImGui::Separator();
 			}
@@ -1639,7 +1770,10 @@ public:
 		// Update Matrices
 
 		//++++++++++++++ DEBUG
+		ImGui::BeginGroup();
 		ImGui::Checkbox("Animate View", &m_bAnimateView); ImGui::SameLine(); ImGui::Checkbox("Anim Translation", &m_bAnimateTranslation); ImGui::SameLine(); ImGui::Checkbox("Anim Rotation", &m_bAnimateRotation);
+		ImGui::EndGroup();
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Static animation of the camera. Animate movement and/or head-rotation.");
 		if (m_bAnimateView)
 		{
 			glm::vec4 warpCenter = s_center;
@@ -1658,19 +1792,22 @@ public:
 		}
 
 		ImGui::Checkbox("Predict HMD Pose", &m_bPredictPose);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Use prediction to counter long render times");
 		//++++++++++++++ DEBUG
 
 		ImGui::Checkbox("Auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
 		//++++++++++++++ DEBUG
 		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Switch warping technique. 0: Quad, 1: Grid, 2: Volumetric");
 		if (m_iActiveWarpingTechnique == NOVELVIEW)
 		{
 			static int numSamples = 12;
-			if (ImGui::SliderInt("Num Novel-View Samples", &numSamples, 4, 96))
+			if (ImGui::SliderInt("Num Volumetric Warp Samples", &numSamples, 4, 96))
 			{
 				m_pNovelViewWarpShader->update("uThreshold", numSamples);
 			}
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
 		}
 
 		//++++++++++++++ DEBUG
@@ -1718,14 +1855,19 @@ public:
 			float beta  = angles[1] * glm::half_pi<float>();
 			static int numSteps = 16;
 			static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
 			if (ImGui::CollapsingHeader("Shadow Properties"))
 			{	
-				if (ImGui::SliderFloat2("Shadow Dir", angles, -0.999f, 0.999f) )
+				if (ImGui::SliderFloat2("Light Direction", angles, -0.999f, 0.999f) )
 				{
 					shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
 				}
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
+
 				ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-sample steps traced in light direction");
 			}
+
 
 			m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); 
 			m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 
@@ -1735,7 +1877,8 @@ public:
 		}}
 
 		{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
-			ImGui::SliderInt("Num Samples", &m_iNumSamples, 0, 128);
+			ImGui::SliderInt("Num Cubemap Samples", &m_iNumSamples, 0, 128);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set per-sample number of environment samples. Multiples of 4 add another direction, each direction is traced for max. 4 samples.");
 			m_pRaycastShader->update("uNumSamples", m_iNumSamples);
 			m_pRaycastLayersShader->update("uNumSamples", m_iNumSamples);
 		}}
@@ -1809,20 +1952,43 @@ public:
 			m_pixelOffsetFar  = abs(sdf.x);
 			//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+			ImGui::Separator();
+			{
+			bool expanded = ImGui::CollapsingHeader("Debugging Information");
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Values related to re-projection for single-pass stereo rendering");
+			if(expanded)
+			{
+			ImGui::Columns(2);
+			ImGui::SliderInt("Left Debug View", &m_iLeftDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
+			ImGui::NextColumn();
+			ImGui::SliderInt("Right Debug View", &m_iRightDebugView, 2, 2 + 2 * NUM_VIEWS - 1);
+			ImGui::NextColumn();
+			ImGui::Columns(1);
+			
 			if (ImGui::CollapsingHeader("Epipolar Info"))
 			{
 			ImGui::Checkbox("Switch Near-Far / RayStart-End", &useRayStartEnd);
+			ImGui::BeginGroup();
 			ImGui::Value("Res. Width", m_pWarpFBO[LEFT]->getWidth() ); ImGui::SameLine(); ImGui::Value("Res. Height", m_pWarpFBO[LEFT]->getHeight());
+			ImGui::EndGroup();
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Framebuffer resolution");
 			ImGui::Value("Approx Distance to Ray Start", s_zRayStart);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Minimal distance to the camera at which a ray enters the bounding sphere of the volume (at least focal length)");
 			ImGui::Value("Approx Distance to Ray End", s_zRayEnd);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal distance to the camera at which a ray leaves the bounding sphere of the volume");
 			//ImGui::Value("b", b); ImGui::SameLine(); ImGui::Value("s", s);
 			//ImGui::Value("Pixel Offset of Images", imageOffset);
 			ImGui::Value("Pixel Offset at Ray Start", m_pixelOffsetNear);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Where the start point lies on the right image, compared to the pixel coordinate of the point in the left view");
 			ImGui::Value("Pixel Offset at Ray End", m_pixelOffsetFar);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Where the end point lies on the right image, compared to the pixel coordinate of the point in the left view");
 			ImGui::Value("Pixel Range of a Ray", m_pixelOffsetNear - m_pixelOffsetFar);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Length of a left view's ray after re-projection to the right view's image pixel coordinates");
 			}
 
-			if (ImGui::CollapsingHeader("Epipolar Info Details"))
+			{bool expanded = ImGui::CollapsingHeader("Epipolar Info Details");
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Debugging infos, nothing relevant to see here...");
+			if (expanded)
 			{
 				ImGui::Separator();
 				ImGui::InputFloat4("b", glm::value_ptr(b)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Base line (left to right eye)");
@@ -1846,12 +2012,13 @@ public:
 				ImGui::InputFloat4("sdn", glm::value_ptr(sdn)); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at near distance");
 				ImGui::InputFloat4("sdf", glm::value_ptr(sdf));	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pixel (screen) distance of point at far distance");
 				ImGui::Separator();
-			}
+			}}
+			}}
 		}
 
 		{bool hasDebugLayerDefine = false;bool hasDebugIdxDefine = false; for (auto e : m_shaderDefines) { hasDebugIdxDefine |= (e == "DEBUG_IDX"); hasDebugLayerDefine |= (e == "DEBUG_LAYER") ; } if ( hasDebugLayerDefine || hasDebugIdxDefine){
 		static int debugIdx = -1;
-		ImGui::SliderInt( "DEBUG LAYER", &debugIdx, -1, m_iNumLayers - 1 ); 
+		ImGui::SliderInt( "Debugging Layer Index", &debugIdx, -1, m_iNumLayers - 1 ); 
 		if(hasDebugLayerDefine) {m_pComposeTexArrayShader->update("uDebugLayer", debugIdx);}
 		if(hasDebugIdxDefine) {m_pComposeTexArrayShader->update("uDebugIdx", debugIdx);}
 		}}
@@ -2163,17 +2330,15 @@ public:
 
 		{
 			m_pShowTexShader->update("tex", m_iLeftDebugView);
-			m_pShowTex->setViewport(0, 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
+			m_pShowTex->setViewport(0, 0, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f));
 			m_pShowTex->render();
 		}
 		{
 			m_pShowTexShader->update("tex", m_iRightDebugView);
-			m_pShowTex->setViewport((int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), 0, (int) std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min( getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f ));
+			m_pShowTex->setViewport((int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), 0, (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f), (int)std::min(getResolution(m_pWindow).y, getResolution(m_pWindow).x / 2.0f));
 			m_pShowTex->render();
 		}
 		//////////////////////////////////////////////////////////////////////////////
-
-		m_fMirrorScreenTimer = 0.0f;
 	}
 
 	void CMainApplication::renderGui()
@@ -2438,11 +2603,13 @@ public:
 			submitView(RIGHT);
 		}
 
+		renderToScreen();
+
+		renderGui();
+
 		if (m_fMirrorScreenTimer > MIRROR_SCREEN_FRAME_INTERVAL || !m_pOvr->m_pHMD)
 		{
-			renderToScreen();
-
-			renderGui();
+			m_fMirrorScreenTimer = 0.0f;
 
 			SDL_GL_SwapWindow( m_pWindow ); // swap buffers
 		}
@@ -2506,7 +2673,7 @@ public:
 			
 			//////////////////////////////////////////////////////////////////////////////
 			//updateModel(); 
-			s_model = s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
+			s_model = m_modelTransform * s_translation * m_turntable.getRotationMatrix() * s_rotation * s_scale * m_volumeScale;
 			
 			//////////////////////////////////////////////////////////////////////////////
 			m_frame.Timings.getBack().timestamp("Frame Begin");
