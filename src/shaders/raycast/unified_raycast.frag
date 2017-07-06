@@ -145,7 +145,10 @@ uniform mat4 uProjection;
 	uniform vec3 uCullMax; // max UVR
 #endif
 
-///////////////////////////////////////////////////////////////////////////////////
+#ifdef DEBUG_LAYER
+	uniform int uDebugLayer;
+#endif
+	///////////////////////////////////////////////////////////////////////////////////
 
 // out-variables
 layout(location = 0) out vec4 fragColor;
@@ -657,6 +660,15 @@ void main()
 			#endif
 		#endif
 		);
+
+#ifndef STEREO_SINGLE_PASS
+	ivec3 texSize = ivec3(512, 512, 48);
+	int layerIdx = texSize.z - (int(passUV.x * texSize.x) % texSize.z) - 1;
+#endif
+#ifdef DEBUG_LAYER
+	if (layerIdx == uDebugLayer) { raycastResult.color.rgb = vec3(1.0, 1.0, 1.0); }
+#endif
+
 
 	// final color (front to back)
 	fragColor.rgb = (1.0 - fragColor.a) * (raycastResult.color.rgb) + fragColor.rgb;
