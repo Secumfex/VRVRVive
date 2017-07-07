@@ -68,6 +68,8 @@ using namespace VolumeParameters;
 ////////////////////////////// MISC //////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
+static float angles[2] = { -0.5f, -0.5f }; // for shadow sampling
+
 template <class T>
 void activateVolume(VolumeData<T>& volumeData ) // set static variables
 {
@@ -139,6 +141,7 @@ private:
 	FrameBufferObject* m_pSceneDepthFBO[2];
 	FrameBufferObject* m_pDebugDepthFBO[2];
 
+	bool m_bUseClearTexImage;
 	GLuint m_stereoOutputTextureArray; // singlepass stereo reprojection buffer
 
 	// Renderpass bookkeeping
@@ -270,6 +273,9 @@ private:
 	int m_iNumSamples;
 	int m_iNumLayers;
 	
+	int m_iNumShadowSteps;
+	glm::vec3 m_shadowDir;
+
 	float m_pixelOffsetNear;
 	float m_pixelOffsetFar;
 
@@ -378,11 +384,14 @@ public:
 		, m_iActiveWarpingTechnique(QUAD)
 		, m_iNumSamples(4)
 		, m_pboHandle(-1) // PBO
+		, m_bUseClearTexImage(true)
 		, m_pixelOffsetFar(0.0f)
 		, m_pixelOffsetNear(0.0f)
 		, m_clearColor(0.17f, 0.211f, 0.266f, 0.0f)
 		, m_sResourceDirectory(RESOURCES_PATH)
 		, m_sShaderDirectory(SHADERS_PATH)
+		, m_iNumShadowSteps(8)
+		, m_shadowDir(glm::normalize(glm::vec3(0.0f, -0.5f, -1.0f)))
 	{
 		DEBUGLOG->setAutoPrint(true);
 
@@ -689,8 +698,8 @@ public:
 		m_pRaycastLayersShader->update("uResolution", glm::vec4(FRAMEBUFFER_RESOLUTION.x, FRAMEBUFFER_RESOLUTION.y,0,0));
 
 		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-		m_pRaycastShader->update("uShadowRayDirection", glm::normalize(glm::vec3(0.0f,-0.5f,-1.0f))); // full range of values in window
-		m_pRaycastShader->update("uShadowRayNumSteps", 8); 	  // lower grayscale ramp boundary
+		m_pRaycastShader->update("uShadowRayDirection", m_shadowDir); 
+		m_pRaycastShader->update("uShadowRayNumSteps", m_iNumShadowSteps);
 		}}
 
 		m_pQuadWarpShader->update( "blendColor", 1.0f );
@@ -711,26 +720,33 @@ public:
 
 	void CMainApplication::clearLayerTexture()
 	{
-		if(m_pboHandle == -1)
+		if (m_bUseClearTexImage)
 		{
-			glGenBuffers(1,&m_pboHandle);
-			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
-			glBufferStorage(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * m_iNumLayers * 4, NULL, GL_DYNAMIC_STORAGE_BIT);
-			checkGLError(true);
-			for (int i = 0; i < m_iNumLayers; i++)
+			glClearTexImage(m_stereoOutputTextureArray, 0, GL_RGBA, GL_FLOAT, NULL);
+		}
+		else
+		{
+			if(m_pboHandle == -1)
 			{
-				glBufferSubData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) *  (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * i * 4, m_texData.size(), &m_texData[0]);
+				glGenBuffers(1,&m_pboHandle);
+				glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
+				glBufferStorage(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * m_iNumLayers * 4, NULL, GL_DYNAMIC_STORAGE_BIT);
+				checkGLError(true);
+				for (int i = 0; i < m_iNumLayers; i++)
+				{
+					glBufferSubData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) *  (int)FRAMEBUFFER_RESOLUTION.x * (int)FRAMEBUFFER_RESOLUTION.y * i * 4, m_texData.size(), &m_texData[0]);
+				}
+				checkGLError(true);
+				//glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * m_iNumLayers * 4, &m_texData[0], GL_STATIC_DRAW);
+				glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 			}
-			checkGLError(true);
-			//glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * (int) m_textureResolution.x * (int) m_textureResolution.y * m_iNumLayers * 4, &m_texData[0], GL_STATIC_DRAW);
+	
+			OPENGLCONTEXT->activeTexture(GL_TEXTURE26);
+			OPENGLCONTEXT->bindTexture(m_stereoOutputTextureArray, GL_TEXTURE_2D_ARRAY);
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
+			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, (int)FRAMEBUFFER_RESOLUTION.x, (int)FRAMEBUFFER_RESOLUTION.y, m_iNumLayers, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		}
-	
-		OPENGLCONTEXT->activeTexture(GL_TEXTURE26);
-		OPENGLCONTEXT->bindTexture(m_stereoOutputTextureArray, GL_TEXTURE_2D_ARRAY);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pboHandle);
-			glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0,  (int)FRAMEBUFFER_RESOLUTION.x, (int)FRAMEBUFFER_RESOLUTION.y, m_iNumLayers, GL_RGBA, GL_FLOAT, 0); // last param 0 => will read from pbo
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
 
 
@@ -1500,7 +1516,12 @@ public:
 	{
 		ImGui_ImplSdlGL3_NewFrame(m_pWindow);
 		ImGuiIO& io = ImGui::GetIO();
+
 		profileFPS(ImGui::GetIO().Framerate);
+
+		ImGui::SetNextWindowPos(ImVec2(10, 10));
+		ImGui::SetNextWindowSize(ImVec2(200, getResolution(m_pWindow).y / 5.0f));
+		if (!ImGui::Begin("Frame Rate", NULL, ImVec2(0, 0), 0.3f, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)){ ImGui::End(); }
 
 		ImGui::Separator();
 		ImGui::Value( "Output FPS         ", io.Framerate);
@@ -1514,8 +1535,13 @@ public:
 		ImGui::PlotLines("FPS", &m_fpsCounter[0], m_fpsCounter.size(), 0, NULL, 0.0, 90.0, ImVec2(0, 60));
 		ImGui::PopStyleColor();
 		ImGui::Separator();
+		int yMax = ImGui::GetWindowPos().y + ImGui::GetWindowHeight();
+		ImGui::End();
+		 
+		ImGui::SetNextWindowPos(ImVec2(10, yMax));
+		ImGui::SetNextWindowSize(ImVec2(200, getResolution(m_pWindow).y / 5.0f));
+		if (!ImGui::Begin("Active Model", NULL, ImVec2(0, 0), 0.3f, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)){ ImGui::End(); }
 
-	
 		ImGui::Text("Active Model");
 		ImGui::PushItemWidth(ImGui::GetContentRegionAvailWidth());
 		if (ImGui::ListBox("##activemodel", &m_iActiveModel, VolumePresets::s_models, (int)(sizeof(VolumePresets::s_models)/sizeof(*VolumePresets::s_models)), 6))
@@ -1525,8 +1551,12 @@ public:
 		ImGui::PopItemWidth();
 
 		ImGui::Separator();
-		
-		if (ImGui::CollapsingHeader("Transfer Function Settings"))
+		ImGui::End();
+
+		//if (ImGui::CollapsingHeader("Transfer Function Settings"))
+		ImGui::SetNextWindowPos(ImVec2(getResolution(m_pWindow).x / 2 - (getResolution(m_pWindow).x / 6) + 10, getResolution(m_pWindow).y - getResolution(m_pWindow).y / 5.0f - 10));
+		ImGui::SetNextWindowSize(ImVec2(getResolution(m_pWindow).x / 3 - 20, getResolution(m_pWindow).y / 5.0f));
+		if (ImGui::Begin("Transfer Function Settings", NULL, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
 		{
 			ImGui::Columns(2, "mycolumns2", true);
 			ImGui::Separator();
@@ -1547,11 +1577,17 @@ public:
 			ImGui::Columns(1);
 			ImGui::Separator();
 		}
+		ImGui::End();
 
-		ImGui::PushItemWidth(-100);
-		if (ImGui::CollapsingHeader("Volume Rendering Settings"))
-    	{
-			ImGui::Text("Parameters related to Volume rendering");
+		//ImGui::PushItemWidth(-100);
+		ImGui::SetNextWindowPos(ImVec2(10, getResolution(m_pWindow).y - getResolution(m_pWindow).y / 5.0f - 10));
+		ImGui::SetNextWindowSize(ImVec2(getResolution(m_pWindow).x / 3 - 20, getResolution(m_pWindow).y / 5.0f));
+		if (ImGui::Begin("Volume Rendering Settings", NULL, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+		{
+		//if (ImGui::CollapsingHeader("Volume Rendering Settings"))
+    	//{
+			//ImGui::Text("Parameters related to Volume rendering");
+			ImGui::Separator();
 			ImGui::DragFloatRange2("Windowing Range", &s_windowingMinValue, &s_windowingMaxValue, 1.0f, (float) s_minValue, (float) s_maxValue); // grayscale ramp boundaries
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Value range to which the transfer function is mapped");
         	ImGui::SliderFloat("Ray Step Size",   &s_rayStepSize,  0.0001f, 0.1f, "%.5f", 2.0f);
@@ -1561,42 +1597,108 @@ public:
 				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal culling limits in texture space");
 				ImGui::SliderFloat3("Cull Min", glm::value_ptr(s_cullMin),0.0f, 1.0f);
 				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Minimal culling limits in texture space");
+				ImGui::Separator();
 			}}
-		}
-
-		ImGui::Separator();
-
-		{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
-		if (ImGui::CollapsingHeader("Level of Detail Settings"))
-		{
-			ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal volume mipmap-Level for sampling");
-			ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Distance to camera [m] at which level-of-detail sampling begins");
-			ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("View space range [m] to which the level-of-detail range is mapped");
-		}
-		}}
-		
-
-		{
-		bool expanded = ImGui::CollapsingHeader("Shader Defines");
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
-		if (expanded){
-			for (unsigned int i = 0; i < m_issetDefine.size(); i++)
 			{
-				ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*) &(m_issetDefine[i]) );
+				static float* scale = &s_scale[0][0];
+				if (ImGui::DragFloat("Scale", scale, 0.01f, 0.1f, 100.0f))
+				{
+					s_scale = glm::scale(glm::vec3(*scale));
+
+					{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if (hasProperty) {
+						s_near = getIdealNearValue();
+						updateNearHeightWidth();
+						updatePerspective();
+						updateScreenToViewMatrix();
+
+						if (m_pOvr->m_pHMD)
+						{
+							m_pOvr->setNear(s_near);
+							s_perspective = m_pOvr->m_mat4ProjectionLeft;
+							s_perspective_r = m_pOvr->m_mat4ProjectionRight;
+						}
+
+						{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if (hasLod) {
+							s_lodBegin = s_near;
+							s_lodRange = 2.0f * sqrtf(powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f));
+						}}
+
+					}}
+				}
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
 			}
-		}
-		}
 
-		if (ImGui::Button("Recompile Shaders"))
+		}
+		ImGui::End();
+
 		{
-			recompileShaders();
-		}
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
+			ImGui::SetNextWindowPos(ImVec2(getResolution(m_pWindow).x - 260, 10));
+			ImGui::SetNextWindowSize(ImVec2(250, 2.0f * getResolution(m_pWindow).y / 5.0f));
+			if (!ImGui::Begin("Shader Defines", NULL, ImVec2(0, 0), 0.3f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) { ImGui::End(); }
 
+			//bool expanded = ImGui::CollapsingHeader("Shader Defines");
+
+			bool expanded = true;
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set/Unset defines that change the behaviour of the raycasting shader and the active shading techniques. See description in README.txt");
+			if (expanded) {
+				//ImGui::BeginChild("DefinesList", ImVec2(ImGui::GetWindowContentRegionWidth(), 2.0f * getResolution(m_pWindow).y / 5.0f - 2.0f * ImGui::GetItemsLineHeightWithSpacing()), false);
+				for (unsigned int i = 0; i < m_issetDefine.size(); i++)
+				{
+					ImGui::Checkbox(m_issetDefineStr[i].c_str(), (bool*)&(m_issetDefine[i]));
+				}
+				//ImGui::EndChild();
+			}
+			if (ImGui::Button("Recompile Shaders"))
+			{
+				recompileShaders();
+			}
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Recompile raycasting shaders, with updated shader defines");
+			ImGui::End();
+		}
+
+		ImGui::SetNextWindowPos(ImVec2(2 * getResolution(m_pWindow).x / 3 + 10, getResolution(m_pWindow).y - getResolution(m_pWindow).y / 5.0f - 10));
+		ImGui::SetNextWindowSize(ImVec2(getResolution(m_pWindow).x / 3 - 20, getResolution(m_pWindow).y / 5.0f));
 		ImGui::Separator();
+		if (ImGui::Begin("Shader Settings", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+		{
+			{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if (hasLod) {
+				if (ImGui::CollapsingHeader("Level of Detail Settings"))
+				{
+					ImGui::DragFloat("Lod Max Level", &s_lodMaxLevel, 0.1f, 0.0f, 8.0f);
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Maximal volume mipmap-Level for sampling");
+					ImGui::DragFloat("Lod Begin", &s_lodBegin, 0.01f, 0.0f, s_far);
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Distance to camera [m] at which level-of-detail sampling begins");
+					ImGui::DragFloat("Lod Range", &s_lodRange, 0.01f, 0.0f, std::max(0.1f, s_far - s_lodBegin));
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("View space range [m] to which the level-of-detail range is mapped");
+					ImGui::Separator();
+				}
+			}}
+
+			{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if (hasShadow) {
+				float alpha = angles[0] * glm::pi<float>();
+				float beta = angles[1] * glm::half_pi<float>();
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
+				if (ImGui::CollapsingHeader("Shadow Properties"))
+				{
+					if (ImGui::SliderFloat2("Light Direction", angles, -0.999f, 0.999f))
+					{
+						m_shadowDir = glm::vec3(std::cos(alpha) * std::cos(beta), std::sin(alpha) * std::cos(beta), std::tan(beta));
+					}
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
+
+					ImGui::SliderInt("Num Steps", &m_iNumShadowSteps, 0, 32);
+					if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-sample steps traced in light direction");
+				}
+			}
+
+			{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if (hasCubemap) {
+				ImGui::SliderInt("Num Cubemap Samples", &m_iNumSamples, 0, 128);
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set per-sample number of environment samples. Multiples of 4 add another direction, each direction is traced for max. 4 samples.");
+			}}
+
+		}}
+		ImGui::End();
+
 		ImGui::Columns(2);
 		static bool profiler_visible, profiler_visible_r = false;
 		ImGui::Checkbox("Chunk Perf Profiler Left", &profiler_visible);
@@ -1639,35 +1741,6 @@ public:
 				s_perspective_r = m_pOvr->m_mat4ProjectionRight;
 			}
 		}}
-
-		{
-			static float* scale = &s_scale[0][0];
-			if (ImGui::DragFloat("Scale", scale, 0.01f, 0.1f, 100.0f))
-			{
-				s_scale = glm::scale(glm::vec3(*scale));
-
-				{bool hasProperty = false; for (auto e : m_shaderDefines) { hasProperty |= (e == "STEREO_SINGLE_PASS"); } if ( hasProperty){
-					s_near = getIdealNearValue();
-					updateNearHeightWidth();
-					updatePerspective();
-					updateScreenToViewMatrix();
-
-					if (m_pOvr->m_pHMD)
-					{
-						m_pOvr->setNear(s_near);
-						s_perspective = m_pOvr->m_mat4ProjectionLeft; 
-						s_perspective_r = m_pOvr->m_mat4ProjectionRight;
-					}
-
-					{bool hasLod = false; for (auto e : m_shaderDefines) { hasLod |= (e == "LEVEL_OF_DETAIL"); } if ( hasLod){
-						s_lodBegin = s_near;
-						s_lodRange = 2.0f * sqrtf( powf(s_volumeSize.x * 0.5f, 2.0f) + powf(s_volumeSize.y * 0.5f, 2.0f) + powf(s_volumeSize.z * 0.5f, 2.0f) );
-					}}
-
-				}}
-			}
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume scale (roughly half side length [m])");
-		}
 
 		static bool frame_profiler_visible = false;
 		static bool pause_frame_profiler = false;
@@ -1798,17 +1871,23 @@ public:
 		ImGui::Checkbox("Auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
 		//++++++++++++++ DEBUG
-		ImGui::SliderInt("Active Warpin Technique", &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Switch warping technique. 0: Quad, 1: Grid, 2: Volumetric");
-		if (m_iActiveWarpingTechnique == NOVELVIEW)
+		ImGui::SetNextWindowPos(ImVec2(getResolution(m_pWindow).x / 2 - getResolution(m_pWindow).x / 6 + 10, 10));
+		ImGui::SetNextWindowSize(ImVec2(getResolution(m_pWindow).x / 3 - 20, ImGui::GetItemsLineHeightWithSpacing() * ((2.5f) + (float)(m_iActiveWarpingTechnique == NOVELVIEW))));
+		if (ImGui::Begin("Active Warping Technique", NULL, ImVec2(0, 0), 0.3f, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
 		{
-			static int numSamples = 12;
-			if (ImGui::SliderInt("Num Volumetric Warp Samples", &numSamples, 4, 96))
+			ImGui::SliderInt(s_warpingNames[m_iActiveWarpingTechnique], &m_iActiveWarpingTechnique, 0, NUM_WARPTECHNIQUES - 1);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Switch warping technique. 0: Quad, 1: Grid, 2: Volumetric");
+			if (m_iActiveWarpingTechnique == NOVELVIEW)
 			{
-				m_pNovelViewWarpShader->update("uThreshold", numSamples);
+				static int numSamples = 12;
+				if (ImGui::SliderInt("Num Volumetric Warp Samples", &numSamples, 4, 96))
+				{
+					m_pNovelViewWarpShader->update("uThreshold", numSamples);
+				}
+				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
 			}
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-pixel samples for volumetric warping");
 		}
+		ImGui::End();
 
 		//++++++++++++++ DEBUG
 	}
@@ -1849,36 +1928,15 @@ public:
 		m_pRaycastLayersShader->update("uWindowingRange",  s_windowingMaxValue - s_windowingMinValue); // full range of values in window
 		
 		/************* update experimental  parameters ******************/
-		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if ( hasShadow ){
-			static float angles[2] = {-0.5f, -0.5f};
-			float alpha = angles[0] * glm::pi<float>();
-			float beta  = angles[1] * glm::half_pi<float>();
-			static int numSteps = 16;
-			static glm::vec3 shadowDir(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set shadow technique related values");
-			if (ImGui::CollapsingHeader("Shadow Properties"))
-			{	
-				if (ImGui::SliderFloat2("Light Direction", angles, -0.999f, 0.999f) )
-				{
-					shadowDir = glm::vec3(std::cos( alpha ) * std::cos(beta), std::sin( alpha ) * std::cos( beta ), std::tan( beta ) );
-				}
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set horizontal/vertical angles of light direction (texture space)");
+		{bool hasShadow = false; for (auto e : m_shaderDefines) { hasShadow |= (e == "SHADOW_SAMPLING"); } if (hasShadow) {
+			m_pRaycastShader->update("uShadowRayDirection", glm::normalize(m_shadowDir)); 
+			m_pRaycastShader->update("uShadowRayNumSteps", m_iNumShadowSteps); 
 
-				ImGui::SliderInt("Num Steps", &numSteps, 0, 32);
-				if (ImGui::IsItemHovered()) ImGui::SetTooltip("Number of per-sample steps traced in light direction");
-			}
-
-
-			m_pRaycastShader->update("uShadowRayDirection", glm::normalize(shadowDir)); 
-			m_pRaycastShader->update("uShadowRayNumSteps", numSteps); 
-
-			m_pRaycastLayersShader->update("uShadowRayDirection", glm::normalize(shadowDir));
-			m_pRaycastLayersShader->update("uShadowRayNumSteps", numSteps); 
+			m_pRaycastLayersShader->update("uShadowRayDirection", glm::normalize(m_shadowDir));
+			m_pRaycastLayersShader->update("uShadowRayNumSteps", m_iNumShadowSteps);
 		}}
 
 		{bool hasCubemap = false; for (auto e : m_shaderDefines) { hasCubemap |= (e == "CUBEMAP_SAMPLING"); } if ( hasCubemap ){
-			ImGui::SliderInt("Num Cubemap Samples", &m_iNumSamples, 0, 128);
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("Set per-sample number of environment samples. Multiples of 4 add another direction, each direction is traced for max. 4 samples.");
 			m_pRaycastShader->update("uNumSamples", m_iNumSamples);
 			m_pRaycastLayersShader->update("uNumSamples", m_iNumSamples);
 		}}
