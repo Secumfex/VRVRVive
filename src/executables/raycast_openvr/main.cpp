@@ -92,6 +92,7 @@ void activateVolume(VolumeData<T>& volumeData ) // set static variables
 }
 
 static const char* s_warpingNames[]  = {
+	"NO Warping",
 		"Quad Warping",
 		"Grid Warping",
 		"Volumetric Warping",
@@ -187,6 +188,7 @@ private:
 	int m_iVertexGridHeight;
 
 	enum WarpingTechniques{
+		NONE,
 		QUAD,
 		GRID,
 		NOVELVIEW,
@@ -309,6 +311,7 @@ public:
 	void renderNovelViewWarp(int eye);
 	void renderGridWarp(int eye);
 	void renderQuadWarp(int eye);
+	void renderNoWarp(int eye);
 	void clearWarpFBO(int eye);
 	void renderModels(int eye);
 	void renderImage(int eye);
@@ -2270,6 +2273,19 @@ public:
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
 
+	void CMainApplication::renderNoWarp(int eye)
+	{
+		// copy from raycaster to display
+		//copyFBOContent(m_pRaycastFBO[eye + 2 * (int)(m_iActiveWarpingTechnique == NOVELVIEW)].getFront(), m_pWarpFBO[eye], GL_COLOR_BUFFER_BIT);
+		m_pQuadWarp->setFrameBufferObject(m_pWarpFBO[eye]);
+		m_pQuadWarpShader->update("tex", 2 + 2 * FRONT + eye); // last result
+		m_pQuadWarpShader->update("oldView", matrices[eye][LAST_RESULT].view); // update with old view
+		m_pQuadWarpShader->update("newView", matrices[eye][LAST_RESULT].view); // most current view
+		m_pQuadWarpShader->update("projection", matrices[eye][LAST_RESULT].perspective);
+		m_pQuadWarp->render();
+
+	}
+
 	void CMainApplication::renderQuadWarp(int eye)
 	{
 		// warp left
@@ -2346,6 +2362,10 @@ public:
 		switch(m_iActiveWarpingTechnique)
 		{
 		default:
+		case NONE:
+			renderNoWarp(LEFT);
+			renderNoWarp(RIGHT);
+			break;
 		case QUAD: 
 			renderQuadWarp(LEFT);
 			renderQuadWarp(RIGHT);
@@ -2353,7 +2373,6 @@ public:
 		case GRID:
 			renderGridWarp(LEFT);
 			renderGridWarp(RIGHT);
-			
 			break;
 		case NOVELVIEW:
 			renderNovelViewWarp(LEFT);
