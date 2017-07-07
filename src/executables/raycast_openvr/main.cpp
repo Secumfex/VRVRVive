@@ -1873,6 +1873,26 @@ public:
 
 		ImGui::Checkbox("Auto-rotate", &s_isRotating); // enable/disable rotating m_pVolume
 
+		if (ImGui::Button("Reset Transform"))
+		{
+			s_volumeSize = glm::vec3(1.0f);
+			updateModelToTexture();
+
+			if (m_pOvr->m_pHMD)
+			{
+				s_translation = glm::translate(glm::vec3(0.0f, 1.5f, 0.0f));
+				s_scale = glm::scale(glm::vec3(0.5f, 0.5f, 0.5f));
+			}
+			else
+			{
+				s_translation = glm::translate(glm::vec3(0.0f, 0.0f, -3.0f));
+				s_scale = glm::scale(glm::vec3(0.5f, 0.5f, 0.5f));
+			}
+			s_rotation = glm::rotate(glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			m_modelTransform = glm::mat4(1.0f);
+			m_turntable.setRotationMatrix(glm::mat4(1.0f));
+		}
+
 		//++++++++++++++ DEBUG
 		ImGui::SetNextWindowPos(ImVec2(getResolution(m_pWindow).x / 2 - getResolution(m_pWindow).x / 6 + 10, 10));
 		ImGui::SetNextWindowSize(ImVec2(getResolution(m_pWindow).x / 3 - 20, ImGui::GetItemsLineHeightWithSpacing() * ((2.5f) + (float)(m_iActiveWarpingTechnique == NOVELVIEW))));
