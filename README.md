@@ -9,5 +9,5 @@
 - GLM https://glm.g-truc.net/0.9.8/index.html
 
 # Volume Data 
-http://www9.informatik.uni-erlangen.de/External/vollib/ (.pvm)
-https://graphics.stanford.edu/data/voldata/ (binary slice data)
+- http://www9.informatik.uni-erlangen.de/External/vollib/ (.pvm)
+- https://graphics.stanford.edu/data/voldata/ (binary slice data)
